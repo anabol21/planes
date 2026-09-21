@@ -34,7 +34,7 @@ Grisha fills the body of `solver.solve`. Ruslan points the worker at `COMPUTE_HO
 ## Evidence
 
 - Command: `PYTHONPATH=src python3 -m unittest discover -s tests/runtime -v`
-- Result: `Ran 28 tests in 7.220s` / `OK`. Default fixture `job_01` is `error` / `solver body is not implemented`. Injected `solve` covers feasible, infeasible, and timed_out. Crash, invalid stdout, and sleep still use `PLANES_SOLVER_ARGV` to the placeholder. Stderr stage lines are `[ingest]`, `[bind]`, `[compile]`, `[solve]`, `[judge]`, `[emit]`. The VPS was not redeployed.
+- Result: `Ran 28 tests in 7.212s` / `OK`. Default fixture `job_01` is `error` / `solver body is not implemented`. Injected `solve` covers feasible, infeasible, and timed_out. Crash, invalid stdout, and sleep still use `PLANES_SOLVER_ARGV` to the placeholder. Stderr stage lines are `[ingest]`, `[bind]`, `[compile]`, `[solve]`, `[judge]`, `[emit]`. The VPS was not redeployed.
 - Command: `python3 scripts/validate_workspace.py`
 - Result: `Workspace validation: PASS`
 - VPS deploy remains commit `5ce7704a154d09aff4dcd2039640eba31b230711` (placeholder). This skeleton was not deployed. `planes-compute.service` was enabled and active there. HTTP listener only; CLI spawned per request.
