@@ -1,44 +1,39 @@
-"""Map placeholder results through the CLI the VPS listener spawns."""
+"""CLI outcomes. The default core has an empty solver body.
+
+Crash, invalid stdout, and sleep still use ``PLANES_SOLVER_ARGV`` to reach
+the placeholder module. That module is not the product path.
+"""
 
 from __future__ import annotations
 
+import sys
 import unittest
 
 from support import load_fixture, run_cli
 
+_PLACEHOLDER = f"{sys.executable} -m planes.runtime.placeholder"
+
 
 class OutcomeTest(unittest.TestCase):
-    def test_fixture_file_is_feasible(self) -> None:
+    def test_fixture_file_reports_unimplemented_solver(self) -> None:
         from support import FIXTURE
 
         body = run_cli(None, "5", request_path=str(FIXTURE))
-        self.assertEqual(body["outcome"], "feasible")
+        self.assertEqual(body["outcome"], "error")
         self.assertEqual(body["contract_version"], "v0")
         self.assertEqual(body["job_id"], "job_01")
-        self.assertEqual(body["solver_report"]["method"], "placeholder")
         self.assertEqual(body["solver_report"]["objective"], "min_time")
         self.assertEqual(body["solver_report"]["seed"], 7)
-        self.assertGreaterEqual(body["solver_report"]["runtime_seconds"], 0)
-        self.assertIn("mission_plan", body)
-        self.assertEqual(body["mission_plan"]["kind"], "placeholder")
-        self.assertTrue(any(item["kind"] == "log" for item in body["artifacts"]))
-        self.assertTrue(
-            any("not globally optimal" in item for item in body["solver_report"]["limitations"])
-        )
-
-    def test_infeasible_is_a_solver_outcome(self) -> None:
-        payload = load_fixture()
-        payload["optimization"]["placeholder_outcome"] = "infeasible"
-        body = run_cli(payload, "5")
-        self.assertEqual(body["outcome"], "infeasible")
         self.assertNotIn("mission_plan", body)
-        self.assertEqual(body["solver_report"]["seed"], 7)
-        self.assertNotEqual(body["outcome"], "error")
+        self.assertTrue(
+            any("solver body is not implemented" in item for item in body["solver_report"]["limitations"])
+        )
+        self.assertNotEqual(body["outcome"], "feasible")
 
     def test_invalid_stdout_is_error(self) -> None:
         payload = load_fixture()
         payload["optimization"]["placeholder_outcome"] = "invalid"
-        body = run_cli(payload, "5")
+        body = run_cli(payload, "5", extra_env={"PLANES_SOLVER_ARGV": _PLACEHOLDER})
         self.assertEqual(body["outcome"], "error")
         self.assertNotIn("mission_plan", body)
         self.assertTrue(any("stdout" in item for item in body["solver_report"]["limitations"]))
@@ -46,7 +41,7 @@ class OutcomeTest(unittest.TestCase):
     def test_crash_is_error(self) -> None:
         payload = load_fixture()
         payload["optimization"]["placeholder_outcome"] = "crash"
-        body = run_cli(payload, "5")
+        body = run_cli(payload, "5", extra_env={"PLANES_SOLVER_ARGV": _PLACEHOLDER})
         self.assertEqual(body["outcome"], "error")
         self.assertNotIn("mission_plan", body)
         self.assertTrue(any("status" in item for item in body["solver_report"]["limitations"]))
@@ -55,7 +50,7 @@ class OutcomeTest(unittest.TestCase):
         payload = load_fixture()
         payload["optimization"]["placeholder_outcome"] = "sleep"
         payload["optimization"]["time_limit_seconds"] = 30
-        body = run_cli(payload, "0.5")
+        body = run_cli(payload, "0.5", extra_env={"PLANES_SOLVER_ARGV": _PLACEHOLDER})
         self.assertEqual(body["outcome"], "timed_out")
         self.assertNotIn("mission_plan", body)
         self.assertLess(body["solver_report"]["runtime_seconds"], 4)

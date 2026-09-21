@@ -4,12 +4,12 @@
 
 - Читать: `src/planes/runtime/adapter.py`, `src/planes/runtime/types.py`, `tests/runtime/fixtures/compute_request_v0.json`, env-таблицу в этом runbook.
 - Делать: в процессе worker выставить `COMPUTE_HOST`, `COMPUTE_TOKEN`, `COMPUTE_TIMEOUT_SECONDS` и звать `RuntimeEngineAdapter.solve`.
-- Не делать: SSH, systemd, placeholder, запись в SQLite из runtime, смена HTTP.
+- Не делать: SSH, systemd, тело `solver.solve`, placeholder, запись в SQLite из runtime, смена HTTP. Точка Руслана — только адаптер.
 
 ## Для агента Гриши
 
-- Читать: `src/planes/runtime/placeholder.py`, `src/planes/runtime/runner.py`, имена outcome в `types.py`.
-- Делать: ядро читает один JSON ComputeRequest из stdin и пишет один JSON ComputeResponse в stdout. `feasible`/`infeasible` — exit 0. Падение — ненулевой exit. Подмена ядра — `PLANES_SOLVER_ARGV`.
+- Читать: `src/planes/runtime/solver.py`, `src/planes/runtime/pipeline.py`, имена outcome в `types.py`.
+- Делать: единственная точка — тело `solver.solve`. Функция получает `Problem` и `deadline` и возвращает `Solution`, `Infeasible` или `TimedOut`.
 - Не делать: HTTP, токен, адаптер, таблицы backend. Placeholder — не солвер.
 
 Слушатель на ВМ принимает один JSON `ComputeRequest` версии `v0` и возвращает один JSON `ComputeResponse` версии `v0`. Вызывающий код пользуется `RuntimeEngineAdapter.solve`. Метод всегда отправляет тело запроса на `http://$COMPUTE_HOST:8080/v0/solve` с заголовком `Authorization: Bearer $COMPUTE_TOKEN`.
@@ -34,9 +34,11 @@
 python -m planes.runtime.cli solve --request - --timeout-seconds <N>
 ```
 
-CLI запускает ядро отдельным процессом. Сейчас это placeholder. Stdout ядра — JSON, логи — stderr и `/var/log/planes/<job_id>.log`. По таймауту CLI посылает группе процесса SIGTERM, затем SIGKILL. Падение ядра не роняет слушатель: следующий запрос снова стартует CLI.
+CLI запускает ядро отдельным процессом: `python -m planes.runtime.core`. Stdout ядра — JSON, логи — stderr и `/var/log/planes/<job_id>.log`. По таймауту CLI посылает группе процесса SIGTERM, затем SIGKILL. Падение ядра не роняет слушатель: следующий запрос снова стартует CLI.
 
-Пока нет ядра солвера, placeholder понимает поле `optimization.placeholder_outcome` только как переключатель проверки контура: `feasible` (по умолчанию), `infeasible`, `crash`, `invalid`, `sleep`. Поле не входит в продуктовый сценарий. Позже ядро заменяется сменой argv (`PLANES_SOLVER_ARGV`), без смены HTTP и без смены контракта.
+Конвейер ядра: ingest, bind, compile, judge, emit. `compile` проверяет, что `scenario` — JSON-объект, и кладёт его в `Problem` без географии и без перебора параметров. Тело `solver.solve` пустое. `NotImplementedError` становится `outcome=error` и limitation `solver body is not implemented`, процесс завершается с кодом 0. Битый JSON — тоже `error`, не `infeasible`. `Solution` → `feasible`, `Infeasible` → `infeasible` без `mission_plan`, `TimedOut` → `timed_out`.
+
+`PLANES_SOLVER_ARGV` по-прежнему подменяет процесс ядра. Им пользуются проверки crash, битого stdout и sleep через модуль placeholder. Это не продуктовый путь и не поле запроса. Живой `planes-compute` на ВМ этим каркасом не обновлялся: там остаётся placeholder.
 
 Lock одного job лежит в `/run/planes/planes-compute.lock`, если этот каталог доступен для записи, иначе в `/var/lock` или во временном каталоге.
 

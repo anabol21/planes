@@ -1,6 +1,7 @@
-"""Для агента Гриши.
+"""Runtime, не точка интеграции.
 
 Run one solver process and map its result onto a ComputeResponse.
+The solver body lives in ``solver.solve``.
 
 The CLI is the only caller. Timeout sends SIGTERM, then SIGKILL.
 """
@@ -36,7 +37,7 @@ _SECRET_ENV = ("COMPUTE_TOKEN", "COMPUTE_HOST", "COMPUTE_TIMEOUT_SECONDS")
 def solver_command() -> list[str]:
     raw = os.environ.get("PLANES_SOLVER_ARGV", "").strip()
     if not raw:
-        return [sys.executable, "-m", "planes.runtime.placeholder"]
+        return [sys.executable, "-m", "planes.runtime.core"]
     return shlex.split(raw)
 
 
@@ -190,7 +191,7 @@ def _accept_solver_stdout(
     if data.get("contract_version") != "v0" or data.get("job_id") != request.job_id:
         return None
     outcome = data.get("outcome")
-    if outcome not in {"feasible", "infeasible"} or outcome not in OUTCOMES:
+    if outcome not in OUTCOMES:
         return None
     report = data.get("solver_report")
     if not isinstance(report, dict):
@@ -201,7 +202,7 @@ def _accept_solver_stdout(
         return None
     if not isinstance(limitations, list) or not all(isinstance(item, str) for item in limitations):
         return None
-    mission = data.get("mission_plan") if "mission_plan" in data else None
+    mission = data.get("mission_plan") if outcome == "feasible" and "mission_plan" in data else None
     if mission is not None and not isinstance(mission, dict):
         return None
     return outcome, method, mission, list(limitations)

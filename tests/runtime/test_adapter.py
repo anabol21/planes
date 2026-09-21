@@ -48,11 +48,12 @@ class AdapterTest(unittest.TestCase):
                 COMPUTE_TIMEOUT_SECONDS="5",
             ):
                 response = RuntimeEngineAdapter().solve(request_from_fixture())
-        self.assertEqual(response.outcome, "feasible")
+        self.assertEqual(response.outcome, "error")
         self.assertEqual(response.job_id, "job_01")
         self.assertEqual(response.contract_version, "v0")
-        self.assertIsNotNone(response.mission_plan)
+        self.assertIsNone(response.mission_plan)
         self.assertEqual(response.solver_report.seed, 7)
+        self.assertIn("solver body is not implemented", response.solver_report.limitations)
 
     def test_listener_401_is_error(self) -> None:
         with vps_listener(TOKEN):

@@ -60,10 +60,18 @@ def env_vars(**updates: str | None) -> Iterator[None]:
                 os.environ[key] = value
 
 
-def run_cli(payload: dict[str, Any] | None, timeout: str, *, request_path: str | None = None) -> dict[str, Any]:
+def run_cli(
+    payload: dict[str, Any] | None,
+    timeout: str,
+    *,
+    request_path: str | None = None,
+    extra_env: dict[str, str] | None = None,
+) -> dict[str, Any]:
     env = os.environ.copy()
     env["PYTHONPATH"] = str(SRC)
     env["COMPUTE_TOKEN"] = TOKEN
+    if extra_env:
+        env.update(extra_env)
     command = [
         sys.executable,
         "-m",

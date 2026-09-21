@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import json
+import sys
 import time
 import unittest
 import urllib.request
 
-from support import TOKEN, load_fixture, post_json, vps_listener
+from support import TOKEN, env_vars, load_fixture, post_json, vps_listener
 
 from planes.runtime.lock import JobLock
 
@@ -27,19 +28,23 @@ class HttpListenerTest(unittest.TestCase):
         with vps_listener():
             status, body = post_json(load_fixture(), TOKEN)
         self.assertEqual(status, 200)
-        self.assertEqual(body["outcome"], "feasible")
+        self.assertEqual(body["outcome"], "error")
         self.assertEqual(body["job_id"], "job_01")
         self.assertEqual(body["contract_version"], "v0")
-        self.assertIn("mission_plan", body)
+        self.assertNotIn("mission_plan", body)
+        self.assertTrue(
+            any("solver body is not implemented" in item for item in body["solver_report"]["limitations"])
+        )
         self.assertNotIn(TOKEN, str(body))
 
-    def test_infeasible_stays_http_200(self) -> None:
+    def test_unimplemented_body_is_http_200_not_infeasible(self) -> None:
         payload = load_fixture()
         payload["optimization"]["placeholder_outcome"] = "infeasible"
         with vps_listener():
             status, body = post_json(payload, TOKEN)
         self.assertEqual(status, 200)
-        self.assertEqual(body["outcome"], "infeasible")
+        self.assertEqual(body["outcome"], "error")
+        self.assertNotEqual(body["outcome"], "infeasible")
         self.assertNotIn("mission_plan", body)
 
     def test_missing_token_is_401(self) -> None:
@@ -72,8 +77,9 @@ class HttpListenerTest(unittest.TestCase):
         payload["optimization"]["placeholder_outcome"] = "sleep"
         payload["optimization"]["time_limit_seconds"] = 0.5
         started = time.monotonic()
-        with vps_listener():
-            status, body = post_json(payload, TOKEN)
+        with env_vars(PLANES_SOLVER_ARGV=f"{sys.executable} -m planes.runtime.placeholder"):
+            with vps_listener():
+                status, body = post_json(payload, TOKEN)
         elapsed = time.monotonic() - started
         self.assertEqual(status, 200)
         self.assertEqual(body["outcome"], "timed_out")
