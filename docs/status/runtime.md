@@ -20,14 +20,15 @@ contract_version: v0
 - [x] Stdlib listener `0.0.0.0:8080`: `GET /health`, `POST /v0/solve` with `Authorization: Bearer $COMPUTE_TOKEN`.
 - [x] `RuntimeEngineAdapter.solve` always POSTs to `http://$COMPUTE_HOST:8080/v0/solve`. Host, token, and `COMPUTE_TIMEOUT_SECONDS` come from the environment. Missing configuration is `outcome=error`.
 - [x] Infra templates and Russian runbook. Placeholders only: `COMPUTE_HOST`, `COMPUTE_TOKEN`, `COMPUTE_TIMEOUT_SECONDS`.
+- [x] VPS bootstrap and smoke. `planes-compute.service` is enabled and active. The HTTP listener stays up and spawns the CLI per request.
 
 ## In progress
 
-- [ ] Bootstrap and smoke on the operator VPS (CLI fixture and `curl` `POST /v0/solve`).
+- None.
 
 ## Next action
 
-Operator with SSH access runs `sudo bash infra/bootstrap-vps.sh`, sets the token outside git, then follows `infra/runbook.md`. Do not commit the host or the token.
+Ruslan points the worker at `COMPUTE_HOST` and `COMPUTE_TOKEN` (environment of the caller, not git).
 
 ## Evidence
 
@@ -35,11 +36,15 @@ Operator with SSH access runs `sudo bash infra/bootstrap-vps.sh`, sets the token
 - Result: `Ran 21 tests in 7.299s` / `OK` (fixture parse, feasible, infeasible, invalid stdout, crash, timeout, adapter POST to a 127.0.0.1 test double, health, solve, 401).
 - Command: `python3 scripts/validate_workspace.py`
 - Result: `Workspace validation: PASS`
-- VPS smoke: not run. This environment has no SSH key.
+- VPS deploy: commit `5ce7704a154d09aff4dcd2039640eba31b230711`. `planes-compute.service` enabled and active. HTTP listener only; CLI spawned per request.
+- `GET /health` → HTTP 200, `contract_version` `v0`, `status` `live`.
+- `POST /v0/solve` with `tests/runtime/fixtures/compute_request_v0.json` → HTTP 200, `outcome` `feasible`, `job_id` `job_01`.
+- Bad token → HTTP 401 `unauthorized`.
+- Token is only in the server env file, mode `600`. Host, token, and SSH key are not in git.
 
 ## Blockers / decisions requested
 
-- No SSH key was present, so the listener was not installed or smoked on the operator VM. That smoke is not claimed.
+- None.
 
 ## Interface changes
 
