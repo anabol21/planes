@@ -19,6 +19,12 @@ REQUIRED = {
 }
 ALLOWED_STATES = {"planned", "in_progress", "blocked", "review", "done"}
 EXPECTED = {"model.md", "backend.md", "runtime.md", "integration.md"}
+SPEC_FILES = {
+    "README.md",
+    "REQUIREMENTS.md",
+    "OPEN_QUESTIONS.md",
+    "TRACEABILITY.md",
+}
 
 
 def frontmatter(path: Path) -> dict[str, str]:
@@ -39,6 +45,21 @@ def frontmatter(path: Path) -> dict[str, str]:
 
 def main() -> int:
     errors: list[str] = []
+    spec_dir = ROOT / "docs" / "spec"
+    present_spec = {p.name for p in spec_dir.glob("*.md")}
+    for missing in sorted(SPEC_FILES - present_spec):
+        errors.append(f"missing specification file: {missing}")
+
+    requirements_path = spec_dir / "REQUIREMENTS.md"
+    if requirements_path.exists():
+        requirement_text = requirements_path.read_text(encoding="utf-8")
+        requirement_ids = re.findall(r"`(REQ-[A-Z0-9-]+)`", requirement_text)
+        duplicates = sorted({item for item in requirement_ids if requirement_ids.count(item) > 1})
+        if duplicates:
+            errors.append(f"duplicate requirement IDs: {duplicates}")
+        if not requirement_ids:
+            errors.append("no requirement IDs found in specification")
+
     present = {p.name for p in STATUS_DIR.glob("*.md") if p.name != "README.md"}
     for missing in sorted(EXPECTED - present):
         errors.append(f"missing status file: {missing}")

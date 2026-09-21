@@ -17,11 +17,14 @@ If any item is unknown or inconsistent, stop with `BLOCKED`.
 
 ## Sources of truth, in order
 
-1. Versioned schemas and ports under `src/planes/contracts/`.
-2. Accepted ADRs under `docs/architecture/decisions/`.
-3. The active task brief under `docs/workstreams/`.
-4. The matching file under `docs/status/`.
-5. Chat or Slack messages, which must be promoted into one of the files above before they become binding.
+1. The source-derived specification under `docs/spec/`, with the original PDF taking precedence if wording conflicts.
+2. Versioned schemas and ports under `src/planes/contracts/`.
+3. Accepted ADRs under `docs/architecture/decisions/`.
+4. The active task brief under `docs/workstreams/`.
+5. The matching file under `docs/status/`.
+6. Chat or Slack messages, which must be promoted into one of the files above before they become binding.
+
+Before implementation, name the `REQ-*` IDs the task covers and the `OPEN-*` items or team assumptions it depends on. Never present a team decision, temporary assumption, or open question as a customer requirement.
 
 ## Ownership boundaries
 

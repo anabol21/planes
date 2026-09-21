@@ -27,6 +27,7 @@ apps/web/               future frontend client
 infra/                  deployment and operations
 tests/                  mirrors the source ownership boundaries
 docs/status/            current machine-readable state of each workstream
+docs/spec/              normalized source requirements and open questions
 docs/workstreams/       active task briefs and acceptance criteria
 docs/architecture/      system boundaries, contracts, and ADRs
 ```
@@ -45,10 +46,11 @@ docs/architecture/      system boundaries, contracts, and ADRs
 ## Starting a human or agent session
 
 1. Read [`AGENTS.md`](AGENTS.md).
-2. Read [`docs/PROJECT_MAP.md`](docs/PROJECT_MAP.md), your task brief, and your status file.
-3. Verify the current branch and allowed paths before editing.
-4. Update only your status file while working.
-5. Open a PR to `dev` with commands, evidence, risks, and a handoff note.
+2. Read [`docs/spec/REQUIREMENTS.md`](docs/spec/REQUIREMENTS.md), [`docs/spec/OPEN_QUESTIONS.md`](docs/spec/OPEN_QUESTIONS.md), and [`docs/PROJECT_MAP.md`](docs/PROJECT_MAP.md).
+3. Read your task brief and status file; identify the requirement IDs it covers.
+4. Verify the current branch and allowed paths before editing.
+5. Update only your status file while working.
+6. Open a PR to `dev` with commands, evidence, risks, and a handoff note.
 
 Run the repository governance check with:
 

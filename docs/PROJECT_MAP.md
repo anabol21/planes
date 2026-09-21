@@ -1,5 +1,7 @@
 # Project map and ownership
 
+Product scope comes from `docs/spec/REQUIREMENTS.md`. Architecture below is the team's implementation decision and must not be described as wording from the customer.
+
 ## Product flow
 
 `Frontend → API → Job Storage → Worker → OptimizationEngine → Q-CHECK → Result/Export`
