@@ -18,6 +18,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlsplit
 
 from planes.runtime.lock import JobLock, default_lock_path
+from planes.runtime.logs import redact
 from planes.runtime.types import dump_response, make_response, parse_response, safe_job_id
 
 MAX_BODY_BYTES = 1_048_576
@@ -144,8 +145,10 @@ def _run_cli(body: bytes) -> bytes:
             env=env,
             check=False,
         )
-    except subprocess.TimeoutExpired:
+    except subprocess.TimeoutExpired as exc:
+        _forward_stderr(exc.stderr if isinstance(exc.stderr, bytes) else None)
         return _synthesized("timed_out", body, ["CLI did not return before the listener deadline."])
+    _forward_stderr(completed.stderr)
     try:
         parsed = json.loads(completed.stdout.decode("utf-8"))
         parse_response(parsed)
@@ -154,6 +157,15 @@ def _run_cli(body: bytes) -> bytes:
     if completed.stdout.endswith(b"\n"):
         return completed.stdout
     return completed.stdout + b"\n"
+
+
+def _forward_stderr(payload: bytes | None) -> None:
+    if not payload:
+        return
+    text = redact(payload.decode("utf-8", errors="replace"))
+    sys.stderr.write(text)
+    if not text.endswith("\n"):
+        sys.stderr.write("\n")
 
 
 def _timeout_from_body(body: bytes) -> float:

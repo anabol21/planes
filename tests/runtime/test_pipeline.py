@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
+import contextlib
+import io
 import json
 import time
 import unittest
 
-from support import load_fixture
+from support import TOKEN, env_vars, load_fixture
 
-from planes.runtime.pipeline import bind, compile, run
+from planes.runtime.pipeline import bind, compile, emit, run
 from planes.runtime.solver import Infeasible, Solution, TimedOut
 from planes.runtime.types import parse_request, response_to_dict
 
@@ -61,6 +63,42 @@ class PipelineTest(unittest.TestCase):
         self.assertEqual(response.outcome, "error")
         self.assertIsNone(response.mission_plan)
         self.assertIn("solver body is not implemented", response.solver_report.limitations)
+
+    def test_stage_logs_follow_execution_order(self) -> None:
+        buffer = io.StringIO()
+        raw = json.dumps(load_fixture()).encode("utf-8")
+        with env_vars(COMPUTE_TOKEN=TOKEN):
+            with contextlib.redirect_stderr(buffer):
+                response = run(raw)
+                payload = emit(response)
+        self.assertEqual(response.outcome, "error")
+        self.assertIn("solver body is not implemented", payload)
+        self.assertNotIn("[ingest]", payload)
+        text = buffer.getvalue()
+        self.assertNotIn(TOKEN, text)
+        self.assertNotIn("scenario_01", text)
+        cursor = -1
+        for prefix in ("[ingest]", "[bind]", "[compile]", "[solve]", "[judge]", "[emit]"):
+            found = text.find(prefix, cursor + 1)
+            self.assertGreater(found, cursor, prefix)
+            cursor = found
+        self.assertGreaterEqual(text.count("[solve]"), 2)
+        self.assertIn("NotImplementedError", text)
+        self.assertLess(text.find("NotImplementedError"), text.find("[judge]"))
+        self.assertIn("job_id=job_01", text[text.find("[bind]") :])
+
+    def test_bad_json_logs_only_stages_that_ran(self) -> None:
+        buffer = io.StringIO()
+        with contextlib.redirect_stderr(buffer):
+            response = run(b"not-json")
+            emit(response)
+        self.assertEqual(response.outcome, "error")
+        self.assertNotEqual(response.outcome, "infeasible")
+        text = buffer.getvalue()
+        self.assertNotIn("[bind]", text)
+        self.assertNotIn("[solve]", text)
+        self.assertLess(text.find("[ingest]"), text.find("[judge]"))
+        self.assertLess(text.find("[judge]"), text.find("[emit]"))
 
     def test_bad_json_is_error_not_infeasible(self) -> None:
         response = run(b"not-json")

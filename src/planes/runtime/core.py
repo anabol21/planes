@@ -20,7 +20,6 @@ def main() -> int:
     except Exception:
         sys.stderr.write("failed to write ComputeResponse\n")
         return 1
-    sys.stderr.write(f"job_id={response.job_id} outcome={response.outcome}\n")
     return 0
 
 
