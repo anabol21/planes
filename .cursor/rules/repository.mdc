@@ -3,4 +3,4 @@ description: Repository-wide ownership and evidence rules
 alwaysApply: true
 ---
 
-Read `AGENTS.md` before editing. Work on a task branch from `dev`, stay inside the task's allowed paths, and update the matching `docs/status/*.md`. Shared contract changes require a dedicated task. Never commit secrets. A completion claim must include commit, command, test result, limitations, and handoff.
+Read `AGENTS.md`, `docs/spec/REQUIREMENTS.md`, and `docs/spec/OPEN_QUESTIONS.md` before editing. State covered `REQ-*` IDs and dependent `OPEN-*` items. Work on a task branch from `dev`, stay inside the task's allowed paths, and update the matching `docs/status/*.md`. Shared contract changes require a dedicated task. Never commit secrets. A completion claim must include commit, command, test result, limitations, and handoff.
