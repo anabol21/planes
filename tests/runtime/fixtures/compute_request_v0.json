@@ -1,0 +1,7 @@
+{
+  "contract_version": "v0",
+  "job_id": "job_01",
+  "scenario": {"id": "scenario_01"},
+  "optimization": {"objective": "min_time", "time_limit_seconds": 30},
+  "seed": 7
+}

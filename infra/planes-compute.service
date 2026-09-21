@@ -1,0 +1,22 @@
+[Unit]
+Description=Planes compute listener
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=planes
+Group=planes
+WorkingDirectory=/opt/planes
+Environment=PYTHONPATH=/opt/planes/src
+Environment=PYTHONUNBUFFERED=1
+EnvironmentFile=/etc/planes/planes-compute.env
+RuntimeDirectory=planes
+LogsDirectory=planes
+ExecStart=/opt/planes/venv/bin/python -m planes.runtime.http_server --host 0.0.0.0 --port 8080
+Restart=on-failure
+RestartSec=2
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target
