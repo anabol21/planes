@@ -1,19 +1,59 @@
-# planes
+# Planes — UAV planning team workspace
 
-Рабочее пространство Cursor Cloud Agents для хакатона (кейс UAV / «самолёты»).
+This repository is the shared engineering workspace for the Geoscan UAV flight-planning project. It contains code, interface contracts, task briefs, checkpoint notes, and machine-readable workstream status.
 
-Тиммейты запускают и продолжают агентов через Slack (`@Cursor` в `#тз`), используя этот репозиторий как GitHub-фасад.
+## Current checkpoint
 
-Канонический SourceCraft-репозиторий кейса подключается отдельно, когда появится код. Сейчас здесь намеренно нет зеркала исходников.
+Target: **2026-09-22 team call**.
 
-## Для тиммейтов
+| Workstream | Owner | Deliverable | Status file |
+|---|---|---|---|
+| Simplified model | Grisha | Solve the simplified assignment/routing problem with an exact small-instance baseline and an approximate method | [`docs/status/model.md`](docs/status/model.md) |
+| Backend pipeline | Ruslan | Prototype the asynchronous API → storage → worker → engine pipeline | [`docs/status/backend.md`](docs/status/backend.md) |
+| Compute runtime | Misha | Prepare the VPS compute loop and connect backend jobs to the optimization core | [`docs/status/runtime.md`](docs/status/runtime.md) |
+| Integration | Team | Freeze contracts, combine evidence, and demonstrate one vertical slice | [`docs/status/integration.md`](docs/status/integration.md) |
 
-1. Быть в Cursor team владельца.
-2. Иметь доступ к этому GitHub-репо (`anabol21/planes`).
-3. В Slack-канале `#тз`: `@Cursor …` — запуск; follow-up в том же треде.
-4. Новый агент в уже занятом треде: `@Cursor agent …`.
+The detailed acceptance checklist is in [`docs/checkpoints/2026-09-22.md`](docs/checkpoints/2026-09-22.md).
 
-## Для владельца
+## Repository map
 
-- Default repository канала `#тз`: `anabol21/planes` (`@Cursor settings`).
-- Cloud Agents → Team follow-ups = All (если тиммейты должны писать follow-up к чужим агентам).
+```text
+src/planes/model/       pure survey/flight/optimization core (Grisha)
+src/planes/backend/     API, job state, storage, worker orchestration (Ruslan)
+src/planes/runtime/     engine adapter, process boundary, VPS runtime (Misha)
+src/planes/contracts/   shared versioned DTOs and ports (change by team review)
+src/planes/integration/ composition root only
+apps/web/               future frontend client
+infra/                  deployment and operations
+tests/                  mirrors the source ownership boundaries
+docs/status/            current machine-readable state of each workstream
+docs/workstreams/       active task briefs and acceptance criteria
+docs/architecture/      system boundaries, contracts, and ADRs
+```
+
+## Git workflow
+
+- `main`: accepted checkpoint/release state only.
+- `dev`: the next integrated checkpoint.
+- Task branches start from `dev` and target `dev`:
+  - `model/GRI-001-simplified-optimizer`
+  - `backend/RUS-001-pipeline`
+  - `runtime/MIS-001-vps-loop`
+- One task branch owns one workstream. Shared contracts require a small contract PR or explicit approval in the integration checkpoint.
+- `dev → main` happens only after the checkpoint smoke test.
+
+## Starting a human or agent session
+
+1. Read [`AGENTS.md`](AGENTS.md).
+2. Read [`docs/PROJECT_MAP.md`](docs/PROJECT_MAP.md), your task brief, and your status file.
+3. Verify the current branch and allowed paths before editing.
+4. Update only your status file while working.
+5. Open a PR to `dev` with commands, evidence, risks, and a handoff note.
+
+Run the repository governance check with:
+
+```bash
+python scripts/validate_workspace.py
+```
+
+No PATs, VPS credentials, `.env` files, or private SourceCraft credentials may be committed.
