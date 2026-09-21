@@ -1,4 +1,7 @@
-"""One in-flight compute job on the listener."""
+"""Runtime, не точка интеграции.
+
+One in-flight compute job on the listener.
+"""
 
 from __future__ import annotations
 

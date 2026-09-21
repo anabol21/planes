@@ -1,5 +1,17 @@
 # Контур compute на VPS
 
+## Для агента Руслана
+
+- Читать: `src/planes/runtime/adapter.py`, `src/planes/runtime/types.py`, `tests/runtime/fixtures/compute_request_v0.json`, env-таблицу в этом runbook.
+- Делать: в процессе worker выставить `COMPUTE_HOST`, `COMPUTE_TOKEN`, `COMPUTE_TIMEOUT_SECONDS` и звать `RuntimeEngineAdapter.solve`.
+- Не делать: SSH, systemd, placeholder, запись в SQLite из runtime, смена HTTP.
+
+## Для агента Гриши
+
+- Читать: `src/planes/runtime/placeholder.py`, `src/planes/runtime/runner.py`, имена outcome в `types.py`.
+- Делать: ядро читает один JSON ComputeRequest из stdin и пишет один JSON ComputeResponse в stdout. `feasible`/`infeasible` — exit 0. Падение — ненулевой exit. Подмена ядра — `PLANES_SOLVER_ARGV`.
+- Не делать: HTTP, токен, адаптер, таблицы backend. Placeholder — не солвер.
+
 Слушатель на ВМ принимает один JSON `ComputeRequest` версии `v0` и возвращает один JSON `ComputeResponse` версии `v0`. Вызывающий код пользуется `RuntimeEngineAdapter.solve`. Метод всегда отправляет тело запроса на `http://$COMPUTE_HOST:8080/v0/solve` с заголовком `Authorization: Bearer $COMPUTE_TOKEN`.
 
 Хост, токен и таймаут читаются только из окружения вызывающего процесса:

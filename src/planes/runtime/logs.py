@@ -1,4 +1,7 @@
-"""Job logs. Token values and Authorization headers are never written."""
+"""Runtime, не точка интеграции.
+
+Job logs. Token values and Authorization headers are never written.
+"""
 
 from __future__ import annotations
 

@@ -1,4 +1,6 @@
-"""Per-job compute CLI spawned by the VPS listener.
+"""Runtime, не точка интеграции.
+
+Per-job compute CLI spawned by the VPS listener.
 
     python -m planes.runtime.cli solve --request <file|-> --timeout-seconds <N>
 

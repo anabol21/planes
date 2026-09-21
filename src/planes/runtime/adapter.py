@@ -1,4 +1,6 @@
-"""Caller-side port to the VPS compute listener.
+"""Для агента Руслана.
+
+Caller-side port to the VPS compute listener.
 
 ``solve`` always POSTs a ComputeRequest to ``http://$COMPUTE_HOST:8080/v0/solve``.
 Host, token, and timeout come from the environment. A missing value is an

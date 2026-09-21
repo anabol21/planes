@@ -41,6 +41,7 @@ Ruslan points the worker at `COMPUTE_HOST` and `COMPUTE_TOKEN` (environment of t
 - `POST /v0/solve` with `tests/runtime/fixtures/compute_request_v0.json` → HTTP 200, `outcome` `feasible`, `job_id` `job_01`.
 - Bad token → HTTP 401 `unauthorized`.
 - Token is only in the server env file, mode `600`. Host, token, and SSH key are not in git.
+- Handoff sections for Ruslan and Grisha are in `infra/runbook.md`.
 
 ## Blockers / decisions requested
 

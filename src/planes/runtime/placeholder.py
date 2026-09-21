@@ -1,4 +1,6 @@
-"""Deterministic stand-in for the optimization binary.
+"""Для агента Гриши.
+
+Deterministic stand-in for the optimization binary.
 
 The listener's CLI spawns this module. A later solver replaces the argv only
 (``PLANES_SOLVER_ARGV``). Harness field ``optimization.placeholder_outcome``:

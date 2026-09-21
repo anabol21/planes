@@ -1,4 +1,6 @@
-"""Run one solver process and map its result onto a ComputeResponse.
+"""Для агента Гриши.
+
+Run one solver process and map its result onto a ComputeResponse.
 
 The CLI is the only caller. Timeout sends SIGTERM, then SIGKILL.
 """

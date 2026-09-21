@@ -1,4 +1,6 @@
-"""Stdlib HTTP listener for the VPS compute contour.
+"""Runtime, не точка интеграции.
+
+Stdlib HTTP listener for the VPS compute contour.
 
 GET /health is unauthenticated liveness. POST /v0/solve checks
 ``COMPUTE_TOKEN`` and spawns ``python -m planes.runtime.cli`` for that job.

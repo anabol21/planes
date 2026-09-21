@@ -1,4 +1,6 @@
-"""Local v0 dataclasses aligned with docs/architecture/INTERFACES_V0.md.
+"""Общий контракт v0 для обоих.
+
+Local v0 dataclasses aligned with docs/architecture/INTERFACES_V0.md.
 
 These types are a runtime copy for this checkpoint. They are not the shared
 contract package. Field names match the interface note and must not drift.
