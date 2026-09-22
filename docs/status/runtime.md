@@ -3,7 +3,7 @@ workstream: runtime
 owner: Misha
 task: MIS-001
 status: review
-updated: 2026-09-21
+updated: 2026-09-22
 checkpoint: 2026-09-22
 branch: runtime/MIS-001-vps-loop
 contract_version: v0
@@ -29,7 +29,7 @@ contract_version: v0
 
 ## Next action
 
-Grisha fills the body of `solver.solve`. Ruslan points the worker at `COMPUTE_HOST` and `COMPUTE_TOKEN` (environment of the caller, not git). Do not treat the live listener as this skeleton: it is still the placeholder deploy.
+Grisha fills the body of `solver.solve`. Ruslan wires the worker from `infra/runbook.md` section «Для агента Руслана». Misha passes `COMPUTE_HOST` and `COMPUTE_TOKEN` outside git. The live core returns `error` / `solver body is not implemented` until that body is filled.
 
 ## Evidence
 
@@ -43,6 +43,7 @@ Grisha fills the body of `solver.solve`. Ruslan points the worker at `COMPUTE_HO
 - Bad token → HTTP 401 `unauthorized`.
 - Token is only in the server env file, mode `600`. Host, token, and SSH key are not in git.
 - Handoff sections for Ruslan and Grisha are in `infra/runbook.md`.
+- Ruslan's connection contract (call, headers, worker env, shared token, ComputeRequest example, error table) is `infra/runbook.md`, section «Для агента Руслана».
 
 ## Blockers / decisions requested
 

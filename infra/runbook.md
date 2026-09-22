@@ -2,9 +2,93 @@
 
 ## Для агента Руслана
 
-- Читать: `src/planes/runtime/adapter.py`, `src/planes/runtime/types.py`, `tests/runtime/fixtures/compute_request_v0.json`, env-таблицу в этом runbook.
-- Делать: в процессе worker выставить `COMPUTE_HOST`, `COMPUTE_TOKEN`, `COMPUTE_TIMEOUT_SECONDS` и звать `RuntimeEngineAdapter.solve`.
-- Не делать: SSH, systemd, тело `solver.solve`, placeholder, запись в SQLite из runtime, смена HTTP. Точка Руслана — только адаптер.
+Миша передаёт `COMPUTE_HOST` и `COMPUTE_TOKEN` вне git. В репозитории этих значений нет. Хост — имя или адрес без схемы и без порта. Порт всегда 8080.
+
+Читать: `src/planes/runtime/adapter.py`, `src/planes/runtime/types.py`. Не делать: SSH, systemd, тело `solver.solve`, placeholder, смена HTTP. Точка Руслана — вызов ниже. Backend не пишет логи runtime в свои таблицы. Runtime не трогает SQLite.
+
+### Вызов
+
+Либо метод `RuntimeEngineAdapter.solve`, либо сырой запрос:
+
+```text
+POST http://$COMPUTE_HOST:8080/v0/solve
+```
+
+Заголовки:
+
+- `Authorization: Bearer $COMPUTE_TOKEN`
+- `Content-Type: application/json; charset=utf-8`
+
+### Окружение только на worker
+
+Три переменные читает процесс, который вызывает адаптер. На ВМ слушатель при старте читает тот же токен из своего env-файла.
+
+| Переменная | Смысл |
+|---|---|
+| `COMPUTE_HOST` | Имя или адрес без схемы и без порта |
+| `COMPUTE_TOKEN` | Один общий секрет на все job |
+| `COMPUTE_TIMEOUT_SECONDS` | Сколько секунд клиент ждёт ответ. Больше, чем `optimization.time_limit_seconds` |
+
+Токен — один общий секрет на каждый job, не право на отдельный job. То же значение ВМ читает из env-файла в момент старта процесса. Нет токена или он неверен — HTTP 401, не `infeasible`.
+
+### Вход
+
+Один JSON `ComputeRequest` версии `v0`. Обязательные поля:
+
+- `contract_version` равен `"v0"`
+- `job_id` — строка
+- `scenario` — объект; внутренности не проверяются
+- `optimization.objective` — непустая строка
+- `optimization.time_limit_seconds` — число секунд, больше либо равно 0
+- `seed` — целое число, не дробное
+
+Лишние поля в корне игнорируются.
+
+Пример тела, снимок gri001. Единицы названы в полях: градусы, метры, метры в секунду, секунды, ватт-часы.
+
+```json
+{
+  "contract_version": "v0",
+  "job_id": "job_rus001_gri001",
+  "scenario": {
+    "id": "gri001_snapshot",
+    "crs": "EPSG:4326",
+    "uav_count": 1,
+    "uav_model": "Geoscan Gemini",
+    "payload_model": "Sony UMC-R10C",
+    "launch_point": {"crs": "EPSG:4326", "lon_deg": 30.31, "lat_deg": 59.94},
+    "survey_area": {
+      "type": "Polygon",
+      "crs": "EPSG:4326",
+      "coordinates_lon_lat_deg": [[[30.3, 59.93], [30.34, 59.93], [30.34, 59.95], [30.3, 59.95], [30.3, 59.93]]]
+    },
+    "gsd_m": 0.05,
+    "wind": {"speed_m_s": 3.0, "direction_from_deg": 270},
+    "cruise_speed_m_s": 15.0,
+    "max_flight_time_s": 2400,
+    "battery_wh": 144.7
+  },
+  "optimization": {"objective": "min_time", "time_limit_seconds": 30},
+  "seed": 7
+}
+```
+
+### Выход
+
+Тело HTTP 200 — один `ComputeResponse`: `contract_version`, `job_id`, `outcome` (`feasible`, `infeasible`, `timed_out` или `error`), `solver_report`, `artifacts`. Поле `mission_plan` есть только при `feasible`.
+
+### Ошибки
+
+| Ответ | Смысл |
+|---|---|
+| HTTP 401 `unauthorized` | Нет или неверен bearer |
+| HTTP 503 `busy` | Другой job держит lock |
+| HTTP 400 | Неверный `Content-Length` или тело больше 1 МиБ, до конвейера |
+| HTTP 200 и `outcome=error` | Битый JSON, неверный контракт или сбой солвера, включая текущее пустое тело (`solver body is not implemented`) |
+| HTTP 200 и `outcome=infeasible` | Отказ солвера. Запрос не сломан |
+| HTTP 200 и `outcome=timed_out` | Дедлайн, не `infeasible` |
+
+Сегодня живое ядро возвращает `error` и limitation `solver body is not implemented`, пока Гриша не заполнит `solver.solve`. Этот ответ всё равно доказывает HTTP-путь.
 
 ## Для агента Гриши
 
@@ -38,7 +122,7 @@ CLI запускает ядро отдельным процессом: `python -
 
 Конвейер ядра: ingest, bind, compile, judge, emit. `compile` проверяет, что `scenario` — JSON-объект, и кладёт его в `Problem` без географии и без перебора параметров. Тело `solver.solve` пустое. `NotImplementedError` становится `outcome=error` и limitation `solver body is not implemented`, процесс завершается с кодом 0. Битый JSON — тоже `error`, не `infeasible`. `Solution` → `feasible`, `Infeasible` → `infeasible` без `mission_plan`, `TimedOut` → `timed_out`.
 
-`PLANES_SOLVER_ARGV` по-прежнему подменяет процесс ядра. Им пользуются проверки crash, битого stdout и sleep через модуль placeholder. Это не продуктовый путь и не поле запроса. Живой `planes-compute` на ВМ этим каркасом не обновлялся: там остаётся placeholder.
+`PLANES_SOLVER_ARGV` по-прежнему подменяет процесс ядра. Им пользуются проверки crash, битого stdout и sleep через модуль placeholder. Это не продуктовый путь и не поле запроса. Сегодня живое ядро возвращает `outcome=error` и limitation `solver body is not implemented`, пока Гриша не заполнит `solver.solve`.
 
 Lock одного job лежит в `/run/planes/planes-compute.lock`, если этот каталог доступен для записи, иначе в `/var/lock` или во временном каталоге.
 
