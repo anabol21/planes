@@ -1,0 +1,12 @@
+{
+  "contract_version": "v0",
+  "scenario": {
+    "name": "backend lifecycle fixture",
+    "crs": "EPSG:4326"
+  },
+  "optimization": {
+    "test_outcome": "feasible",
+    "limit_seconds": 1
+  },
+  "seed": 17
+}
