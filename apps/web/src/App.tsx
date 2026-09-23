@@ -1,0 +1,442 @@
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ChangeEvent,
+  type FormEvent,
+} from "react";
+
+import {
+  ApiError,
+  InputError,
+  RequestCoordinator,
+  createApiClient,
+  pollJobLifecycle,
+  submitFromEditors,
+} from "./api";
+import {
+  formatFileSize,
+  readKmlFile,
+  type KmlCategory,
+  type KmlFileRecord,
+} from "./kml";
+import { getResultPresentation } from "./presentation";
+import {
+  DEFAULT_UAVS,
+  addUav,
+  buildOptimization,
+  buildPrototypeScenario,
+  validateScenarioInputs,
+  type FleetUav,
+  type ScenarioInputs,
+  type SurveyType,
+} from "./scenario";
+import {
+  CONTRACT_VERSION,
+  type JobResult,
+  type JobStatus,
+  type JsonObject,
+  type LifecycleState,
+} from "./types";
+
+const DEFAULT_OBJECTIVE = "min_time";
+const DEFAULT_TIME_LIMIT = "30";
+const DEFAULT_SEED = "7";
+
+const STATE_LABELS: Record<LifecycleState, string> = {
+  queued: "В очереди",
+  running: "Выполняется",
+  completed: "Завершено",
+  timed_out: "Тайм-аут",
+  failed: "Ошибка",
+};
+
+const CATEGORY_LABELS: Record<KmlCategory, string> = {
+  survey_task: "Задание на съёмку",
+  restricted_zones: "Зоны ограничений",
+  obstacle: "Высотные препятствия",
+};
+
+function formatTimestamp(value: string | null): string {
+  if (!value) return "Ожидается";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleString("ru-RU");
+}
+
+function formatError(error: unknown): string {
+  if (error instanceof InputError) return error.message;
+  if (error instanceof ApiError) {
+    const context = error.status ? ` (HTTP ${error.status}, ${error.code})` : ` (${error.code})`;
+    return `${error.message}${context}`;
+  }
+  if (error instanceof Error) return error.message;
+  return "Неожиданная ошибка интерфейса.";
+}
+
+function readString(value: unknown): string | null {
+  return typeof value === "string" && value.trim() ? value : null;
+}
+
+function readNumber(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function getLimitations(report: JsonObject): string[] {
+  return Array.isArray(report.limitations)
+    ? report.limitations.filter((item): item is string => typeof item === "string")
+    : [];
+}
+
+function SolverSummary({ report }: { report: JsonObject }) {
+  const method = readString(report.method);
+  const objective = readString(report.objective);
+  const runtime = readNumber(report.runtime_seconds);
+  const limitations = getLimitations(report);
+  return (
+    <div className="result-section">
+      <h3>Сводка расчёта</h3>
+      <dl className="result-facts">
+        <div><dt>Метод</dt><dd>{method ?? "Не указан"}</dd></div>
+        <div><dt>Цель</dt><dd>{objective ?? "Не указана"}</dd></div>
+        <div><dt>Время работы</dt><dd>{runtime === null ? "Не указано" : `${runtime.toFixed(2)} с`}</dd></div>
+      </dl>
+      <div className="limitations">
+        <h4>Ограничения и замечания</h4>
+        {limitations.length ? <ul>{limitations.map((item) => <li key={item}>{item}</li>)}</ul> : <p>Backend не передал дополнительных ограничений.</p>}
+      </div>
+    </div>
+  );
+}
+
+function MissionPlanSummary({ plan }: { plan: JsonObject }) {
+  const sorties = Array.isArray(plan.sorties) ? plan.sorties : null;
+  const explicitAssignments = sorties?.flatMap((sortie, index) => {
+    if (typeof sortie !== "object" || sortie === null || Array.isArray(sortie)) return [];
+    const item = sortie as JsonObject;
+    const uavId = readString(item.uav_id) ?? readString(item.aircraft_id);
+    return uavId ? [{ key: `${uavId}-${index}`, uavId }] : [];
+  }) ?? [];
+  return (
+    <div className="result-section mission-summary">
+      <h3>План миссии</h3>
+      <div className="mission-summary-grid">
+        <div><strong>{sorties ? sorties.length : "—"}</strong><span>полётных заданий</span></div>
+        <p>План показан без браузерных расчётов. Привязка к БВС отображается только при наличии явного идентификатора в ответе backend.</p>
+      </div>
+      {explicitAssignments.length > 0 && (
+        <ul className="assignment-list">
+          {explicitAssignments.map((assignment) => <li key={assignment.key}>Задание backend: <strong>{assignment.uavId}</strong></li>)}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+function failureMessage(error: JsonObject | null): string {
+  if (!error) return "Backend не передал описание ошибки.";
+  const directMessage = readString(error.message);
+  if (directMessage) return directMessage;
+  const report = error.solver_report;
+  if (typeof report === "object" && report !== null && !Array.isArray(report)) {
+    const limitations = getLimitations(report as JsonObject);
+    if (limitations.length) return limitations[0];
+  }
+  return "Вычислительный контур не смог сформировать результат.";
+}
+
+function ResultPanel({ result }: { result: JobResult }) {
+  const presentation = getResultPresentation(result);
+  const synthetic = result.state !== "failed" && result.mission_plan !== null && result.mission_plan.test_data === true;
+  const icon = presentation.badge === "feasible" ? "✓" : presentation.badge === "infeasible" ? "—" : presentation.badge === "timed_out" ? "◷" : "!";
+  return (
+    <section className={`card result-card result-${presentation.badge}`} aria-labelledby="result-title">
+      <div className="result-hero">
+        <div className={`result-icon ${presentation.badge}`} aria-hidden="true">{icon}</div>
+        <div><p className="eyebrow">Результат расчёта</p><h2 id="result-title">{presentation.title}</h2><p className="result-summary">{presentation.summary}</p></div>
+        <span className={`status-badge ${presentation.badge}`}>{presentation.badge}</span>
+      </div>
+      {synthetic && <div className="synthetic-notice"><strong>Демонстрационные данные</strong><span>Backend пометил этот план как синтетический — это не реальное полётное задание.</span></div>}
+      {result.state === "failed" ? (
+        <div className="result-section error-detail"><h3>Сообщение вычислительного контура</h3><p>{failureMessage(result.error)}</p></div>
+      ) : (
+        <>{result.mission_plan && <MissionPlanSummary plan={result.mission_plan} />}<SolverSummary report={result.solver_report} /></>
+      )}
+      <details className="raw-response"><summary>Raw response JSON</summary><pre>{JSON.stringify(result, null, 2)}</pre></details>
+    </section>
+  );
+}
+
+function Lifecycle({ observedStates, result }: { observedStates: LifecycleState[]; result: JobResult | null }) {
+  return (
+    <div className="lifecycle" aria-label="Прогресс задачи">
+      <div className={`lifecycle-step ${observedStates.includes("queued") ? "observed" : ""}`}><span>1</span><div><strong>QUEUED</strong><small>Задача принята</small></div></div>
+      <div className="lifecycle-line" />
+      <div className={`lifecycle-step ${observedStates.includes("running") ? "active" : ""}`}><span>2</span><div><strong>RUNNING</strong><small>Расчёт выполняется</small></div></div>
+      <div className="lifecycle-line" />
+      <div className={`lifecycle-step ${result ? "terminal" : ""}`}><span>3</span><div><strong>RESULT</strong><small>Ответ backend</small></div></div>
+    </div>
+  );
+}
+
+function FileSummary({ file, onRemove }: { file: KmlFileRecord; onRemove: () => void }) {
+  const geometry = file.summary
+    ? Object.entries(file.summary.geometry_counts).map(([name, count]) => `${name}: ${count}`).join(" · ")
+    : null;
+  return (
+    <article className={`file-record ${file.status}`}>
+      <div className="file-record-head">
+        <div><strong>{file.file_name}</strong><span>{CATEGORY_LABELS[file.category]} · {formatFileSize(file.size_bytes)}</span></div>
+        <button className="icon-button" type="button" onClick={onRemove} aria-label={`Удалить ${file.file_name}`}>×</button>
+      </div>
+      {file.status === "error" ? <p className="file-error">{file.error}</p> : file.summary && (
+        <div className="file-facts">
+          <span className="parse-ok">Прочитан</span>
+          <span>{file.summary.document_count.toLocaleString("ru-RU")} Document</span>
+          <span>{file.summary.placemark_count.toLocaleString("ru-RU")} Placemark</span>
+          <span>{file.summary.coordinate_tuple_count.toLocaleString("ru-RU")} координат</span>
+          <span>{file.summary.altitude_coordinate_count ? `Высота: ${file.summary.altitude_coordinate_count.toLocaleString("ru-RU")} координат` : "Без высотных координат"}</span>
+          {geometry && <p>{geometry}</p>}
+          {file.summary.document_names.length > 0 && <p>Документ: {file.summary.document_names.join("; ")}</p>}
+          {file.summary.placemark_name_samples.length > 0 && <p>Примеры: {file.summary.placemark_name_samples.slice(0, 3).join("; ")}</p>}
+          {file.summary.placemark_description_samples.length > 0 && <p>Описание: {file.summary.placemark_description_samples[0]}</p>}
+          {file.summary.extended_data_fields.length > 0 && <p>Поля KML: {file.summary.extended_data_fields.join(", ")}</p>}
+        </div>
+      )}
+    </article>
+  );
+}
+
+interface UploadCardProps {
+  category: KmlCategory;
+  title: string;
+  description: string;
+  sourceHint: string;
+  files: KmlFileRecord[];
+  multiple?: boolean;
+  loading: boolean;
+  onFiles: (files: FileList | null) => void;
+  onRemove: (id: string) => void;
+}
+
+function UploadCard({ category, title, description, sourceHint, files, multiple = false, loading, onFiles, onRemove }: UploadCardProps) {
+  return (
+    <div className="upload-card">
+      <div className="upload-card-copy"><span className="upload-number">KML</span><div><h3>{title}</h3><p>{description}</p></div></div>
+      <label className="file-picker">
+        <span>{loading ? "Чтение KML…" : files.length ? "Выбрать снова" : "Выбрать файл"}</span>
+        <input
+          type="file"
+          accept=".kml,application/vnd.google-earth.kml+xml"
+          multiple={multiple}
+          disabled={loading}
+          aria-label={title}
+          onChange={(event: ChangeEvent<HTMLInputElement>) => {
+            onFiles(event.currentTarget.files);
+            event.currentTarget.value = "";
+          }}
+        />
+      </label>
+      <small className="source-hint">Пример организатора: {sourceHint}</small>
+      <div className="file-list">{files.map((file) => <FileSummary key={file.id} file={file} onRemove={() => onRemove(file.id)} />)}</div>
+      {category === "restricted_zones" && <p className="category-note">Высотные и временные ограничения в примере не имеют единого стандартного формата и показываются только как исходные метаданные.</p>}
+    </div>
+  );
+}
+
+function NumberField({ label, value, unit, onChange, min, max }: { label: string; value: number; unit?: string; onChange: (value: number) => void; min?: number; max?: number }) {
+  return <label><span>{label}{unit ? `, ${unit}` : ""}</span><input type="number" step="any" min={min} max={max} value={value} onChange={(event) => onChange(Number(event.target.value))} /></label>;
+}
+
+function UavCard({ uav, index, removable, onChange, onRemove }: { uav: FleetUav; index: number; removable: boolean; onChange: (next: FleetUav) => void; onRemove: () => void }) {
+  const set = <K extends keyof FleetUav>(key: K, value: FleetUav[K]) => onChange({ ...uav, [key]: value });
+  return (
+    <article className="uav-card">
+      <div className="uav-card-head"><div><span className="uav-index">БВС {index + 1}</span><strong>{uav.uav_id || "Без ID"}</strong></div><button className="text-button danger" type="button" disabled={!removable} onClick={onRemove}>Удалить</button></div>
+      <div className="uav-grid">
+        <label><span>Локальный ID</span><input value={uav.uav_id} onChange={(event) => set("uav_id", event.target.value)} /></label>
+        <label><span>Модель</span><input value={uav.model} onChange={(event) => set("model", event.target.value)} /></label>
+        <label><span>Полезная нагрузка / сенсор</span><input value={uav.payload_model} onChange={(event) => set("payload_model", event.target.value)} /></label>
+        <NumberField label="Крейсерская скорость" unit="м/с" min={0} value={uav.cruise_speed_m_s} onChange={(value) => set("cruise_speed_m_s", value)} />
+        <NumberField label="Ёмкость батареи" unit="Вт·ч" min={0} value={uav.battery_capacity_wh} onChange={(value) => set("battery_capacity_wh", value)} />
+        <NumberField label="Макс. время полёта" unit="с" min={0} value={uav.max_flight_time_s} onChange={(value) => set("max_flight_time_s", value)} />
+      </div>
+      <div className="point-grid">
+        <fieldset><legend>Точка старта · EPSG:4326</legend><NumberField label="Долгота" unit="°" min={-180} max={180} value={uav.launch_lon_deg} onChange={(value) => set("launch_lon_deg", value)} /><NumberField label="Широта" unit="°" min={-90} max={90} value={uav.launch_lat_deg} onChange={(value) => set("launch_lat_deg", value)} /></fieldset>
+        <fieldset><legend>Точка посадки · EPSG:4326</legend><NumberField label="Долгота" unit="°" min={-180} max={180} value={uav.landing_lon_deg} onChange={(value) => set("landing_lon_deg", value)} /><NumberField label="Широта" unit="°" min={-90} max={90} value={uav.landing_lat_deg} onChange={(value) => set("landing_lat_deg", value)} /></fieldset>
+      </div>
+    </article>
+  );
+}
+
+export default function App() {
+  const api = useMemo(() => createApiClient(), []);
+  const [scenarioId, setScenarioId] = useState("demo-multi-uav-001");
+  const [uavs, setUavs] = useState<FleetUav[]>(() => DEFAULT_UAVS.map((uav) => ({ ...uav })));
+  const [surveyType, setSurveyType] = useState<SurveyType>("RGB");
+  const [windSpeed, setWindSpeed] = useState(3);
+  const [windDirection, setWindDirection] = useState("270");
+  const [objective, setObjective] = useState(DEFAULT_OBJECTIVE);
+  const [timeLimit, setTimeLimit] = useState(DEFAULT_TIME_LIMIT);
+  const [seedText, setSeedText] = useState(DEFAULT_SEED);
+  const [surveyTask, setSurveyTask] = useState<KmlFileRecord | null>(null);
+  const [restrictedZones, setRestrictedZones] = useState<KmlFileRecord | null>(null);
+  const [obstacles, setObstacles] = useState<KmlFileRecord[]>([]);
+  const [loadingCategory, setLoadingCategory] = useState<KmlCategory | null>(null);
+  const [job, setJob] = useState<JobStatus | null>(null);
+  const [result, setResult] = useState<JobResult | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isPolling, setIsPolling] = useState(false);
+  const [observedStates, setObservedStates] = useState<LifecycleState[]>([]);
+  const coordinatorRef = useRef(new RequestCoordinator());
+  const fileSequence = useRef(0);
+
+  useEffect(() => () => coordinatorRef.current.cancel(), []);
+
+  const scenarioInputs = useMemo<ScenarioInputs>(() => ({
+    scenarioId,
+    uavs,
+    surveyType,
+    windSpeedMps: windSpeed,
+    windDirectionFromDeg: windDirection.trim() ? Number(windDirection) : null,
+    surveyTask,
+    restrictedZones,
+    obstacles,
+  }), [scenarioId, uavs, surveyType, windSpeed, windDirection, surveyTask, restrictedZones, obstacles]);
+
+  const scenarioText = useMemo(() => JSON.stringify(buildPrototypeScenario(scenarioInputs), null, 2), [scenarioInputs]);
+  const optimizationText = useMemo(() => JSON.stringify({ objective, time_limit_seconds: Number(timeLimit) }, null, 2), [objective, timeLimit]);
+
+  async function handleKmlFiles(category: KmlCategory, list: FileList | null) {
+    const files = Array.from(list ?? []);
+    if (!files.length) return;
+    setLoadingCategory(category);
+    try {
+      const records = await Promise.all(files.map((file) => readKmlFile(file, category, `kml-${++fileSequence.current}`)));
+      if (category === "survey_task") setSurveyTask(records[0]);
+      else if (category === "restricted_zones") setRestrictedZones(records[0]);
+      else setObstacles((current) => [...current, ...records]);
+    } finally {
+      setLoadingCategory(null);
+    }
+  }
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const { generation, signal } = coordinatorRef.current.begin();
+    setError(null);
+    setResult(null);
+    setJob(null);
+    setObservedStates([]);
+    setIsPolling(false);
+    setIsSubmitting(true);
+    try {
+      validateScenarioInputs(scenarioInputs);
+      const optimization = buildOptimization(objective, Number(timeLimit));
+      const submitted = await submitFromEditors(api, scenarioText, JSON.stringify(optimization), seedText, signal);
+      if (!coordinatorRef.current.isCurrent(generation)) return;
+      setJob(submitted);
+      setObservedStates([submitted.state]);
+      setIsSubmitting(false);
+      setIsPolling(true);
+      const terminalResult = await pollJobLifecycle({
+        api,
+        jobId: submitted.job_id,
+        signal,
+        onStatus: (status) => {
+          if (coordinatorRef.current.isCurrent(generation)) {
+            setJob(status);
+            setObservedStates((states) => states.includes(status.state) ? states : [...states, status.state]);
+          }
+        },
+      });
+      if (coordinatorRef.current.isCurrent(generation)) setResult(terminalResult);
+    } catch (caught) {
+      if (caught instanceof DOMException && caught.name === "AbortError") return;
+      if (coordinatorRef.current.isCurrent(generation)) setError(formatError(caught));
+    } finally {
+      if (coordinatorRef.current.isCurrent(generation)) {
+        setIsSubmitting(false);
+        setIsPolling(false);
+      }
+    }
+  }
+
+  const backendLabel = job ? STATE_LABELS[job.state] : error ? "Ошибка запроса" : "Ожидает запуска";
+  const backendTone = job?.state ?? (error ? "failed" : "idle");
+
+  return (
+    <main className="app-shell">
+      <header className="app-header">
+        <div className="header-copy">
+          <p className="eyebrow">Инженерный прототип планирования</p>
+          <h1>UAV Mission Planner</h1>
+          <p className="subtitle">Подготовка групповой миссии БВС на основе KML-геоданных, параметров флота и выбранного критерия оптимизации.</p>
+          <div className="connection-row" aria-label="Состояние приложения">
+            <div className="connection-pill ready"><span className="status-dot" /><small>Frontend</small><strong>Готов</strong></div>
+            <div className={`connection-pill ${backendTone}`}><span className="status-dot" /><small>Backend / задача</small><strong>{backendLabel}</strong></div>
+          </div>
+        </div>
+        <div className="contract-chip"><span>contract</span><strong>{CONTRACT_VERSION}</strong></div>
+      </header>
+
+      <div className="honesty-banner">
+        <strong>Prototype scenario profile</strong>
+        <p>KML читается локально и включается в запрос как структурная сводка с SHA-256. Геометрическая, доменная и полётно-безопасная валидация пока не выполняется; маршруты рассчитывает только backend/runtime.</p>
+      </div>
+
+      <form onSubmit={handleSubmit} noValidate>
+        <section className="card workflow-section" aria-labelledby="source-title">
+          <div className="section-heading"><div><p className="eyebrow">01 · Исходные данные</p><h2 id="source-title">Профиль сценария</h2><p className="section-description">Идентификатор нужен для демонстрационного сценария. Внутренняя структура остаётся командным допущением до фиксации общего контракта.</p></div><span className="step-chip">EPSG:4326</span></div>
+          <label className="scenario-id-field"><span>Идентификатор сценария</span><input value={scenarioId} onChange={(event) => setScenarioId(event.target.value)} placeholder="demo-multi-uav-001" /></label>
+        </section>
+
+        <section className="card workflow-section" aria-labelledby="geo-title">
+          <div className="section-heading"><div><p className="eyebrow">02 · Геоданные</p><h2 id="geo-title">KML-файлы организатора</h2><p className="section-description">Файлы не отправляются multipart-загрузкой. Браузер читает KML, сохраняет исходный текст в памяти и формирует безопасную структурную сводку.</p></div><span className="step-chip">.kml</span></div>
+          <div className="upload-grid">
+            <UploadCard category="survey_task" title="Границы задания на съёмку" description="Основная область работ. Один файл обязателен для запуска." sourceHint="Границы полетов.kml" files={surveyTask ? [surveyTask] : []} loading={loadingCategory === "survey_task"} onFiles={(files) => void handleKmlFiles("survey_task", files)} onRemove={() => setSurveyTask(null)} />
+            <UploadCard category="restricted_zones" title="Зоны ограничений" description="Временные и постоянные запретные зоны из примера организатора." sourceHint="Московская зона.kml" files={restrictedZones ? [restrictedZones] : []} loading={loadingCategory === "restricted_zones"} onFiles={(files) => void handleKmlFiles("restricted_zones", files)} onRemove={() => setRestrictedZones(null)} />
+            <UploadCard category="obstacle" title="Высотные препятствия" description="Можно выбрать несколько KML с 3D-примитивами препятствий." sourceHint="obstacles_Московская область.kml; высотные препятствия Приморский край.kml" files={obstacles} multiple loading={loadingCategory === "obstacle"} onFiles={(files) => void handleKmlFiles("obstacle", files)} onRemove={(id) => setObstacles((current) => current.filter((file) => file.id !== id))} />
+          </div>
+        </section>
+
+        <section className="card workflow-section" aria-labelledby="fleet-title">
+          <div className="section-heading"><div><p className="eyebrow">03 · Доступные БВС</p><h2 id="fleet-title">Параметры флота</h2><p className="section-description">Prototype scenario profile: поля основаны на требованиях и командном примере, но не заявлены как формат организатора.</p></div><button className="secondary-button" type="button" onClick={() => setUavs((current) => addUav(current))}>+ Добавить БВС</button></div>
+          <div className="fleet-list">{uavs.map((uav, index) => <UavCard key={`${uav.uav_id}-${index}`} uav={uav} index={index} removable={uavs.length > 1} onChange={(next) => setUavs((current) => current.map((item, itemIndex) => itemIndex === index ? next : item))} onRemove={() => setUavs((current) => current.filter((_item, itemIndex) => itemIndex !== index))} />)}</div>
+        </section>
+
+        <section className="card workflow-section" aria-labelledby="survey-title">
+          <div className="section-heading"><div><p className="eyebrow">04 · Параметры съёмки</p><h2 id="survey-title">Сенсорный профиль и ветер</h2><p className="section-description">Единицы указаны явно. Браузер не рассчитывает покрытие, энергетику или выполнимость.</p></div></div>
+          <div className="control-grid">
+            <label><span>Тип съёмки</span><select value={surveyType} onChange={(event) => setSurveyType(event.target.value as SurveyType)}><option value="RGB">RGB</option><option value="multispectral">Мультиспектральная</option><option value="infrared">Инфракрасная</option><option value="LiDAR">LiDAR</option><option value="geophysical">Геофизическая</option></select></label>
+            <NumberField label="Скорость ветра" unit="м/с" min={0} value={windSpeed} onChange={setWindSpeed} />
+            <label><span>Направление ветра, откуда · °</span><input type="number" min="0" max="360" step="any" value={windDirection} onChange={(event) => setWindDirection(event.target.value)} placeholder="Не задано" /><small className="field-hint">Необязательное поле из командного примера.</small></label>
+          </div>
+        </section>
+
+        <section className="card workflow-section" aria-labelledby="optimization-title">
+          <div className="section-heading"><div><p className="eyebrow">05 · Критерий оптимизации</p><h2 id="optimization-title">Настройки расчёта</h2><p className="section-description">Значения передаются в существующем envelope v0 без браузерной оптимизации.</p></div></div>
+          <div className="control-grid">
+            <label><span>Критерий</span><select value={objective} onChange={(event) => setObjective(event.target.value)}><option value="min_time">Минимальное время выполнения</option><option value="min_total_flight_time">Минимальный суммарный налёт</option></select><small className="field-hint">Wire value: {objective}</small></label>
+            <label><span>Лимит расчёта, с</span><input type="number" min="0" step="1" value={timeLimit} onChange={(event) => setTimeLimit(event.target.value)} /></label>
+            <label><span>Seed</span><input type="number" step="1" value={seedText} onChange={(event) => setSeedText(event.target.value)} /><small className="field-hint">Для воспроизводимого запуска.</small></label>
+          </div>
+
+          <details className="advanced-panel">
+            <summary><span>Расширенные настройки / Raw scenario</span><small>Фактическое тело запроса для инженерной проверки</small></summary>
+            <p className="advanced-note">Сценарий формируется из полей выше. Исходные KML остаются в памяти браузера; в v0 отправляются SHA-256 и структурная сводка, а не multipart-файлы.</p>
+            <div className="editor-grid"><label><span>Scenario JSON · только чтение</span><textarea readOnly value={scenarioText} spellCheck={false} rows={18} /></label><label><span>Optimization JSON · только чтение</span><textarea readOnly value={optimizationText} spellCheck={false} rows={18} /></label></div>
+          </details>
+
+          <div className="form-footer"><div className="submit-copy"><strong>Проверить профиль и запустить</strong><span>Повторный запуск остановит текущий опрос. Результат и состояния определяет backend.</span></div><button className="primary-button" type="submit" disabled={isSubmitting || loadingCategory !== null}>{isSubmitting ? "Отправляем задачу…" : job ? "Запустить ещё раз" : "Запустить расчёт"}</button></div>
+        </section>
+      </form>
+
+      {error && <div className="error-banner" role="alert"><span className="error-mark" aria-hidden="true">!</span><div><strong>Не удалось выполнить запрос</strong><span>{error}</span></div></div>}
+      {job && <section className="card status-card" aria-labelledby="job-status-title" aria-live="polite"><div className="section-heading"><div><p className="eyebrow">06 · Статус задачи</p><h2 id="job-status-title">Ход выполнения</h2></div><span className={`status-badge ${job.state}`}>{STATE_LABELS[job.state]}</span></div><Lifecycle observedStates={observedStates} result={result} /><dl className="job-details"><div className="job-id-row"><dt>Job ID</dt><dd>{job.job_id}</dd></div><div><dt>Создано</dt><dd>{formatTimestamp(job.created_at)}</dd></div><div><dt>Запущено</dt><dd>{formatTimestamp(job.started_at)}</dd></div><div><dt>Завершено</dt><dd>{formatTimestamp(job.finished_at)}</dd></div></dl>{isPolling && <div className="polling-indicator"><span className="pulse" /> Backend выполняет задачу, статус обновляется автоматически</div>}</section>}
+      {result && <ResultPanel result={result} />}
+      <footer>Интерфейс отображает авторитетный ответ backend. Импорт KML не является проверкой геометрии, безопасности или выполнимости полёта.</footer>
+    </main>
+  );
+}
