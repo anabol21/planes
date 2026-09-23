@@ -15,17 +15,17 @@ describe("terminal result presentation", () => {
     [
       { ...BASE, state: "completed", outcome: "feasible", mission_plan: {} },
       "feasible",
-      "Feasible synthetic plan",
+      "План миссии сформирован",
     ],
     [
       { ...BASE, state: "completed", outcome: "infeasible", mission_plan: null },
       "infeasible",
-      "Scenario is infeasible",
+      "Допустимый план не найден",
     ],
     [
       { ...BASE, state: "timed_out", outcome: "timed_out", mission_plan: null },
       "timed_out",
-      "Solver timed out",
+      "Время расчёта истекло",
     ],
     [
       {
@@ -35,7 +35,7 @@ describe("terminal result presentation", () => {
         error: { message: "simulated" },
       },
       "failed",
-      "Backend job failed",
+      "Ошибка вычислительного контура",
     ],
   ] as const)("maps an authoritative result to the %s presentation", (result, badge, title) => {
     const presentation = getResultPresentation(result as JobResult);

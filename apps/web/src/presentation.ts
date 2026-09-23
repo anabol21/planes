@@ -9,28 +9,28 @@ export interface ResultPresentation {
 export function getResultPresentation(result: JobResult): ResultPresentation {
   if (result.state === "failed") {
     return {
-      title: "Backend job failed",
+      title: "Ошибка вычислительного контура",
       badge: "failed",
-      summary: "The backend reported a structured execution failure.",
+      summary: "Backend сообщил об ошибке и не сформировал результат миссии.",
     };
   }
   if (result.outcome === "feasible") {
     return {
-      title: "Feasible synthetic plan",
+      title: "План миссии сформирован",
       badge: "feasible",
-      summary: "The backend returned a feasible synthetic mission plan.",
+      summary: "Backend нашёл допустимый план для переданного сценария.",
     };
   }
   if (result.outcome === "infeasible") {
     return {
-      title: "Scenario is infeasible",
+      title: "Допустимый план не найден",
       badge: "infeasible",
-      summary: "Infeasible is a valid solver outcome, not an infrastructure failure.",
+      summary: "Расчёт завершён корректно, но при заданных условиях выполнимого плана нет.",
     };
   }
   return {
-    title: "Solver timed out",
+    title: "Время расчёта истекло",
     badge: "timed_out",
-    summary: "The backend reached its solver time limit without reporting feasibility.",
+    summary: "Вычислительный контур достиг лимита времени до получения итогового плана.",
   };
 }
