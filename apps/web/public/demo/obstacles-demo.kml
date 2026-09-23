@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2">
+  <Document>
+    <name>Synthetic obstacle</name>
+    <Placemark>
+      <name>DEMO-OBSTACLE-001 COMMUNICATION_TOWER</name>
+      <description>Synthetic altitude-bearing point for UI demonstration only.</description>
+      <Point>
+        <altitudeMode>relativeToGround</altitudeMode>
+        <coordinates>30.3140,59.9400,75</coordinates>
+      </Point>
+    </Placemark>
+  </Document>
+</kml>
