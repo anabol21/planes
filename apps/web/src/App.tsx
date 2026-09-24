@@ -28,6 +28,7 @@ import {
   buildOptimization,
   buildPrototypeScenario,
   validateScenarioInputs,
+  withDefaultProfileLimitation,
   type FleetUav,
   type ScenarioInputs,
   type SurveyType,
@@ -92,7 +93,7 @@ function SolverSummary({ report }: { report: JsonObject }) {
   const method = readString(report.method);
   const objective = readString(report.objective);
   const runtime = readNumber(report.runtime_seconds);
-  const limitations = getLimitations(report);
+  const limitations = withDefaultProfileLimitation(getLimitations(report));
   return (
     <div className="result-section">
       <h3>Сводка расчёта</h3>
@@ -305,7 +306,19 @@ export default function App() {
     obstacles,
   }), [scenarioId, uavs, surveyType, windSpeed, windDirection, surveyTask, restrictedZones, obstacles]);
 
-  const scenarioText = useMemo(() => JSON.stringify(buildPrototypeScenario(scenarioInputs), null, 2), [scenarioInputs]);
+  const scenarioPreview = useMemo(() => {
+    try {
+      return {
+        text: JSON.stringify(buildPrototypeScenario(scenarioInputs, objective), null, 2),
+        error: null as string | null,
+      };
+    } catch (caught) {
+      return {
+        text: "",
+        error: caught instanceof Error ? caught.message : "Не удалось собрать сценарий.",
+      };
+    }
+  }, [scenarioInputs, objective]);
   const optimizationText = useMemo(() => JSON.stringify({ objective, time_limit_seconds: Number(timeLimit) }, null, 2), [objective, timeLimit]);
 
   async function handleKmlFiles(category: KmlCategory, list: FileList | null) {
@@ -333,8 +346,9 @@ export default function App() {
     setIsSubmitting(true);
     try {
       validateScenarioInputs(scenarioInputs);
+      const scenario = buildPrototypeScenario(scenarioInputs, objective);
       const optimization = buildOptimization(objective, Number(timeLimit));
-      const submitted = await submitFromEditors(api, scenarioText, JSON.stringify(optimization), seedText, signal);
+      const submitted = await submitFromEditors(api, JSON.stringify(scenario), JSON.stringify(optimization), seedText, signal);
       if (!coordinatorRef.current.isCurrent(generation)) return;
       setJob(submitted);
       setObservedStates([submitted.state]);
@@ -383,7 +397,7 @@ export default function App() {
 
       <div className="honesty-banner">
         <strong>Prototype scenario profile</strong>
-        <p>KML читается локально и включается в запрос как структурная сводка с SHA-256. Геометрическая, доменная и полётно-безопасная валидация пока не выполняется; маршруты рассчитывает только backend/runtime.</p>
+        <p>KML читается локально. В запрос уходят кольца полигонов, а не исходные файлы. Недостающие поля сенсора и энергетики берутся из профиля по умолчанию и отмечены в ограничениях. Маршруты рассчитывает только backend/runtime.</p>
       </div>
 
       <form onSubmit={handleSubmit} noValidate>
@@ -393,7 +407,7 @@ export default function App() {
         </section>
 
         <section className="card workflow-section" aria-labelledby="geo-title">
-          <div className="section-heading"><div><p className="eyebrow">02 · Геоданные</p><h2 id="geo-title">KML-файлы организатора</h2><p className="section-description">Файлы не отправляются multipart-загрузкой. Браузер читает KML, сохраняет исходный текст в памяти и формирует безопасную структурную сводку.</p></div><span className="step-chip">.kml</span></div>
+          <div className="section-heading"><div><p className="eyebrow">02 · Геоданные</p><h2 id="geo-title">KML-файлы организатора</h2><p className="section-description">Исходные файлы остаются в браузере. В запрос попадают кольца: один полигон задания, зоны ограничений и препятствия, чей след пересекает bbox съёмки.</p></div><span className="step-chip">.kml</span></div>
           <div className="upload-grid">
             <UploadCard category="survey_task" title="Границы задания на съёмку" description="Основная область работ. Один файл обязателен для запуска." sourceHint="Границы полетов.kml" files={surveyTask ? [surveyTask] : []} loading={loadingCategory === "survey_task"} onFiles={(files) => void handleKmlFiles("survey_task", files)} onRemove={() => setSurveyTask(null)} />
             <UploadCard category="restricted_zones" title="Зоны ограничений" description="Временные и постоянные запретные зоны из примера организатора." sourceHint="Московская зона.kml" files={restrictedZones ? [restrictedZones] : []} loading={loadingCategory === "restricted_zones"} onFiles={(files) => void handleKmlFiles("restricted_zones", files)} onRemove={() => setRestrictedZones(null)} />
@@ -411,22 +425,23 @@ export default function App() {
           <div className="control-grid">
             <label><span>Тип съёмки</span><select value={surveyType} onChange={(event) => setSurveyType(event.target.value as SurveyType)}><option value="RGB">RGB</option><option value="multispectral">Мультиспектральная</option><option value="infrared">Инфракрасная</option><option value="LiDAR">LiDAR</option><option value="geophysical">Геофизическая</option></select></label>
             <NumberField label="Скорость ветра" unit="м/с" min={0} value={windSpeed} onChange={setWindSpeed} />
-            <label><span>Направление ветра, откуда · °</span><input type="number" min="0" max="360" step="any" value={windDirection} onChange={(event) => setWindDirection(event.target.value)} placeholder="Не задано" /><small className="field-hint">Необязательное поле из командного примера.</small></label>
+            <label><span>Направление ветра, откуда · °</span><input type="number" min="0" max="360" step="any" value={windDirection} onChange={(event) => setWindDirection(event.target.value)} placeholder="0–360" /><small className="field-hint">0 — север. Значение 360 записывается как 0.</small></label>
           </div>
         </section>
 
         <section className="card workflow-section" aria-labelledby="optimization-title">
           <div className="section-heading"><div><p className="eyebrow">05 · Критерий оптимизации</p><h2 id="optimization-title">Настройки расчёта</h2><p className="section-description">Значения передаются в существующем envelope v0 без браузерной оптимизации.</p></div></div>
           <div className="control-grid">
-            <label><span>Критерий</span><select value={objective} onChange={(event) => setObjective(event.target.value)}><option value="min_time">Минимальное время выполнения</option><option value="min_total_flight_time">Минимальный суммарный налёт</option></select><small className="field-hint">Wire value: {objective}</small></label>
+            <label><span>Критерий</span><select value={objective} onChange={(event) => setObjective(event.target.value)}><option value="min_time">Минимальное время выполнения</option><option value="min_total_flight_time">Минимальный суммарный налёт</option></select><small className="field-hint">scenario.criterion: {objective === "min_total_flight_time" ? "min_flight_hours" : objective}</small></label>
             <label><span>Лимит расчёта, с</span><input type="number" min="0" step="1" value={timeLimit} onChange={(event) => setTimeLimit(event.target.value)} /></label>
             <label><span>Seed</span><input type="number" step="1" value={seedText} onChange={(event) => setSeedText(event.target.value)} /><small className="field-hint">Для воспроизводимого запуска.</small></label>
           </div>
 
           <details className="advanced-panel">
             <summary><span>Расширенные настройки / Raw scenario</span><small>Фактическое тело запроса для инженерной проверки</small></summary>
-            <p className="advanced-note">Сценарий формируется из полей выше. Исходные KML остаются в памяти браузера; в v0 отправляются SHA-256 и структурная сводка, а не multipart-файлы.</p>
-            <div className="editor-grid"><label><span>Scenario JSON · только чтение</span><textarea readOnly value={scenarioText} spellCheck={false} rows={18} /></label><label><span>Optimization JSON · только чтение</span><textarea readOnly value={optimizationText} spellCheck={false} rows={18} /></label></div>
+            <p className="advanced-note">Сценарий формируется из полей выше. Исходные KML остаются в памяти браузера; в запрос уходят кольца и поля InputData. Поля профиля по умолчанию помечены в default_profile.</p>
+            {scenarioPreview.error && <p className="file-error">{scenarioPreview.error}</p>}
+            <div className="editor-grid"><label><span>Scenario JSON · только чтение</span><textarea readOnly value={scenarioPreview.text} spellCheck={false} rows={18} /></label><label><span>Optimization JSON · только чтение</span><textarea readOnly value={optimizationText} spellCheck={false} rows={18} /></label></div>
           </details>
 
           <div className="form-footer"><div className="submit-copy"><strong>Проверить профиль и запустить</strong><span>Повторный запуск остановит текущий опрос. Результат и состояния определяет backend.</span></div><button className="primary-button" type="submit" disabled={isSubmitting || loadingCategory !== null}>{isSubmitting ? "Отправляем задачу…" : job ? "Запустить ещё раз" : "Запустить расчёт"}</button></div>

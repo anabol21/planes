@@ -25,6 +25,20 @@ export interface KmlSummary {
   bounds: KmlBounds | null;
 }
 
+export interface KmlPolygonRing {
+  name: string | null;
+  ring: number[][];
+  height_m: number | null;
+  extended_data: Record<string, string>;
+}
+
+export interface LonLatBounds {
+  west: number;
+  south: number;
+  east: number;
+  north: number;
+}
+
 export interface KmlFileRecord {
   id: string;
   category: KmlCategory;
@@ -86,9 +100,43 @@ function defaultParser(): XmlParser {
   return new DOMParser();
 }
 
-export function parseKml(text: string, parser: XmlParser = defaultParser()): KmlSummary {
-  if (!text.trim()) throw new Error("KML file is empty.");
+function elementsNamed(root: Document | Element, name: string): Element[] {
+  return Array.from(root.getElementsByTagName("*")).filter(
+    (element) => element.nodeType === 1 && localName(element) === name,
+  );
+}
 
+function nearestAncestor(element: Element, name: string): Element | null {
+  let parent = element.parentNode;
+  while (parent && parent.nodeType === 1) {
+    const candidate = parent as Element;
+    if (localName(candidate) === name) return candidate;
+    parent = candidate.parentNode;
+  }
+  return null;
+}
+
+function parseCoordinateTuples(text: string | null): Array<{ lon: number; lat: number; alt: number | null }> {
+  const normalized = normalizedText(text);
+  if (!normalized) return [];
+  const tuples = [];
+  for (const token of normalized.split(/\s+/)) {
+    const parts = token.split(",");
+    const lon = Number(parts[0]);
+    const lat = Number(parts[1]);
+    if (!Number.isFinite(lon) || !Number.isFinite(lat)) continue;
+    let alt: number | null = null;
+    if (parts.length >= 3 && parts[2]?.trim() !== "") {
+      const value = Number(parts[2]);
+      if (Number.isFinite(value)) alt = value;
+    }
+    tuples.push({ lon, lat, alt });
+  }
+  return tuples;
+}
+
+function loadKmlDocument(text: string, parser: XmlParser): Document {
+  if (!text.trim()) throw new Error("KML file is empty.");
   const document = parser.parseFromString(text, "application/xml");
   if (document.getElementsByTagName("parsererror").length > 0) {
     throw new Error("KML contains malformed XML.");
@@ -97,6 +145,178 @@ export function parseKml(text: string, parser: XmlParser = defaultParser()): Kml
   if (!root || localName(root).toLowerCase() !== "kml") {
     throw new Error("The selected file is not a KML document.");
   }
+  return document;
+}
+
+function readExtendedData(placemark: Element): Record<string, string> {
+  const fields: Record<string, string> = {};
+  for (const element of elementsNamed(placemark, "Data")) {
+    if (nearestAncestor(element, "Placemark") !== placemark) continue;
+    const key = element.getAttribute("name")?.trim();
+    if (!key) continue;
+    const valueElement = elementsNamed(element, "value").find(
+      (child) => nearestAncestor(child, "Data") === element,
+    );
+    const value = normalizedText(valueElement?.textContent ?? element.textContent);
+    if (value) fields[key] = value;
+  }
+  for (const element of elementsNamed(placemark, "SimpleData")) {
+    if (nearestAncestor(element, "Placemark") !== placemark) continue;
+    const key = element.getAttribute("name")?.trim();
+    const value = normalizedText(element.textContent);
+    if (key && value && !(key in fields)) fields[key] = value;
+  }
+  return fields;
+}
+
+function outerRing(polygon: Element): { ring: number[][]; height_m: number | null } | null {
+  const outer = elementsNamed(polygon, "outerBoundaryIs").find(
+    (element) => nearestAncestor(element, "Polygon") === polygon,
+  );
+  if (!outer) return null;
+  const coordinates = elementsNamed(outer, "coordinates").find(
+    (element) => nearestAncestor(element, "Polygon") === polygon,
+  );
+  if (!coordinates) return null;
+  const points = parseCoordinateTuples(coordinates.textContent);
+  if (points.length < 3) return null;
+  const altitudes = points.flatMap((point) => (point.alt === null ? [] : [point.alt]));
+  return {
+    ring: points.map((point) => [point.lon, point.lat]),
+    height_m: altitudes.length ? Math.max(...altitudes) : null,
+  };
+}
+
+export function extractKmlPolygons(text: string, parser: XmlParser = defaultParser()): KmlPolygonRing[] {
+  const document = loadKmlDocument(text, parser);
+  const polygons: KmlPolygonRing[] = [];
+  for (const placemark of elementsNamed(document, "Placemark")) {
+    const name = firstDirectText(placemark, "name");
+    const extendedData = readExtendedData(placemark);
+    for (const polygon of elementsNamed(placemark, "Polygon")) {
+      if (nearestAncestor(polygon, "Placemark") !== placemark) continue;
+      const ring = outerRing(polygon);
+      if (!ring) continue;
+      polygons.push({
+        name,
+        ring: ring.ring,
+        height_m: ring.height_m,
+        extended_data: extendedData,
+      });
+    }
+  }
+  return polygons;
+}
+
+function cross(ax: number, ay: number, bx: number, by: number): number {
+  return ax * by - ay * bx;
+}
+
+function onSegment(px: number, py: number, ax: number, ay: number, bx: number, by: number): boolean {
+  return (
+    Math.min(ax, bx) <= px &&
+    px <= Math.max(ax, bx) &&
+    Math.min(ay, by) <= py &&
+    py <= Math.max(ay, by)
+  );
+}
+
+function segmentsIntersect(
+  ax: number,
+  ay: number,
+  bx: number,
+  by: number,
+  cx: number,
+  cy: number,
+  dx: number,
+  dy: number,
+): boolean {
+  const d1 = cross(cx - ax, cy - ay, bx - ax, by - ay);
+  const d2 = cross(dx - ax, dy - ay, bx - ax, by - ay);
+  const d3 = cross(ax - cx, ay - cy, dx - cx, dy - cy);
+  const d4 = cross(bx - cx, by - cy, dx - cx, dy - cy);
+  if (((d1 > 0 && d2 < 0) || (d1 < 0 && d2 > 0)) && ((d3 > 0 && d4 < 0) || (d3 < 0 && d4 > 0))) {
+    return true;
+  }
+  if (d1 === 0 && onSegment(cx, cy, ax, ay, bx, by)) return true;
+  if (d2 === 0 && onSegment(dx, dy, ax, ay, bx, by)) return true;
+  if (d3 === 0 && onSegment(ax, ay, cx, cy, dx, dy)) return true;
+  if (d4 === 0 && onSegment(bx, by, cx, cy, dx, dy)) return true;
+  return false;
+}
+
+function pointInRing(lon: number, lat: number, ring: number[][]): boolean {
+  let inside = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i, i += 1) {
+    const xi = ring[i][0];
+    const yi = ring[i][1];
+    const xj = ring[j][0];
+    const yj = ring[j][1];
+    if (yi > lat !== yj > lat) {
+      const xCross = ((xj - xi) * (lat - yi)) / (yj - yi) + xi;
+      if (lon < xCross) inside = !inside;
+    }
+  }
+  return inside;
+}
+
+export function ringBounds(ring: number[][]): LonLatBounds | null {
+  let west = Number.POSITIVE_INFINITY;
+  let south = Number.POSITIVE_INFINITY;
+  let east = Number.NEGATIVE_INFINITY;
+  let north = Number.NEGATIVE_INFINITY;
+  for (const pair of ring) {
+    const lon = pair[0];
+    const lat = pair[1];
+    if (!Number.isFinite(lon) || !Number.isFinite(lat)) continue;
+    west = Math.min(west, lon);
+    south = Math.min(south, lat);
+    east = Math.max(east, lon);
+    north = Math.max(north, lat);
+  }
+  if (!Number.isFinite(west) || !Number.isFinite(south)) return null;
+  return { west, south, east, north };
+}
+
+export function ringIntersectsBounds(ring: number[][], bounds: LonLatBounds): boolean {
+  const points = ring.filter((pair) => Number.isFinite(pair[0]) && Number.isFinite(pair[1]));
+  if (points.length < 3) return false;
+  const insideBounds = (lon: number, lat: number) =>
+    lon >= bounds.west && lon <= bounds.east && lat >= bounds.south && lat <= bounds.north;
+  if (points.some(([lon, lat]) => insideBounds(lon, lat))) return true;
+  const corners = [
+    [bounds.west, bounds.south],
+    [bounds.east, bounds.south],
+    [bounds.east, bounds.north],
+    [bounds.west, bounds.north],
+  ];
+  for (let i = 0; i < points.length; i += 1) {
+    const start = points[i];
+    const end = points[(i + 1) % points.length];
+    for (let j = 0; j < corners.length; j += 1) {
+      const edgeStart = corners[j];
+      const edgeEnd = corners[(j + 1) % corners.length];
+      if (
+        segmentsIntersect(
+          start[0],
+          start[1],
+          end[0],
+          end[1],
+          edgeStart[0],
+          edgeStart[1],
+          edgeEnd[0],
+          edgeEnd[1],
+        )
+      ) {
+        return true;
+      }
+    }
+  }
+  return pointInRing(bounds.west, bounds.south, points);
+}
+
+export function parseKml(text: string, parser: XmlParser = defaultParser()): KmlSummary {
+  const document = loadKmlDocument(text, parser);
 
   const documentNames: string[] = [];
   const documentDescriptions: string[] = [];

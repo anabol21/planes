@@ -1,5 +1,12 @@
 import type { JsonObject } from "./types";
-import type { KmlFileRecord } from "./kml";
+import {
+  extractKmlPolygons,
+  ringBounds,
+  ringIntersectsBounds,
+  type KmlFileRecord,
+  type KmlPolygonRing,
+  type XmlParser,
+} from "./kml";
 
 export type SurveyType = "RGB" | "multispectral" | "infrared" | "LiDAR" | "geophysical";
 
@@ -107,67 +114,155 @@ export function validateScenarioInputs(inputs: ScenarioInputs): void {
     validatePoint(uav.landing_lon_deg, uav.landing_lat_deg, `${label}, точка посадки`);
   }
   requireFinite(inputs.windSpeedMps, "Скорость ветра", 0);
-  if (inputs.windDirectionFromDeg !== null) {
-    requireFinite(inputs.windDirectionFromDeg, "Направление ветра");
-    if (inputs.windDirectionFromDeg < 0 || inputs.windDirectionFromDeg > 360) {
-      throw new Error("Направление ветра должно быть от 0 до 360 градусов.");
-    }
+  if (inputs.windDirectionFromDeg === null) {
+    throw new Error("Укажите направление ветра от 0 до 360 градусов.");
+  }
+  requireFinite(inputs.windDirectionFromDeg, "Направление ветра");
+  if (inputs.windDirectionFromDeg < 0 || inputs.windDirectionFromDeg > 360) {
+    throw new Error("Направление ветра должно быть от 0 до 360 градусов.");
   }
 }
 
-function serializeKml(file: KmlFileRecord | null): JsonObject | null {
-  if (!file || file.status !== "ready" || !file.summary) return null;
-  return {
-    source_format: "KML",
-    file_name: file.file_name,
-    size_bytes: file.size_bytes,
-    sha256: file.sha256,
-    transfer_profile: "structural_summary_only",
-    summary: file.summary,
-  };
+export const DEFAULT_PROFILE_SOURCE =
+  "src/planes/model/basic_model/gibrid-optimizer/data/input.json";
+
+export const DEFAULT_PROFILE_NOTE =
+  "gsd_cm_per_px, camera, survey overlaps and strip direction, power_coeffs, mass_kg, v_vertical_ms, and max_wind_ms are the default profile from src/planes/model/basic_model/gibrid-optimizer/data/input.json, not user input.";
+
+const DEFAULT_GSD_CM_PER_PX = 3.0;
+const DEFAULT_CAMERA = {
+  sensor_width_mm: 23.5,
+  sensor_height_mm: 15.6,
+  focal_length_mm: 20.0,
+  image_width_px: 6000,
+  image_height_px: 4000,
+};
+const DEFAULT_SURVEY = {
+  forward_overlap: 0.7,
+  side_overlap: 0.6,
+  strip_direction_deg: 0.0,
+};
+const DEFAULT_POWER_COEFFS = { kh: 90.0, kv: 0.02, kw: 0.008 };
+const DEFAULT_MASS_KG = 2.0;
+const DEFAULT_V_VERTICAL_MS = 5.0;
+const DEFAULT_MAX_WIND_MS = 10.0;
+
+export function solverCriterion(objective: string): "min_time" | "min_flight_hours" {
+  if (objective === "min_time") return "min_time";
+  if (objective === "min_total_flight_time") return "min_flight_hours";
+  throw new Error("Выберите критерий оптимизации.");
 }
 
-export function buildPrototypeScenario(inputs: ScenarioInputs): JsonObject {
-  const restricted = serializeKml(inputs.restrictedZones);
+export function withDefaultProfileLimitation(limitations: readonly string[]): string[] {
+  if (limitations.includes(DEFAULT_PROFILE_NOTE)) return [...limitations];
+  return [...limitations, DEFAULT_PROFILE_NOTE];
+}
+
+function extendedValue(data: Record<string, string>, key: string): string | null {
+  if (data[key]) return data[key];
+  const match = Object.entries(data).find(([name]) => name.toLowerCase() === key.toLowerCase());
+  return match?.[1] ?? null;
+}
+
+function polygonLabel(polygon: KmlPolygonRing, index: number): string {
+  const name = polygon.name?.trim() || `polygon ${index + 1}`;
+  const lon = polygon.ring[0]?.[0];
+  const lat = polygon.ring[0]?.[1];
+  if (!Number.isFinite(lon) || !Number.isFinite(lat)) return name;
+  return `${name} (${lon}, ${lat})`;
+}
+
+function polygonsOf(file: KmlFileRecord | null, parser?: XmlParser): KmlPolygonRing[] {
+  if (!file || file.status !== "ready" || !file.raw_text) return [];
+  return extractKmlPolygons(file.raw_text, parser);
+}
+
+function surveyRing(file: KmlFileRecord, parser?: XmlParser): number[][] {
+  if (!file.raw_text) throw new Error("В KML задания нет полигона съёмки.");
+  const polygons = extractKmlPolygons(file.raw_text, parser);
+  if (polygons.length === 0) throw new Error("В KML задания нет полигона съёмки.");
+  if (polygons.length > 1) {
+    const listed = polygons.map(polygonLabel).join("; ");
+    throw new Error(`В KML задания несколько полигонов: ${listed}. Нужен один полигон съёмки.`);
+  }
+  return polygons[0].ring;
+}
+
+function windDirectionDeg(value: number | null): number {
+  if (value === null || !Number.isFinite(value) || value < 0 || value > 360) {
+    throw new Error("Укажите направление ветра от 0 до 360 градусов.");
+  }
+  return value === 360 ? 0 : value;
+}
+
+export function buildPrototypeScenario(
+  inputs: ScenarioInputs,
+  objective = "min_time",
+  parser?: XmlParser,
+): JsonObject {
+  if (!inputs.surveyTask || inputs.surveyTask.status !== "ready") {
+    throw new Error("Загрузите корректный KML с границами задания на съёмку.");
+  }
+  if (!inputs.uavs.length) throw new Error("Добавьте хотя бы один БВС.");
+  const area = surveyRing(inputs.surveyTask, parser);
+  const bounds = ringBounds(area);
+  if (!bounds) throw new Error("В KML задания нет полигона съёмки.");
+  const lead = inputs.uavs[0];
+  const zoneConstraints = polygonsOf(inputs.restrictedZones, parser).map((polygon) => ({
+    ring: polygon.ring,
+    name: extendedValue(polygon.extended_data, "Name") ?? polygon.name,
+    type: extendedValue(polygon.extended_data, "Type"),
+    altitudes_text: extendedValue(polygon.extended_data, "Altitudes"),
+  }));
+  const obstacles = inputs.obstacles.flatMap((file) =>
+    polygonsOf(file, parser).flatMap((polygon) => {
+      if (!ringIntersectsBounds(polygon.ring, bounds)) return [];
+      return [
+        {
+          ring: polygon.ring,
+          height_m: polygon.height_m,
+          kind: polygon.name,
+        },
+      ];
+    }),
+  );
   return {
     scenario_id: inputs.scenarioId.trim(),
     crs: "EPSG:4326",
-    scenario_profile: "team_assumption_multi_uav_kml_v0",
-    semantic_validation_performed: false,
-    uavs: inputs.uavs.map((uav) => ({
-      uav_id: uav.uav_id,
-      model: uav.model,
-      payload_model: uav.payload_model,
-      cruise_speed_m_s: uav.cruise_speed_m_s,
-      battery_capacity_wh: uav.battery_capacity_wh,
-      max_flight_time_s: uav.max_flight_time_s,
-      launch_point: {
-        crs: "EPSG:4326",
-        lon_deg: uav.launch_lon_deg,
-        lat_deg: uav.launch_lat_deg,
-      },
-      landing_point: {
-        crs: "EPSG:4326",
-        lon_deg: uav.landing_lon_deg,
-        lat_deg: uav.landing_lat_deg,
-      },
-    })),
-    survey: {
-      survey_type: inputs.surveyType,
-      task_geometry: serializeKml(inputs.surveyTask),
+    criterion: solverCriterion(objective),
+    gsd_cm_per_px: DEFAULT_GSD_CM_PER_PX,
+    area,
+    takeoff: { lat: lead.launch_lat_deg, lon: lead.launch_lon_deg },
+    uav: {
+      model: lead.model,
+      count: inputs.uavs.length,
+      mass_kg: DEFAULT_MASS_KG,
+      max_flight_time_s: lead.max_flight_time_s,
+      battery_wh: lead.battery_capacity_wh,
+      v_air_ms: lead.cruise_speed_m_s,
+      v_vertical_ms: DEFAULT_V_VERTICAL_MS,
+      max_wind_ms: DEFAULT_MAX_WIND_MS,
     },
-    restricted_zones: restricted ? [restricted] : [],
-    obstacles: inputs.obstacles.map(serializeKml).filter((item): item is JsonObject => item !== null),
+    camera: DEFAULT_CAMERA,
+    survey: DEFAULT_SURVEY,
+    survey_type: inputs.surveyType,
     wind: {
-      speed_m_s: inputs.windSpeedMps,
-      ...(inputs.windDirectionFromDeg === null
-        ? {}
-        : { direction_from_deg: inputs.windDirectionFromDeg }),
+      speed_ms: inputs.windSpeedMps,
+      direction_deg: windDirectionDeg(inputs.windDirectionFromDeg),
+    },
+    power_coeffs: DEFAULT_POWER_COEFFS,
+    zone_constraints: zoneConstraints,
+    obstacles,
+    default_profile: {
+      note: DEFAULT_PROFILE_NOTE,
+      source: DEFAULT_PROFILE_SOURCE,
     },
     prototype_limitations: [
-      "KML is structurally summarized in the browser; geometry and flight safety are not validated.",
-      "Full source files remain browser-local and are identified in this request by SHA-256.",
-      "The runtime v0 contract treats scenario contents as opaque JSON.",
+      "KML rings are extracted in the browser. Source files stay local and are not uploaded.",
+      "Altitude sentences in zone constraints are copied as text and are not parsed.",
+      "Obstacles are limited to footprints that intersect the survey bounding box.",
+      "The solver receives one UAV profile from the first aircraft. uav.count is the fleet size.",
+      DEFAULT_PROFILE_NOTE,
     ],
   };
 }
