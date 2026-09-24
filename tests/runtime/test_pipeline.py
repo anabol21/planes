@@ -58,11 +58,12 @@ class PipelineTest(unittest.TestCase):
         self.assertIsNone(response.mission_plan)
         self.assertNotIn("mission_plan", response_to_dict(response))
 
-    def test_default_solve_is_not_implemented(self) -> None:
+    def test_default_solve_rejects_foreign_fixture_scenario(self) -> None:
         response = run(json.dumps(load_fixture()).encode("utf-8"))
         self.assertEqual(response.outcome, "error")
+        self.assertNotEqual(response.outcome, "infeasible")
         self.assertIsNone(response.mission_plan)
-        self.assertIn("solver body is not implemented", response.solver_report.limitations)
+        self.assertIn("solver failed before producing a result", response.solver_report.limitations)
 
     def test_stage_logs_follow_execution_order(self) -> None:
         buffer = io.StringIO()
@@ -72,7 +73,7 @@ class PipelineTest(unittest.TestCase):
                 response = run(raw)
                 payload = emit(response)
         self.assertEqual(response.outcome, "error")
-        self.assertIn("solver body is not implemented", payload)
+        self.assertIn("solver failed before producing a result", payload)
         self.assertNotIn("[ingest]", payload)
         text = buffer.getvalue()
         self.assertNotIn(TOKEN, text)
@@ -83,8 +84,8 @@ class PipelineTest(unittest.TestCase):
             self.assertGreater(found, cursor, prefix)
             cursor = found
         self.assertGreaterEqual(text.count("[solve]"), 2)
-        self.assertIn("NotImplementedError", text)
-        self.assertLess(text.find("NotImplementedError"), text.find("[judge]"))
+        self.assertIn("исключение", text)
+        self.assertLess(text.find("исключение"), text.find("[judge]"))
         self.assertIn("job_id=job_01", text[text.find("[bind]") :])
 
     def test_bad_json_logs_only_stages_that_ran(self) -> None:
