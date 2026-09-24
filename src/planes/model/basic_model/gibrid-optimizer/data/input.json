@@ -1,0 +1,41 @@
+{
+  "criterion": "min_flight_hours",
+  "gsd_cm_per_px": 3.0,
+  "wind": { "speed_ms": 5.0, "direction_deg": 270.0 },
+  "area": [
+    [37.601, 55.7480],
+    [37.609, 55.7480],
+    [37.609, 55.7525],
+    [37.601, 55.7525],
+    [37.601, 55.7480]
+  ],
+  "takeoff": { "lat": 55.7470, "lon": 37.6000 },
+  "uav": {
+    "model": "Geoscan Gemini",
+    "count": 2,
+    "mass_kg": 2.0,
+    "max_flight_time_s": 2400,
+    "battery_wh": 144.7,
+    "v_air_ms": 12.0,
+    "v_vertical_ms": 5.0,
+    "max_wind_ms": 10.0
+  },
+  "camera": {
+    "sensor_width_mm": 23.5,
+    "sensor_height_mm": 15.6,
+    "focal_length_mm": 20.0,
+    "image_width_px": 6000,
+    "image_height_px": 4000
+  },
+  "survey": {
+    "forward_overlap": 0.7,
+    "side_overlap": 0.6,
+    "strip_direction_deg": 0.0
+  },
+  "power_coeffs": { "kh": 90.0, "kv": 0.02, "kw": 0.008 },
+  "solver": {
+    "time_limit_s": 500,
+    "turn_time_s": 5.0,
+    "apply_turn_to_base": false
+  }
+}
