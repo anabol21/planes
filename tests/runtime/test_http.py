@@ -33,7 +33,7 @@ class HttpListenerTest(unittest.TestCase):
         self.assertEqual(body["contract_version"], "v0")
         self.assertNotIn("mission_plan", body)
         self.assertTrue(
-            any("solver body is not implemented" in item for item in body["solver_report"]["limitations"])
+            any("solver failed before producing a result" in item for item in body["solver_report"]["limitations"])
         )
         self.assertNotIn(TOKEN, str(body))
 
