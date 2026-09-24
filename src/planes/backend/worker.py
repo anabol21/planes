@@ -8,6 +8,7 @@ from typing import Any
 from .engine import OptimizationEngine
 from .fake_engine import FakeOptimizationEngine
 from .models import ComputeRequest
+from .runtime_engine import RuntimeOptimizationEngine
 from .store import SQLiteJobStore
 
 
@@ -46,8 +47,19 @@ class Worker:
 def main() -> int:
     parser = argparse.ArgumentParser(description="Run one RUS-001 backend worker claim")
     parser.add_argument("--database", required=True, help="path to the SQLite database")
+    parser.add_argument(
+        "--engine",
+        choices=("fake", "runtime"),
+        default="fake",
+        help="optimization engine composition (default: fake)",
+    )
     args = parser.parse_args()
-    worker = Worker(SQLiteJobStore(args.database), FakeOptimizationEngine())
+    engine: OptimizationEngine
+    if args.engine == "runtime":
+        engine = RuntimeOptimizationEngine()
+    else:
+        engine = FakeOptimizationEngine()
+    worker = Worker(SQLiteJobStore(args.database), engine)
     worker.run_once()
     return 0
 

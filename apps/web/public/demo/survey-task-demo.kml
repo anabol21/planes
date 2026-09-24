@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2">
+  <Document>
+    <name>Synthetic survey task</name>
+    <description>Team-created geometry for the local lifecycle demo.</description>
+    <Placemark>
+      <name>Demo survey boundary</name>
+      <Polygon>
+        <altitudeMode>clampToGround</altitudeMode>
+        <outerBoundaryIs>
+          <LinearRing>
+            <coordinates>
+              30.3000,59.9300,0 30.3200,59.9300,0 30.3200,59.9450,0 30.3000,59.9450,0 30.3000,59.9300,0
+            </coordinates>
+          </LinearRing>
+        </outerBoundaryIs>
+      </Polygon>
+    </Placemark>
+  </Document>
+</kml>
