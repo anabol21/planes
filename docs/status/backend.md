@@ -11,6 +11,8 @@ contract_version: v0
 
 # Backend status
 
+- `planned`: RUS-002 — рельеф из отдельного KML местности в матрицы `precompute`. Бриф: `docs/workstreams/model/RUS-002.md`.
+
 ## Completed
 
 - [x] Described the 12-step product pipeline and data lifecycle.
