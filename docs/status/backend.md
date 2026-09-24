@@ -3,8 +3,8 @@ workstream: backend
 owner: Ruslan
 task: RUS-001
 status: review
-updated: 2026-09-22
-checkpoint: 2026-09-22
+updated: 2026-09-24
+checkpoint: 2026-09-23
 branch: backend/RUS-001-pipeline
 contract_version: v0
 ---
@@ -38,6 +38,7 @@ Review RUS-001, then replace the fake engine at composition time with a runtime-
 - `python -m unittest discover -s tests/backend -v` — passed, 20 tests, `OK`.
 - `python scripts/validate_workspace.py` — `Workspace validation: PASS`.
 - `git diff --check` — passed (exit 0).
+- Landed on the integration branch in `02011ce` (merge of `0d61960`). Re-checked here: `python3 -m compileall -q src/planes/backend tests/backend` exit 0; `PYTHONPATH=src python3 -m unittest discover -s tests/backend -v` — `Ran 20 tests in 0.876s` / `OK`. `python3 scripts/validate_workspace.py` — `Workspace validation: PASS`. Runtime contour re-checked with `PYTHONPATH=src python3 -m unittest discover -s tests/runtime -v` — `Ran 28 tests in 7.244s` / `OK`. `src/planes/contracts/**` and `src/planes/runtime/**` were not modified.
 - Direct WSGI-callable tests cover the three routes, validation failures, unknown jobs, result-not-ready, every terminal lifecycle mapping, unsupported methods, and unknown paths.
 - `test_worker_cli_processes_job_in_separate_process` verifies one worker CLI run in a separate Python subprocess with `PYTHONPATH=src`.
 - `test_socket_bound_api_submit_and_status` starts the standard-library WSGI server on localhost with an ephemeral port and verifies real HTTP `POST /jobs` and `GET /jobs/{id}` responses before clean shutdown.
