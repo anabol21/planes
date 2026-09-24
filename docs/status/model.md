@@ -11,6 +11,8 @@ contract_version: v0
 
 # Model status
 
+- `planned`: GRI-002 — непрямоугольная зона и отдельный KML ограничений полётной зоны. Бриф: `docs/workstreams/model/GRI-002.md`.
+
 ## Completed
 
 - [x] Formalized the first simplified problem and staged future extensions.

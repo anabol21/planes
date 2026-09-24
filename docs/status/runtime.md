@@ -11,6 +11,8 @@ contract_version: v0
 
 # Runtime status
 
+- `planned`: MIS-002 — внешний перебор площадок и БВС, каждый кандидат — один вызов ядра. Бриф: `docs/workstreams/runtime/MIS-002.md`.
+
 ## Completed
 
 - [x] Local v0 dataclasses and `tests/runtime/fixtures/compute_request_v0.json` aligned with `INTERFACES_V0` (not a shared contract freeze).
