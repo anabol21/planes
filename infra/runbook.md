@@ -84,11 +84,11 @@ POST http://$COMPUTE_HOST:8080/v0/solve
 | HTTP 401 `unauthorized` | Нет или неверен bearer |
 | HTTP 503 `busy` | Другой job держит lock |
 | HTTP 400 | Неверный `Content-Length` или тело больше 1 МиБ, до конвейера |
-| HTTP 200 и `outcome=error` | Битый JSON, неверный контракт или сбой солвера, включая текущее пустое тело (`solver body is not implemented`) |
+| HTTP 200 и `outcome=error` | Битый JSON, неверный контракт, чужой `scenario` или сбой солвера |
 | HTTP 200 и `outcome=infeasible` | Отказ солвера. Запрос не сломан |
 | HTTP 200 и `outcome=timed_out` | Дедлайн, не `infeasible` |
 
-Сегодня живое ядро возвращает `error` и limitation `solver body is not implemented`, пока Гриша не заполнит `solver.solve`. Этот ответ всё равно доказывает HTTP-путь.
+В репозитории `solver.solve` уже вызывает солвер Гриши. Чужой `scenario` (форма веба `scenario_profile`) даёт `outcome=error`, не `infeasible`. Служба на ВМ этим изменением не переустанавливалась: пока на машине старый checkout, живой ответ может оставаться прежним `error`.
 
 ## Для агента Гриши
 
@@ -120,9 +120,9 @@ python -m planes.runtime.cli solve --request - --timeout-seconds <N>
 
 CLI запускает ядро отдельным процессом: `python -m planes.runtime.core`. Stdout ядра — JSON, логи — stderr и `/var/log/planes/<job_id>.log`. По таймауту CLI посылает группе процесса SIGTERM, затем SIGKILL. Падение ядра не роняет слушатель: следующий запрос снова стартует CLI.
 
-Конвейер ядра: ingest, bind, compile, judge, emit. `compile` проверяет, что `scenario` — JSON-объект, и кладёт его в `Problem` без географии и без перебора параметров. Тело `solver.solve` пустое. `NotImplementedError` становится `outcome=error` и limitation `solver body is not implemented`, процесс завершается с кодом 0. Битый JSON — тоже `error`, не `infeasible`. `Solution` → `feasible`, `Infeasible` → `infeasible` без `mission_plan`, `TimedOut` → `timed_out`.
+Конвейер ядра: ingest, bind, compile, judge, emit. `compile` проверяет, что `scenario` — JSON-объект, и кладёт его в `Problem` без географии и без перебора параметров. `solver.solve` собирает `InputData` только из полей Гриши и вызывает `run` в памяти. `optimal` и `feasible` становятся `Solution` (`outcome=feasible`). `heuristic` тоже `Solution`, с limitation, что это не глобальный оптимум. `infeasible` солвера становится `Infeasible`. Обрыв по лимиту времени становится `TimedOut`. Исключение (чужие или недостающие поля, pydantic, импорт) становится `outcome=error`, процесс завершается с кодом 0. Битый JSON — тоже `error`, не `infeasible`. `Infeasible` приходит без `mission_plan`. `TimedOut` → `timed_out`.
 
-`PLANES_SOLVER_ARGV` по-прежнему подменяет процесс ядра. Им пользуются проверки crash, битого stdout и sleep через модуль placeholder. Это не продуктовый путь и не поле запроса. Сегодня живое ядро возвращает `outcome=error` и limitation `solver body is not implemented`, пока Гриша не заполнит `solver.solve`.
+`PLANES_SOLVER_ARGV` по-прежнему подменяет процесс ядра. Им пользуются проверки crash, битого stdout и sleep через модуль placeholder. Это не продуктовый путь и не поле запроса. ВМ этим коммитом не переустанавливалась.
 
 Lock одного job лежит в `/run/planes/planes-compute.lock`, если этот каталог доступен для записи, иначе в `/var/lock` или во временном каталоге.
 
