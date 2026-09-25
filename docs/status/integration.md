@@ -1,11 +1,11 @@
 ---
 workstream: integration
 owner: Team
-task: DEMO-001
-status: review
-updated: 2026-09-24
-checkpoint: 2026-09-23
-branch: main
+task: INT-002
+status: in_progress
+updated: 2026-09-25
+checkpoint: 2026-09-25
+branch: integration/INT-002-dev-sync
 contract_version: v0
 ---
 
@@ -26,17 +26,20 @@ contract_version: v0
 
 ## In progress
 
+- [ ] INT-002: fast-forward `dev` from `4c459a6c8e1383f1fbf8b87d2416686e3cfab866` to canonical `main` at `e4ec3fa825f08eb9136c9c0c283904c4187c380a`, then verify the remote ref before publishing TER-001 documentation to `dev`.
 - [ ] Team review and fresh-machine replay from `main`.
 
 ## Next action
 
-Replay the documented three-terminal demo from `main`: API, web client, and worker sharing one SQLite file.
+Run the fresh INT-002 topology checks from `docs/workstreams/integration/INT-002.md`. If and only if they still show a true fast-forward, update `dev` normally and verify the remote SHA.
 
 ## Evidence
 
 - `docs/architecture/INTERFACES_V0.md`
 - `docs/checkpoints/2026-09-22.md`
 - Task brief: `docs/workstreams/integration/INT-001.md`.
+- INT-002 brief: `docs/workstreams/integration/INT-002.md`.
+- INT-002 pre-sync topology: `origin/dev...origin/main` returned `0 23`; ancestor check passed; dry-run advertised `4c459a6..e4ec3fa`.
 - `python -m compileall -q src/planes/backend tests/backend` — passed, exit 0.
 - `python -m unittest discover -s tests/backend -v` — passed, 32 tests, `OK`.
 - `python -m unittest tests.backend.test_runtime_engine -v` — passed, 12 runtime-wrapper tests, `OK`.
@@ -52,6 +55,7 @@ Replay the documented three-terminal demo from `main`: API, web client, and work
 
 ## Blockers / limitations
 
+- INT-002 must stop if refreshed topology diverges or the server rejects a normal fast-forward. Force push, rebase, and a synchronization merge commit are prohibited.
 - Real VPS smoke requires out-of-band `COMPUTE_HOST`, `COMPUTE_TOKEN`, and `COMPUTE_TIMEOUT_SECONDS`; none were present during verification.
 - Runtime server tests are Linux/VPS-only: direct discovery under Windows fails at import because `planes.runtime.lock` intentionally uses POSIX `fcntl`; backend runtime-wrapper tests pass on Windows without changing runtime internals.
 - Concrete shared DTO fields and equipment profile provenance remain unfrozen. INT-001 converts between the existing backend-local and runtime-local v0 models without claiming a shared contract freeze.
@@ -59,6 +63,7 @@ Replay the documented three-terminal demo from `main`: API, web client, and work
 
 ## Interface changes and downstream impact
 
+- INT-002 changes repository refs and governance documentation only. It does not modify source code or contract `v0`, and it excludes unmerged runtime/KML/model feature branches.
 - Worker CLI now accepts `--engine fake` and `--engine runtime`; omission remains equivalent to `--engine fake`.
 - Runtime mode requires `optimization.objective` and `optimization.time_limit_seconds`; generic backend submission validation is unchanged.
 - Runtime transport, runtime internals, infrastructure, shared contracts, frontend, and model code are unchanged.
