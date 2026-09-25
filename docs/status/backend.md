@@ -11,7 +11,7 @@ contract_version: v0
 
 # Backend status
 
-- `planned`: RUS-002 — рельеф из отдельного KML местности в матрицы `precompute`. Бриф: `docs/workstreams/model/RUS-002.md`.
+- `blocked/superseded`: RUS-002 is retained as history but grants no implementation authority because its `target: main` conflicts with root governance. Terrain model work moved to `TER-001` under model ownership and is blocked on `DEV-SYNC REQUIRED`.
 
 ## Completed
 
@@ -76,6 +76,7 @@ Automated evidence is recorded above: direct WSGI tests exercise handler behavio
 
 ## Blockers / decisions requested
 
+- RUS-002 must not be implemented. `TER-001` supersedes it and keeps terrain logic out of backend/API/job lifecycle code.
 - The shared domain schemas and runtime-facing JSON fixtures remain unfrozen under `OPEN-001..006`, `OPEN-019`, and `OPEN-021`; the committed fixture and structures are backend-local only.
 - No external HTTP framework is declared in the repository, so the prototype uses the Python standard-library WSGI server rather than introducing an out-of-scope dependency.
 - Prototype recovery policy for a worker that dies after claiming a job is intentionally not defined. Such a job remains `running` rather than being silently duplicated or reported successful.
