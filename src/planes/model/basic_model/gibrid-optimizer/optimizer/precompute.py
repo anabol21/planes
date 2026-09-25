@@ -1,22 +1,19 @@
 """Предвычисления: матрицы расстояний, времён, энергий, взлёт/посадка."""
 
 from math import radians, degrees, sin, cos, atan2, sqrt
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 import numpy as np
 
 from .models import InputData
 from .geometry import Strip
-
-
-def haversine_m(lat1, lon1, lat2, lon2) -> float:
-    """Расстояние по большому кругу, м."""
-    R = 6371000.0
-    p1, p2 = radians(lat1), radians(lat2)
-    dp = radians(lat2 - lat1)
-    dl = radians(lon2 - lon1)
-    a = sin(dp / 2) ** 2 + cos(p1) * cos(p2) * sin(dl / 2) ** 2
-    return 2 * R * atan2(sqrt(a), sqrt(1 - a))
+from .terrain import (
+    KMLTerrainProvider,
+    TerrainProvider,
+    build_agl_profile,
+    endpoint_distance_3d,
+    haversine_m,
+)
 
 
 def bearing_deg(lat1, lon1, lat2, lon2) -> float:
@@ -50,6 +47,7 @@ def precompute(
     input_data: InputData,
     strips: List[Strip],
     altitude_m: float,
+    terrain_provider: Optional[TerrainProvider] = None,
 ) -> Dict[str, Any]:
     """Строит все предвычисленные величины для оптимизатора.
 
@@ -60,6 +58,18 @@ def precompute(
     coeffs = input_data.power_coeffs
     turn_time = input_data.solver.turn_time_s
     apply_turn_to_base = input_data.solver.apply_turn_to_base
+    terrain_config = input_data.terrain
+    if terrain_config is None:
+        if terrain_provider is not None:
+            raise ValueError("terrain_provider requires input_data.terrain")
+        active_terrain = None
+    else:
+        active_terrain = terrain_provider or KMLTerrainProvider.from_file(
+            terrain_config.kml_path,
+            crs=terrain_config.crs,
+            horizontal_unit=terrain_config.horizontal_unit,
+            elevation_unit=terrain_config.elevation_unit,
+        )
 
     M = len(strips)
     N = M + 1
@@ -85,7 +95,14 @@ def precompute(
                 continue
             lat1, lon1 = exits[i]
             lat2, lon2 = entries[j]
-            dist = haversine_m(lat1, lon1, lat2, lon2)
+            if active_terrain is None:
+                dist = haversine_m(lat1, lon1, lat2, lon2)
+            else:
+                # TER-001 transfer MVP: endpoint vertical displacement only.
+                # Intermediate terrain clearance remains explicitly OPEN.
+                dist = endpoint_distance_3d(
+                    exits[i], entries[j], active_terrain, altitude_m
+                )
             brg = bearing_deg(lat1, lon1, lat2, lon2)
             vg = ground_speed(
                 uav.v_air_ms, brg, wind.speed_ms, wind.direction_deg
@@ -106,7 +123,17 @@ def precompute(
     eps = np.zeros(M)
     for s in range(M):
         (lat_s, lon_s), (lat_e, lon_e) = strips[s]
-        L = haversine_m(lat_s, lon_s, lat_e, lon_e)
+        if active_terrain is None:
+            L = haversine_m(lat_s, lon_s, lat_e, lon_e)
+        else:
+            profile = build_agl_profile(
+                strips[s][0],
+                strips[s][1],
+                active_terrain,
+                altitude_m,
+                terrain_config.sample_step_m,
+            )
+            L = profile.distance_3d_m
         brg = bearing_deg(lat_s, lon_s, lat_e, lon_e)
         vg = ground_speed(
             uav.v_air_ms, brg, wind.speed_ms, wind.direction_deg
@@ -122,8 +149,16 @@ def precompute(
     E_takeoff = P_hover * T_takeoff / 3600.0
     E_landing = E_takeoff
 
-    T_max = uav.max_flight_time_s - T_takeoff - T_landing
-    E_max = uav.battery_wh - E_takeoff - E_landing
+    if terrain_config is None:
+        usable_time_s = uav.max_flight_time_s
+        usable_energy_wh = uav.battery_wh
+    else:
+        reserve_multiplier = 1.0 - terrain_config.landing_reserve_fraction
+        usable_time_s = uav.max_flight_time_s * reserve_multiplier
+        usable_energy_wh = uav.battery_wh * reserve_multiplier
+
+    T_max = usable_time_s - T_takeoff - T_landing
+    E_max = usable_energy_wh - E_takeoff - E_landing
 
     # 1D-ключ для упорядочивания полос (ось с наибольшим разбросом)
     entries_arr = np.array([entries[i] for i in range(1, N)])

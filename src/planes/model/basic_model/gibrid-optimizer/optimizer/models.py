@@ -1,6 +1,6 @@
 """Pydantic-схемы входных данных оптимизатора."""
 
-from typing import List, Literal
+from typing import List, Literal, Optional
 from pydantic import BaseModel, Field
 
 
@@ -63,6 +63,22 @@ class SolverCfg(BaseModel):
     apply_turn_to_base: bool = False
 
 
+class TerrainConfig(BaseModel):
+    """Optional local terrain/autonomy policy for TER-001.
+
+    CRS and units are mandatory when terrain is enabled. The 10% reserve is
+    opt-in because this entire object is optional; legacy inputs remain
+    byte-for-byte compatible with the previous time and energy budgets.
+    """
+
+    kml_path: str = Field(min_length=1)
+    crs: str = Field(min_length=1)
+    horizontal_unit: Literal["degree"]
+    elevation_unit: Literal["metre"]
+    sample_step_m: float = Field(default=25.0, gt=0.0)
+    landing_reserve_fraction: float = Field(default=0.10, ge=0.0, lt=1.0)
+
+
 class InputData(BaseModel):
     """Полные входные данные оптимизатора."""
     criterion: Literal["min_time", "min_flight_hours"]
@@ -77,3 +93,4 @@ class InputData(BaseModel):
     survey: Survey
     power_coeffs: PowerCoeffs
     solver: SolverCfg = SolverCfg()
+    terrain: Optional[TerrainConfig] = None

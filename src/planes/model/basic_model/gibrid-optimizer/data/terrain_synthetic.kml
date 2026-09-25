@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2">
+  <Document>
+    <name>TER-001 synthetic terrain</name>
+    <Placemark>
+      <name>flat-rise-hill-fall</name>
+      <description>Small deterministic EPSG:4326 terrain profile; elevation is metres.</description>
+      <LineString>
+        <altitudeMode>absolute</altitudeMode>
+        <coordinates>
+          37.0000,55.0000,100
+          37.0004,55.0000,100
+          37.0008,55.0000,140
+          37.0012,55.0000,180
+          37.0016,55.0000,140
+          37.0020,55.0000,100
+        </coordinates>
+      </LineString>
+    </Placemark>
+  </Document>
+</kml>
