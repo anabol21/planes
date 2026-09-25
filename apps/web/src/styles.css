@@ -127,6 +127,7 @@ button:disabled { cursor: wait; filter: saturate(0.35); opacity: 0.68; }
 .point-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 15px; }
 .point-grid fieldset { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 0; padding: 14px; border: 1px solid rgba(148, 163, 184, 0.11); border-radius: 11px; }
 .point-grid legend { padding: 0 6px; color: #748ba1; font-size: 0.68rem; font-weight: 700; }
+.point-grid .point-hint { grid-column: 1 / -1; margin-top: 0; }
 .control-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
 
 .secondary-button, .text-button, .icon-button { min-width: 0; box-shadow: none; }

@@ -1,4 +1,4 @@
-"""CLI outcomes. The default core has an empty solver body.
+"""CLI outcomes. The shared fixture scenario is not Grisha's InputData.
 
 Crash, invalid stdout, and sleep still use ``PLANES_SOLVER_ARGV`` to reach
 the placeholder module. That module is not the product path.
@@ -15,7 +15,7 @@ _PLACEHOLDER = f"{sys.executable} -m planes.runtime.placeholder"
 
 
 class OutcomeTest(unittest.TestCase):
-    def test_fixture_file_reports_unimplemented_solver(self) -> None:
+    def test_fixture_file_reports_solver_error(self) -> None:
         from support import FIXTURE
 
         body = run_cli(None, "5", request_path=str(FIXTURE))
@@ -26,7 +26,7 @@ class OutcomeTest(unittest.TestCase):
         self.assertEqual(body["solver_report"]["seed"], 7)
         self.assertNotIn("mission_plan", body)
         self.assertTrue(
-            any("solver body is not implemented" in item for item in body["solver_report"]["limitations"])
+            any("solver failed before producing a result" in item for item in body["solver_report"]["limitations"])
         )
         self.assertNotEqual(body["outcome"], "feasible")
 

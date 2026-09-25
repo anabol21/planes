@@ -33,6 +33,7 @@ class BackendService:
         optimization: Mapping[str, Any],
         seed: int,
         contract_version: str = CONTRACT_VERSION,
+        job_id: str | None = None,
     ) -> dict[str, Any]:
         if contract_version != CONTRACT_VERSION:
             raise ValidationError(f"contract_version must be {CONTRACT_VERSION!r}")
@@ -42,11 +43,15 @@ class BackendService:
             raise ValidationError("optimization must be a JSON object")
         if isinstance(seed, bool) or not isinstance(seed, int):
             raise ValidationError("seed must be an integer")
+        if job_id is None:
+            job_id = str(uuid.uuid4())
+        elif not isinstance(job_id, str) or not job_id.strip():
+            raise ValidationError("job_id must be a non-empty string")
 
         scenario_json = self._snapshot_json(scenario, "scenario")
         optimization_json = self._snapshot_json(optimization, "optimization")
         record = self.store.create_job(
-            job_id=str(uuid.uuid4()),
+            job_id=job_id,
             contract_version=contract_version,
             scenario_json=scenario_json,
             optimization_json=optimization_json,

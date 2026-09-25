@@ -22,6 +22,8 @@ from planes.runtime.logs import redact
 from planes.runtime.types import dump_response, make_response, parse_response, safe_job_id
 
 MAX_BODY_BYTES = 1_048_576
+# Process kill sits after the SCIP budget. The listener buffer stays on top.
+WRAPPER_SLACK_SECONDS = 5
 _CLI_BUFFER_SECONDS = 2.0
 
 
@@ -123,7 +125,8 @@ def _authorized(header: str | None, expected: str) -> bool:
 
 
 def _run_cli(body: bytes) -> bytes:
-    timeout_seconds = _timeout_from_body(body)
+    # SCIP keeps the form budget. This deadline is only the process wrapper.
+    timeout_seconds = _timeout_from_body(body) + WRAPPER_SLACK_SECONDS
     env = os.environ.copy()
     env.pop("COMPUTE_TOKEN", None)
     command = [

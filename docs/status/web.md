@@ -3,9 +3,9 @@ workstream: web
 owner: Integration / Web
 task: WEB-001
 status: in_progress
-updated: 2026-09-22
+updated: 2026-09-24
 checkpoint: 2026-09-22
-branch: web/WEB-001-job-lifecycle-client
+branch: cursor/kml-field-stitch-e347
 contract_version: v0
 ---
 
@@ -23,6 +23,7 @@ contract_version: v0
 - [x] Installed app-local dependencies and generated `apps/web/pnpm-lock.yaml`.
 - [x] Verified typecheck, 18 deterministic tests, and the production build.
 - [x] Verified that the Vite development server starts and serves the application locally.
+- [x] Scenario JSON now carries Grisha's `InputData` fields. `min_total_flight_time` is sent as `criterion=min_flight_hours`. One survey ring, restriction text, and obstacles that meet the survey bbox are included. Missing sensor and energy fields use the `input.json` default profile and are noted in `scenario.default_profile` and in the local limitations list.
 
 ## In progress
 
@@ -41,7 +42,8 @@ Run the full browser-to-backend lifecycle smoke procedure against the RUS-001 AP
 - Vite proxy: `/api` is rewritten and forwarded to `http://127.0.0.1:8000`.
 - Dependency installation: `pnpm install` completed successfully with pnpm 11.19.0; all versions declared in `apps/web/package.json` resolved without changes and `apps/web/pnpm-lock.yaml` was generated.
 - Typecheck: `pnpm typecheck` passed (`tsc --noEmit`).
-- Tests: `pnpm test` passed 18 tests in 2 test files with Vitest 5.0.1.
+- Tests: `pnpm exec vitest run src/kml.test.ts src/scenario.test.ts` passed 17 tests in 2 files with Vitest 5.0.1. `pnpm typecheck` (`tsc --noEmit`) passed.
+- The browser limitations panel appends the default-profile note because the runtime adapter drops unknown scenario keys before `solver_report.limitations`.
 - Production build: `pnpm build` passed; Vite 8.3.0 transformed 19 modules and emitted the production bundle.
 - Development server: `pnpm dev -- --host 127.0.0.1 --port 5173 --strictPort` reported ready at `http://127.0.0.1:5173/`; an HTTP request returned `200 OK`, no startup compile errors were reported, and the server was stopped after verification.
 - Proxy configuration: the successful Vite startup loaded `vite.config.ts`, including `/api` rewrite/proxy configuration targeting `http://127.0.0.1:8000`.

@@ -38,6 +38,7 @@ class BackendAPI:
                     optimization=payload.get("optimization"),
                     seed=payload.get("seed"),
                     contract_version=payload.get("contract_version", "v0"),
+                    job_id=payload.get("job_id"),
                 )
                 return self._respond(start_response, "202 Accepted", status, [("Location", f"/jobs/{status['job_id']}")])
 

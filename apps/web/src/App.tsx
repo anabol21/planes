@@ -21,13 +21,17 @@ import {
   type KmlCategory,
   type KmlFileRecord,
 } from "./kml";
+import { formatDecimalInput, normalizeDecimalDraft, parseDecimalInput } from "./numberInput";
 import { getResultPresentation } from "./presentation";
 import {
   DEFAULT_UAVS,
   addUav,
+  DEFAULT_TIME_LIMIT,
+  MAX_TIME_LIMIT_SECONDS,
   buildOptimization,
   buildPrototypeScenario,
   validateScenarioInputs,
+  withDefaultProfileLimitation,
   type FleetUav,
   type ScenarioInputs,
   type SurveyType,
@@ -41,8 +45,8 @@ import {
 } from "./types";
 
 const DEFAULT_OBJECTIVE = "min_time";
-const DEFAULT_TIME_LIMIT = "30";
 const DEFAULT_SEED = "7";
+const TIME_LIMIT_TOO_LONG = `Лимит расчёта не больше ${MAX_TIME_LIMIT_SECONDS} секунд.`;
 
 const STATE_LABELS: Record<LifecycleState, string> = {
   queued: "В очереди",
@@ -92,7 +96,7 @@ function SolverSummary({ report }: { report: JsonObject }) {
   const method = readString(report.method);
   const objective = readString(report.objective);
   const runtime = readNumber(report.runtime_seconds);
-  const limitations = getLimitations(report);
+  const limitations = withDefaultProfileLimitation(getLimitations(report));
   return (
     <div className="result-section">
       <h3>Сводка расчёта</h3>
@@ -244,8 +248,48 @@ function UploadCard({ category, title, description, sourceHint, files, multiple 
   );
 }
 
-function NumberField({ label, value, unit, onChange, min, max }: { label: string; value: number; unit?: string; onChange: (value: number) => void; min?: number; max?: number }) {
-  return <label><span>{label}{unit ? `, ${unit}` : ""}</span><input type="number" step="any" min={min} max={max} value={value} onChange={(event) => onChange(Number(event.target.value))} /></label>;
+function NumberField({
+  label,
+  value,
+  onChange,
+  unit,
+  placeholder,
+  hint,
+  integer = false,
+}: {
+  label: string;
+  value: number;
+  onChange: (value: number) => void;
+  unit?: string;
+  placeholder?: string;
+  hint?: string;
+  integer?: boolean;
+}) {
+  const [draft, setDraft] = useState<string | null>(null);
+  const shown = draft ?? formatDecimalInput(value);
+  return (
+    <label>
+      <span>{label}{unit ? `, ${unit}` : ""}</span>
+      <input
+        type="text"
+        inputMode={integer ? "numeric" : "decimal"}
+        autoComplete="off"
+        spellCheck={false}
+        placeholder={placeholder}
+        value={shown}
+        onChange={(event) => {
+          const next = normalizeDecimalDraft(event.target.value);
+          setDraft(next);
+          const parsed = parseDecimalInput(next);
+          if (parsed === null) return;
+          if (integer && !Number.isSafeInteger(parsed)) return;
+          onChange(parsed);
+        }}
+        onBlur={() => setDraft(null)}
+      />
+      {hint ? <small className="field-hint">{hint}</small> : null}
+    </label>
+  );
 }
 
 function UavCard({ uav, index, removable, onChange, onRemove }: { uav: FleetUav; index: number; removable: boolean; onChange: (next: FleetUav) => void; onRemove: () => void }) {
@@ -257,13 +301,23 @@ function UavCard({ uav, index, removable, onChange, onRemove }: { uav: FleetUav;
         <label><span>Локальный ID</span><input value={uav.uav_id} onChange={(event) => set("uav_id", event.target.value)} /></label>
         <label><span>Модель</span><input value={uav.model} onChange={(event) => set("model", event.target.value)} /></label>
         <label><span>Полезная нагрузка / сенсор</span><input value={uav.payload_model} onChange={(event) => set("payload_model", event.target.value)} /></label>
-        <NumberField label="Крейсерская скорость" unit="м/с" min={0} value={uav.cruise_speed_m_s} onChange={(value) => set("cruise_speed_m_s", value)} />
-        <NumberField label="Ёмкость батареи" unit="Вт·ч" min={0} value={uav.battery_capacity_wh} onChange={(value) => set("battery_capacity_wh", value)} />
-        <NumberField label="Макс. время полёта" unit="с" min={0} value={uav.max_flight_time_s} onChange={(value) => set("max_flight_time_s", value)} />
+        <NumberField label="Крейсерская скорость" unit="м/с" placeholder="15" value={uav.cruise_speed_m_s} onChange={(value) => set("cruise_speed_m_s", value)} />
+        <NumberField label="Ёмкость батареи" unit="Вт·ч" placeholder="144.7" value={uav.battery_capacity_wh} onChange={(value) => set("battery_capacity_wh", value)} />
+        <NumberField label="Макс. время полёта" unit="с" placeholder="2400" value={uav.max_flight_time_s} onChange={(value) => set("max_flight_time_s", value)} />
       </div>
       <div className="point-grid">
-        <fieldset><legend>Точка старта · EPSG:4326</legend><NumberField label="Долгота" unit="°" min={-180} max={180} value={uav.launch_lon_deg} onChange={(value) => set("launch_lon_deg", value)} /><NumberField label="Широта" unit="°" min={-90} max={90} value={uav.launch_lat_deg} onChange={(value) => set("launch_lat_deg", value)} /></fieldset>
-        <fieldset><legend>Точка посадки · EPSG:4326</legend><NumberField label="Долгота" unit="°" min={-180} max={180} value={uav.landing_lon_deg} onChange={(value) => set("landing_lon_deg", value)} /><NumberField label="Широта" unit="°" min={-90} max={90} value={uav.landing_lat_deg} onChange={(value) => set("landing_lat_deg", value)} /></fieldset>
+        <fieldset>
+          <legend>Точка старта · EPSG:4326</legend>
+          <NumberField label="Долгота" unit="°" placeholder="37.6000" value={uav.launch_lon_deg} onChange={(value) => set("launch_lon_deg", value)} />
+          <NumberField label="Широта" unit="°" placeholder="55.7470" value={uav.launch_lat_deg} onChange={(value) => set("launch_lat_deg", value)} />
+          <small className="field-hint point-hint">Пример: 37.6000 и 55.7470</small>
+        </fieldset>
+        <fieldset>
+          <legend>Точка посадки · EPSG:4326</legend>
+          <NumberField label="Долгота" unit="°" placeholder="37.6000" value={uav.landing_lon_deg} onChange={(value) => set("landing_lon_deg", value)} />
+          <NumberField label="Широта" unit="°" placeholder="55.7470" value={uav.landing_lat_deg} onChange={(value) => set("landing_lat_deg", value)} />
+          <small className="field-hint point-hint">Пример: 37.6000 и 55.7470</small>
+        </fieldset>
       </div>
     </article>
   );
@@ -275,9 +329,9 @@ export default function App() {
   const [uavs, setUavs] = useState<FleetUav[]>(() => DEFAULT_UAVS.map((uav) => ({ ...uav })));
   const [surveyType, setSurveyType] = useState<SurveyType>("RGB");
   const [windSpeed, setWindSpeed] = useState(3);
-  const [windDirection, setWindDirection] = useState("270");
+  const [windDirection, setWindDirection] = useState(270);
   const [objective, setObjective] = useState(DEFAULT_OBJECTIVE);
-  const [timeLimit, setTimeLimit] = useState(DEFAULT_TIME_LIMIT);
+  const [timeLimit, setTimeLimit] = useState(Number(DEFAULT_TIME_LIMIT));
   const [seedText, setSeedText] = useState(DEFAULT_SEED);
   const [surveyTask, setSurveyTask] = useState<KmlFileRecord | null>(null);
   const [restrictedZones, setRestrictedZones] = useState<KmlFileRecord | null>(null);
@@ -299,14 +353,26 @@ export default function App() {
     uavs,
     surveyType,
     windSpeedMps: windSpeed,
-    windDirectionFromDeg: windDirection.trim() ? Number(windDirection) : null,
+    windDirectionFromDeg: windDirection,
     surveyTask,
     restrictedZones,
     obstacles,
   }), [scenarioId, uavs, surveyType, windSpeed, windDirection, surveyTask, restrictedZones, obstacles]);
 
-  const scenarioText = useMemo(() => JSON.stringify(buildPrototypeScenario(scenarioInputs), null, 2), [scenarioInputs]);
-  const optimizationText = useMemo(() => JSON.stringify({ objective, time_limit_seconds: Number(timeLimit) }, null, 2), [objective, timeLimit]);
+  const scenarioPreview = useMemo(() => {
+    try {
+      return {
+        text: JSON.stringify(buildPrototypeScenario(scenarioInputs, objective), null, 2),
+        error: null as string | null,
+      };
+    } catch (caught) {
+      return {
+        text: "",
+        error: caught instanceof Error ? caught.message : "Не удалось собрать сценарий.",
+      };
+    }
+  }, [scenarioInputs, objective]);
+  const optimizationText = useMemo(() => JSON.stringify({ objective, time_limit_seconds: timeLimit }, null, 2), [objective, timeLimit]);
 
   async function handleKmlFiles(category: KmlCategory, list: FileList | null) {
     const files = Array.from(list ?? []);
@@ -333,8 +399,9 @@ export default function App() {
     setIsSubmitting(true);
     try {
       validateScenarioInputs(scenarioInputs);
-      const optimization = buildOptimization(objective, Number(timeLimit));
-      const submitted = await submitFromEditors(api, scenarioText, JSON.stringify(optimization), seedText, signal);
+      const scenario = buildPrototypeScenario(scenarioInputs, objective);
+      const optimization = buildOptimization(objective, timeLimit);
+      const submitted = await submitFromEditors(api, JSON.stringify(scenario), JSON.stringify(optimization), seedText, signal);
       if (!coordinatorRef.current.isCurrent(generation)) return;
       setJob(submitted);
       setObservedStates([submitted.state]);
@@ -383,7 +450,7 @@ export default function App() {
 
       <div className="honesty-banner">
         <strong>Prototype scenario profile</strong>
-        <p>KML читается локально и включается в запрос как структурная сводка с SHA-256. Геометрическая, доменная и полётно-безопасная валидация пока не выполняется; маршруты рассчитывает только backend/runtime.</p>
+        <p>KML читается локально. В запрос уходят кольца полигонов, а не исходные файлы. Недостающие поля сенсора и энергетики берутся из профиля по умолчанию и отмечены в ограничениях. Маршруты рассчитывает только backend/runtime.</p>
       </div>
 
       <form onSubmit={handleSubmit} noValidate>
@@ -393,7 +460,7 @@ export default function App() {
         </section>
 
         <section className="card workflow-section" aria-labelledby="geo-title">
-          <div className="section-heading"><div><p className="eyebrow">02 · Геоданные</p><h2 id="geo-title">KML-файлы организатора</h2><p className="section-description">Файлы не отправляются multipart-загрузкой. Браузер читает KML, сохраняет исходный текст в памяти и формирует безопасную структурную сводку.</p></div><span className="step-chip">.kml</span></div>
+          <div className="section-heading"><div><p className="eyebrow">02 · Геоданные</p><h2 id="geo-title">KML-файлы организатора</h2><p className="section-description">Исходные файлы остаются в браузере. В запрос попадают кольца: один полигон задания, зоны ограничений и препятствия, чей след пересекает bbox съёмки.</p></div><span className="step-chip">.kml</span></div>
           <div className="upload-grid">
             <UploadCard category="survey_task" title="Границы задания на съёмку" description="Основная область работ. Один файл обязателен для запуска." sourceHint="Границы полетов.kml" files={surveyTask ? [surveyTask] : []} loading={loadingCategory === "survey_task"} onFiles={(files) => void handleKmlFiles("survey_task", files)} onRemove={() => setSurveyTask(null)} />
             <UploadCard category="restricted_zones" title="Зоны ограничений" description="Временные и постоянные запретные зоны из примера организатора." sourceHint="Московская зона.kml" files={restrictedZones ? [restrictedZones] : []} loading={loadingCategory === "restricted_zones"} onFiles={(files) => void handleKmlFiles("restricted_zones", files)} onRemove={() => setRestrictedZones(null)} />
@@ -402,7 +469,7 @@ export default function App() {
         </section>
 
         <section className="card workflow-section" aria-labelledby="fleet-title">
-          <div className="section-heading"><div><p className="eyebrow">03 · Доступные БВС</p><h2 id="fleet-title">Параметры флота</h2><p className="section-description">Prototype scenario profile: поля основаны на требованиях и командном примере, но не заявлены как формат организатора.</p></div><button className="secondary-button" type="button" onClick={() => setUavs((current) => addUav(current))}>+ Добавить БВС</button></div>
+          <div className="section-heading"><div><p className="eyebrow">03 · Доступные БВС</p><h2 id="fleet-title">Параметры флота</h2><p className="section-description">Каждая карточка — отдельный тип с count 1 на площадке своей точки старта. В перебор попадает карточка, у которой полезная нагрузка и спектр совпадают с требованием съёмки.</p></div><button className="secondary-button" type="button" onClick={() => setUavs((current) => addUav(current))}>+ Добавить БВС</button></div>
           <div className="fleet-list">{uavs.map((uav, index) => <UavCard key={`${uav.uav_id}-${index}`} uav={uav} index={index} removable={uavs.length > 1} onChange={(next) => setUavs((current) => current.map((item, itemIndex) => itemIndex === index ? next : item))} onRemove={() => setUavs((current) => current.filter((_item, itemIndex) => itemIndex !== index))} />)}</div>
         </section>
 
@@ -410,23 +477,24 @@ export default function App() {
           <div className="section-heading"><div><p className="eyebrow">04 · Параметры съёмки</p><h2 id="survey-title">Сенсорный профиль и ветер</h2><p className="section-description">Единицы указаны явно. Браузер не рассчитывает покрытие, энергетику или выполнимость.</p></div></div>
           <div className="control-grid">
             <label><span>Тип съёмки</span><select value={surveyType} onChange={(event) => setSurveyType(event.target.value as SurveyType)}><option value="RGB">RGB</option><option value="multispectral">Мультиспектральная</option><option value="infrared">Инфракрасная</option><option value="LiDAR">LiDAR</option><option value="geophysical">Геофизическая</option></select></label>
-            <NumberField label="Скорость ветра" unit="м/с" min={0} value={windSpeed} onChange={setWindSpeed} />
-            <label><span>Направление ветра, откуда · °</span><input type="number" min="0" max="360" step="any" value={windDirection} onChange={(event) => setWindDirection(event.target.value)} placeholder="Не задано" /><small className="field-hint">Необязательное поле из командного примера.</small></label>
+            <NumberField label="Скорость ветра" unit="м/с" placeholder="3" value={windSpeed} onChange={setWindSpeed} />
+            <NumberField label="Направление ветра, откуда · °" placeholder="270" value={windDirection} onChange={setWindDirection} hint="0 — север. Значение 360 записывается как 0." />
           </div>
         </section>
 
         <section className="card workflow-section" aria-labelledby="optimization-title">
           <div className="section-heading"><div><p className="eyebrow">05 · Критерий оптимизации</p><h2 id="optimization-title">Настройки расчёта</h2><p className="section-description">Значения передаются в существующем envelope v0 без браузерной оптимизации.</p></div></div>
           <div className="control-grid">
-            <label><span>Критерий</span><select value={objective} onChange={(event) => setObjective(event.target.value)}><option value="min_time">Минимальное время выполнения</option><option value="min_total_flight_time">Минимальный суммарный налёт</option></select><small className="field-hint">Wire value: {objective}</small></label>
-            <label><span>Лимит расчёта, с</span><input type="number" min="0" step="1" value={timeLimit} onChange={(event) => setTimeLimit(event.target.value)} /></label>
-            <label><span>Seed</span><input type="number" step="1" value={seedText} onChange={(event) => setSeedText(event.target.value)} /><small className="field-hint">Для воспроизводимого запуска.</small></label>
+            <label><span>Критерий</span><select value={objective} onChange={(event) => setObjective(event.target.value)}><option value="min_time">Минимальное время выполнения</option><option value="min_total_flight_time">Минимальный суммарный налёт</option></select><small className="field-hint">scenario.criterion: {objective === "min_total_flight_time" ? "min_flight_hours" : objective}</small></label>
+            <NumberField label="Лимит расчёта, с" placeholder={DEFAULT_TIME_LIMIT} value={timeLimit} onChange={setTimeLimit} hint={timeLimit > MAX_TIME_LIMIT_SECONDS ? TIME_LIMIT_TOO_LONG : `Не больше ${MAX_TIME_LIMIT_SECONDS}`} />
+            <NumberField label="Seed" placeholder="7" integer value={Number(seedText)} onChange={(value) => setSeedText(formatDecimalInput(value))} hint="Для воспроизводимого запуска." />
           </div>
 
           <details className="advanced-panel">
             <summary><span>Расширенные настройки / Raw scenario</span><small>Фактическое тело запроса для инженерной проверки</small></summary>
-            <p className="advanced-note">Сценарий формируется из полей выше. Исходные KML остаются в памяти браузера; в v0 отправляются SHA-256 и структурная сводка, а не multipart-файлы.</p>
-            <div className="editor-grid"><label><span>Scenario JSON · только чтение</span><textarea readOnly value={scenarioText} spellCheck={false} rows={18} /></label><label><span>Optimization JSON · только чтение</span><textarea readOnly value={optimizationText} spellCheck={false} rows={18} /></label></div>
+            <p className="advanced-note">Сценарий формируется из полей выше. Исходные KML остаются в памяти браузера; в запрос уходят кольца и поля InputData. Поля профиля по умолчанию помечены в default_profile.</p>
+            {scenarioPreview.error && <p className="file-error">{scenarioPreview.error}</p>}
+            <div className="editor-grid"><label><span>Scenario JSON · только чтение</span><textarea readOnly value={scenarioPreview.text} spellCheck={false} rows={18} /></label><label><span>Optimization JSON · только чтение</span><textarea readOnly value={optimizationText} spellCheck={false} rows={18} /></label></div>
           </details>
 
           <div className="form-footer"><div className="submit-copy"><strong>Проверить профиль и запустить</strong><span>Повторный запуск остановит текущий опрос. Результат и состояния определяет backend.</span></div><button className="primary-button" type="submit" disabled={isSubmitting || loadingCategory !== null}>{isSubmitting ? "Отправляем задачу…" : job ? "Запустить ещё раз" : "Запустить расчёт"}</button></div>

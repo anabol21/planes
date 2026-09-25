@@ -33,7 +33,7 @@ class HttpListenerTest(unittest.TestCase):
         self.assertEqual(body["contract_version"], "v0")
         self.assertNotIn("mission_plan", body)
         self.assertTrue(
-            any("solver body is not implemented" in item for item in body["solver_report"]["limitations"])
+            any("solver failed before producing a result" in item for item in body["solver_report"]["limitations"])
         )
         self.assertNotIn(TOKEN, str(body))
 
@@ -72,18 +72,29 @@ class HttpListenerTest(unittest.TestCase):
         self.assertEqual(body["error"], "busy")
         self.assertNotIn("infeasible", str(body))
 
-    def test_time_limit_is_the_cli_timeout(self) -> None:
+    def test_wrapper_kills_after_the_solver_budget(self) -> None:
+        from planes.runtime.http_server import WRAPPER_SLACK_SECONDS, _CLI_BUFFER_SECONDS
+
         payload = load_fixture()
         payload["optimization"]["placeholder_outcome"] = "sleep"
-        payload["optimization"]["time_limit_seconds"] = 0.5
+        limit = 0.5
+        payload["optimization"]["time_limit_seconds"] = limit
         started = time.monotonic()
         with env_vars(PLANES_SOLVER_ARGV=f"{sys.executable} -m planes.runtime.placeholder"):
             with vps_listener():
-                status, body = post_json(payload, TOKEN)
+                status, body = post_json(
+                    payload,
+                    TOKEN,
+                    timeout=limit + WRAPPER_SLACK_SECONDS + _CLI_BUFFER_SECONDS + 3,
+                )
         elapsed = time.monotonic() - started
         self.assertEqual(status, 200)
         self.assertEqual(body["outcome"], "timed_out")
-        self.assertLess(elapsed, 4)
+        self.assertEqual(body["solver_report"]["method"], "runtime-wrapper")
+        runtime = body["solver_report"]["runtime_seconds"]
+        self.assertGreater(runtime, limit + WRAPPER_SLACK_SECONDS - 0.15)
+        self.assertLess(runtime, limit + WRAPPER_SLACK_SECONDS + 1.0)
+        self.assertLess(elapsed, limit + WRAPPER_SLACK_SECONDS + _CLI_BUFFER_SECONDS + 1.5)
 
 
 if __name__ == "__main__":

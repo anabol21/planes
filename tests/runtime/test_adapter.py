@@ -53,7 +53,7 @@ class AdapterTest(unittest.TestCase):
         self.assertEqual(response.contract_version, "v0")
         self.assertIsNone(response.mission_plan)
         self.assertEqual(response.solver_report.seed, 7)
-        self.assertIn("solver body is not implemented", response.solver_report.limitations)
+        self.assertIn("solver failed before producing a result", response.solver_report.limitations)
 
     def test_listener_401_is_error(self) -> None:
         with vps_listener(TOKEN):
