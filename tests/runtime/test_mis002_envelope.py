@@ -121,6 +121,10 @@ class EnvelopeFilterTest(unittest.TestCase):
         self.assertEqual(first.takeoff.lon, 37.600)
         self.assertEqual(second.takeoff.lat, 55.750)
         self.assertEqual(second.uav.count, 1)
+        shipped = json.loads(_INPUT.read_text(encoding="utf-8"))["solver"]
+        self.assertEqual(first.solver.turn_time_s, shipped["turn_time_s"])
+        self.assertEqual(first.solver.apply_turn_to_base, shipped["apply_turn_to_base"])
+        self.assertEqual(first.solver.time_limit_s, 90)
         called = {(item.model_id, item.camera_id) for item in outcome.attempts}
         self.assertEqual(called, {("geoscan-gemini", "geoscan-pf1b")})
         skipped_cameras = {skip.camera_id for skip in outcome.skips}
@@ -162,6 +166,35 @@ class EnvelopeFilterTest(unittest.TestCase):
         self.assertEqual(gemini.camera_id, "geoscan-pollux")
         self.assertIn("sensor_width_mm", gemini.missing)
         self.assertIn("sensor_height_mm", gemini.missing)
+
+    def test_default_core_uses_meta_and_keeps_grisha_solver_fields(self) -> None:
+        import planes.runtime.enumeration.outer as outer
+
+        shipped = json.loads(_INPUT.read_text(encoding="utf-8"))["solver"]
+        scenario = _envelope(_profile(), "RGB", [_pad("pad-a", 55.747, 37.6, 1)])
+        scenario["solver"] = shipped
+        captured: dict[str, object] = {}
+
+        def spy(data, solver_choice: str = "auto", *, seed: int = 42):
+            captured["choice"] = solver_choice
+            captured["seed"] = seed
+            captured["turn_time_s"] = data.solver.turn_time_s
+            captured["apply_turn_to_base"] = data.solver.apply_turn_to_base
+            captured["time_limit_s"] = data.solver.time_limit_s
+            return {"status": "infeasible", "reason": "spy"}
+
+        original = outer._run_optimizer
+        outer._run_optimizer = lambda: spy
+        try:
+            outcome = run_candidates(scenario, seed=7, time_limit_s=90)
+        finally:
+            outer._run_optimizer = original
+        self.assertEqual(len(outcome.attempts), 1)
+        self.assertEqual(captured["choice"], "meta")
+        self.assertEqual(captured["seed"], 7)
+        self.assertEqual(captured["turn_time_s"], shipped["turn_time_s"])
+        self.assertEqual(captured["apply_turn_to_base"], shipped["apply_turn_to_base"])
+        self.assertEqual(captured["time_limit_s"], 90)
 
     def test_uav_types_envelope_is_rejected(self) -> None:
         profile = _profile()

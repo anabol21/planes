@@ -80,13 +80,17 @@ def solve(problem: Problem, deadline: float) -> Solution | Infeasible | TimedOut
     ``deadline`` is ``time.monotonic()`` plus the problem time limit.
     Missing fields and pydantic or import failures raise ``ValueError``.
     The pipeline turns that into ``outcome=error``.
+
+    The core call uses Grisha's metaheuristic (``solver_choice="meta"``).
+    ``turn_time_s`` and ``apply_turn_to_base`` stay on his ``SolverCfg``.
+    Only ``time_limit_s`` is the task limit.
     """
     if isinstance(problem.scenario, dict) and "uav_types" in problem.scenario:
         raise ValueError("uav_types is not accepted")
     if is_outer_scenario(problem.scenario):
         return _solve_outer(problem, deadline)
     payload = _scenario_payload(problem.scenario)
-    payload["solver"] = {"time_limit_s": problem.time_limit_seconds}
+    payload["solver"] = _solver_cfg(problem.time_limit_seconds, problem.scenario.get("solver"))
     run_optimizer, data = _load_input(payload)
     if time.monotonic() >= deadline:
         return TimedOut((_TIME_LIMIT,))
@@ -94,7 +98,7 @@ def solve(problem: Problem, deadline: float) -> Solution | Infeasible | TimedOut
     # the solver stop without a solution, including a time-limit stop.
     # The process kill outside this function remains the backstop when the
     # metaheuristic does not observe ``time_limit_s``.
-    return _map_result(run_optimizer(data, seed=problem.seed))
+    return _map_result(run_optimizer(data, "meta", seed=problem.seed))
 
 
 def _solve_outer(problem: Problem, deadline: float) -> Solution | Infeasible | TimedOut:
@@ -143,6 +147,17 @@ def _solve_outer(problem: Problem, deadline: float) -> Solution | Infeasible | T
         if line not in reasons:
             reasons.append(line)
     return Infeasible(tuple(reasons))
+
+
+def _solver_cfg(time_limit_s: int | float, existing: Any) -> dict[str, Any]:
+    """Task time limit, plus Grisha's other ``SolverCfg`` fields when he sent them."""
+    block: dict[str, Any] = {}
+    if isinstance(existing, dict):
+        for key in ("turn_time_s", "apply_turn_to_base"):
+            if key in existing:
+                block[key] = existing[key]
+    block["time_limit_s"] = time_limit_s
+    return block
 
 
 def _scenario_payload(scenario: dict[str, Any]) -> dict[str, Any]:

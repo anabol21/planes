@@ -134,6 +134,54 @@ class WinnerSelectionTest(unittest.TestCase):
         result = self._solve([], "min_time", stopped=True)
         self.assertIsInstance(result, TimedOut)
 
+    def test_single_call_uses_meta_and_keeps_grisha_solver_fields(self) -> None:
+        import planes.runtime.solver as solver_module
+
+        scenario = json.loads(_INPUT.read_text(encoding="utf-8"))
+        shipped = scenario["solver"]
+        captured: dict[str, object] = {}
+
+        def spy(data, solver_choice: str = "auto", *, seed: int = 42):
+            captured["choice"] = solver_choice
+            captured["seed"] = seed
+            captured["turn_time_s"] = data.solver.turn_time_s
+            captured["apply_turn_to_base"] = data.solver.apply_turn_to_base
+            captured["time_limit_s"] = data.solver.time_limit_s
+            return {"status": "infeasible", "reason": "spy"}
+
+        solve(
+            Problem(
+                job_id="job_warm",
+                scenario=scenario,
+                objective="min_flight_hours",
+                seed=7,
+                time_limit_seconds=90,
+            ),
+            time.monotonic() - 1,
+        )
+        cached = solver_module._optimizer
+        self.assertIsNotNone(cached)
+        solver_module._optimizer = (spy, cached[1], cached[2])
+        try:
+            result = solve(
+                Problem(
+                    job_id="job_meta",
+                    scenario=scenario,
+                    objective="min_flight_hours",
+                    seed=11,
+                    time_limit_seconds=90,
+                ),
+                time.monotonic() + 30,
+            )
+        finally:
+            solver_module._optimizer = cached
+        self.assertIsInstance(result, Infeasible)
+        self.assertEqual(captured["choice"], "meta")
+        self.assertEqual(captured["seed"], 11)
+        self.assertEqual(captured["turn_time_s"], shipped["turn_time_s"])
+        self.assertEqual(captured["apply_turn_to_base"], shipped["apply_turn_to_base"])
+        self.assertEqual(captured["time_limit_s"], 90)
+
     def test_single_takeoff_uav_does_not_use_the_catalog(self) -> None:
         import planes.runtime.enumeration.outer as outer
         import planes.runtime.solver as solver_module

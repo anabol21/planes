@@ -246,7 +246,7 @@ def _prepare(
             "takeoff": {"lat": pad["lat"], "lon": pad["lon"]},
             "uav": _flight(pair["model"], pad["count"]),
             "camera": _optics(pair["camera"]),
-            "solver": {"time_limit_s": limit},
+            "solver": _solver_cfg(limit, scenario.get("solver")),
         }
         try:
             data = input_data_cls(**payload)
@@ -425,8 +425,19 @@ def _positive_int(value: int | float, label: str) -> int:
     return limit
 
 
+def _solver_cfg(time_limit_s: int, existing: Any) -> dict[str, Any]:
+    """Task time limit. Other ``SolverCfg`` fields stay on Grisha's values."""
+    block: dict[str, Any] = {}
+    if isinstance(existing, dict):
+        for key in ("turn_time_s", "apply_turn_to_base"):
+            if key in existing:
+                block[key] = existing[key]
+    block["time_limit_s"] = time_limit_s
+    return block
+
+
 def _default_core(data: Any, seed: int = 42) -> dict[str, Any]:
-    return _run_optimizer()(data, seed=seed)
+    return _run_optimizer()(data, "meta", seed=seed)
 
 
 def _run_optimizer() -> CoreFn:

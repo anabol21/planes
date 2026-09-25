@@ -76,13 +76,14 @@ class SolverAdapterTest(unittest.TestCase):
             time.monotonic() + 30,
         )
         self.assertIsInstance(result, Solution)
-        self.assertEqual(result.method, "milp")
-        self.assertIn(result.mission_plan["status"], ("optimal", "feasible"))
+        self.assertEqual(result.method, "meta")
+        self.assertEqual(result.mission_plan["status"], "heuristic")
+        self.assertEqual(result.mission_plan["solver"], "meta")
         for key in ("routes", "strips", "validation", "mission"):
             self.assertIn(key, result.mission_plan)
         self.assertNotIn("routes_raw", result.mission_plan)
         self.assertIsInstance(result.objective_value, float)
-        self.assertEqual(result.limitations, ())
+        self.assertTrue(any("not globally optimal" in item for item in result.limitations))
         self.assertNotIn(str(_GIBRID), sys.path)
 
     def test_heuristic_is_not_globally_optimal(self) -> None:
@@ -97,11 +98,24 @@ class SolverAdapterTest(unittest.TestCase):
         )
 
     def test_solver_infeasible(self) -> None:
-        scenario = _grisha_scenario()
-        scenario["wind"] = {**scenario["wind"], "speed_ms": 50.0}
-        result = solve(_problem(scenario), time.monotonic() + 60)
+        import planes.runtime.solver as solver_module
+
+        solve(_problem(_grisha_scenario()), time.monotonic() - 1)
+        cached = solver_module._optimizer
+        self.assertIsNotNone(cached)
+
+        def infeasible(data, solver_choice: str = "meta", *, seed: int = 42):
+            del data, solver_choice, seed
+            return {"status": "infeasible", "reason": "wind"}
+
+        solver_module._optimizer = (infeasible, cached[1], cached[2])
+        try:
+            result = solve(_problem(_grisha_scenario()), time.monotonic() + 30)
+        finally:
+            solver_module._optimizer = cached
         self.assertIsInstance(result, Infeasible)
         self.assertNotIsInstance(result, Solution)
+        self.assertIn("wind", result.limitations)
 
     def test_foreign_scenario_is_error_not_infeasible(self) -> None:
         problem = _problem(_FOREIGN_SCENARIO, objective="min_time")
@@ -128,8 +142,8 @@ class SolverAdapterTest(unittest.TestCase):
         cached = solver_module._optimizer
         self.assertIsNotNone(cached)
 
-        def stopped(data, seed: int = 42):
-            del data, seed
+        def stopped(data, solver_choice: str = "meta", *, seed: int = 42):
+            del data, solver_choice, seed
             return {"status": "unknown", "reason": "Решатель не вернул решение"}
 
         solver_module._optimizer = (stopped, cached[1], cached[2])
