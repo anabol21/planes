@@ -1,0 +1,259 @@
+{
+  "catalog_version": 1,
+  "uav_models": [
+    {
+      "id": "geoscan-gemini",
+      "name": "Геоскан Gemini",
+      "kind": "multirotor",
+      "mass_kg": 2,
+      "payload_mass_kg": null,
+      "airspeed_m_s": 15,
+      "climb_m_s": 5,
+      "descent_m_s": null,
+      "max_wind_m_s": 10,
+      "flight_time_s": 2400,
+      "battery": {
+        "energy_wh": 144.7
+      },
+      "takeoff": null,
+      "landing": null,
+      "usable_by_current_solver": true,
+      "source": "Geoscan Gemini specification sheet",
+      "gaps": ["payload_mass_kg", "descent_m_s", "takeoff", "landing"]
+    },
+    {
+      "id": "geoscan-201",
+      "name": "Геоскан 201",
+      "kind": "fixed_wing",
+      "mass_kg": 8.5,
+      "payload_mass_kg": 1.5,
+      "airspeed_m_s": {
+        "min": 17.778,
+        "max": 36.111
+      },
+      "climb_m_s": null,
+      "descent_m_s": null,
+      "max_wind_m_s": 12,
+      "flight_time_s": 10800,
+      "battery": {
+        "energy_wh": null
+      },
+      "takeoff": "catapult",
+      "landing": "parachute",
+      "usable_by_current_solver": false,
+      "source": "Geoscan 201 manual appendix",
+      "gaps": ["climb_m_s", "descent_m_s", "battery.energy_wh"]
+    },
+    {
+      "id": "geoscan-801",
+      "name": "Геоскан 801",
+      "kind": "vtol",
+      "mass_kg": 11.5,
+      "payload_mass_kg": 3.5,
+      "airspeed_m_s": {
+        "min": 16.667,
+        "max": 36.111
+      },
+      "climb_m_s": 3,
+      "descent_m_s": 2,
+      "max_wind_m_s": 12,
+      "flight_time_s": {
+        "min": 900,
+        "max": 10800
+      },
+      "battery": {
+        "cells": 4,
+        "capacity_mah_min": 10000,
+        "capacity_mah_max": 16000,
+        "energy_wh": null
+      },
+      "takeoff": "vertical",
+      "landing": "vertical",
+      "usable_by_current_solver": false,
+      "source": "Geoscan 801 specification sheet",
+      "gaps": ["battery.energy_wh"]
+    }
+  ],
+  "cameras": [
+    {
+      "id": "geoscan-pf1b",
+      "name": "Geoscan PF1B",
+      "spectra": ["RGB"],
+      "sensor_width_mm": 23.5,
+      "sensor_height_mm": 15.6,
+      "focal_length_mm": 20,
+      "image_width_px": 6000,
+      "image_height_px": 4000,
+      "bands": null,
+      "source": "Geoscan Gemini specification sheet",
+      "gaps": []
+    },
+    {
+      "id": "sony-umc-r10c",
+      "name": "Sony UMC-R10C",
+      "spectra": ["RGB"],
+      "sensor_width_mm": null,
+      "sensor_height_mm": null,
+      "focal_length_mm": null,
+      "image_width_px": null,
+      "image_height_px": null,
+      "bands": null,
+      "source": "Geoscan Gemini specification sheet footnote; no optic numbers",
+      "gaps": [
+        "sensor_width_mm",
+        "sensor_height_mm",
+        "focal_length_mm",
+        "image_width_px",
+        "image_height_px"
+      ]
+    },
+    {
+      "id": "geoscan-pollux",
+      "name": "Geoscan Pollux",
+      "spectra": ["multispectral", "RGB"],
+      "sensor_width_mm": null,
+      "sensor_height_mm": null,
+      "focal_length_mm": 8,
+      "image_width_px": 1440,
+      "image_height_px": 1080,
+      "bands": [470, 560, 665, 720, 840],
+      "source": "Geoscan Gemini specification sheet; sensor diagonal 6.3 mm is not split into width and height. The Geoscan 201 offset table writes the red channel as 668 nm while the channel figure says 665.",
+      "gaps": ["sensor_width_mm", "sensor_height_mm"]
+    },
+    {
+      "id": "riebo-r4",
+      "name": "Riebo R4",
+      "spectra": ["RGB"],
+      "sensor_width_mm": null,
+      "sensor_height_mm": null,
+      "focal_length_mm": 40,
+      "image_width_px": null,
+      "image_height_px": null,
+      "bands": null,
+      "source": "Geoscan 201 manual appendix; 45 MP is not a width and height",
+      "gaps": ["sensor_width_mm", "sensor_height_mm", "image_width_px", "image_height_px"]
+    },
+    {
+      "id": "riebo-r6",
+      "name": "Riebo R6",
+      "spectra": ["RGB"],
+      "sensor_width_mm": null,
+      "sensor_height_mm": null,
+      "focal_length_mm": 40,
+      "image_width_px": null,
+      "image_height_px": null,
+      "bands": null,
+      "source": "Geoscan 201 manual appendix; 61 MP is noted only in the source text",
+      "gaps": ["sensor_width_mm", "sensor_height_mm", "image_width_px", "image_height_px"]
+    },
+    {
+      "id": "sony-dsc-rx1rm2",
+      "name": "Sony DSC-RX1RM2",
+      "spectra": ["RGB"],
+      "sensor_width_mm": 35.9,
+      "sensor_height_mm": 24,
+      "focal_length_mm": null,
+      "image_width_px": null,
+      "image_height_px": null,
+      "bands": null,
+      "source": "Geoscan 201 manual appendix; 43.6 MP stays in the source text only",
+      "gaps": ["focal_length_mm", "image_width_px", "image_height_px"]
+    },
+    {
+      "id": "sony-dsc-rx1rm3",
+      "name": "Sony DSC-RX1RM3",
+      "spectra": ["RGB"],
+      "sensor_width_mm": 35.9,
+      "sensor_height_mm": 24,
+      "focal_length_mm": null,
+      "image_width_px": null,
+      "image_height_px": null,
+      "bands": null,
+      "source": "Geoscan 201 manual appendix; 61 MP stays in the source text only",
+      "gaps": ["focal_length_mm", "image_width_px", "image_height_px"]
+    },
+    {
+      "id": "sony-zv-e10",
+      "name": "Sony ZV-E10",
+      "spectra": ["RGB"],
+      "sensor_width_mm": 23.5,
+      "sensor_height_mm": 15.6,
+      "focal_length_mm": null,
+      "image_width_px": null,
+      "image_height_px": null,
+      "bands": null,
+      "source": "Geoscan 201 manual appendix",
+      "gaps": ["focal_length_mm", "image_width_px", "image_height_px"]
+    },
+    {
+      "id": "sony-a6000",
+      "name": "Sony A6000",
+      "spectra": ["RGB"],
+      "sensor_width_mm": 23.5,
+      "sensor_height_mm": 15.6,
+      "focal_length_mm": 20,
+      "image_width_px": null,
+      "image_height_px": null,
+      "bands": null,
+      "source": "Geoscan 801 specification sheet",
+      "gaps": ["image_width_px", "image_height_px"]
+    }
+  ],
+  "compatibility": [
+    {
+      "uav_model_id": "geoscan-gemini",
+      "camera_id": "geoscan-pf1b",
+      "source": "Geoscan Gemini specification sheet"
+    },
+    {
+      "uav_model_id": "geoscan-gemini",
+      "camera_id": "sony-umc-r10c",
+      "source": "Geoscan Gemini specification sheet footnote"
+    },
+    {
+      "uav_model_id": "geoscan-gemini",
+      "camera_id": "geoscan-pollux",
+      "source": "Geoscan Gemini specification sheet footnote"
+    },
+    {
+      "uav_model_id": "geoscan-201",
+      "camera_id": "riebo-r4",
+      "source": "Geoscan 201 manual appendix"
+    },
+    {
+      "uav_model_id": "geoscan-201",
+      "camera_id": "riebo-r6",
+      "source": "Geoscan 201 manual appendix"
+    },
+    {
+      "uav_model_id": "geoscan-201",
+      "camera_id": "sony-dsc-rx1rm2",
+      "source": "Geoscan 201 manual appendix"
+    },
+    {
+      "uav_model_id": "geoscan-201",
+      "camera_id": "sony-dsc-rx1rm3",
+      "source": "Geoscan 201 manual appendix"
+    },
+    {
+      "uav_model_id": "geoscan-201",
+      "camera_id": "sony-zv-e10",
+      "source": "Geoscan 201 manual appendix"
+    },
+    {
+      "uav_model_id": "geoscan-201",
+      "camera_id": "geoscan-pollux",
+      "source": "Geoscan 201 manual appendix"
+    },
+    {
+      "uav_model_id": "geoscan-801",
+      "camera_id": "sony-a6000",
+      "source": "Geoscan 801 specification sheet"
+    },
+    {
+      "uav_model_id": "geoscan-801",
+      "camera_id": "geoscan-pollux",
+      "source": "Geoscan 801 specification sheet"
+    }
+  ]
+}
