@@ -19,8 +19,11 @@ class Swath(BaseModel):
     start: Point
     end: Point
     length_m: float = Field(..., ge=0.0)
-    # опционально: id сегмента декомпозиции
     segment_id: str | None = None
+
+    # Высоты (заполняются при генерации с DEM)
+    h_agl_m: float = 0.0
+    h_asl_m: float = 0.0
 
 
 class Cluster(BaseModel):
@@ -47,10 +50,11 @@ class Route(BaseModel):
     flight_index: int = Field(..., ge=0)
     vpp_id: str
     swath_ids: list[str] = Field(default_factory=list)
-    T_air_s: float = Field(0.0, ge=0.0)      # воздушное время
-    T_total_s: float = Field(0.0, ge=0.0)    # включая взлёт/посадку
+    T_air_s: float = Field(0.0, ge=0.0)
+    T_total_s: float = Field(0.0, ge=0.0)
     E_wh: float = Field(0.0, ge=0.0)
     mass_kg: float = Field(0.0, ge=0.0)
+    T_charge_s: float = Field(0.0, ge=0.0)   # NEW
 
 
 class Candidate(BaseModel):

@@ -41,14 +41,27 @@ def main(fixtures: str, out: str) -> None:
     click.echo(f"  theta_best      : {report.theta_best_deg}")
     click.echo(f"  decomposition   : {report.decomposition_method}")
     click.echo(f"  criterion       : {report.optimization_criterion}")
-    click.echo(f"  C_max           : {report.metrics.C_max_s:.1f} s")
+    click.echo(f"  C_max           : {report.metrics.C_max_s:.1f} s "
+               f"({report.metrics.C_max_s / 60:.1f} min)")
     click.echo(f"  flight hours    : {report.metrics.flight_hours_total_s:.1f} s")
     click.echo(f"  energy          : {report.metrics.energy_total_wh:.2f} Wh")
     click.echo(f"  UAVs used       : {report.metrics.n_uavs_used}")
     click.echo(f"  swaths total    : {report.metrics.n_swaths_total}")
     click.echo(f"  candidates      : {report.n_candidates}")
-    click.echo(f"  output          : {Path(out).resolve()}")
+    click.echo()
 
+    # Детали по бортам
+    for u in report.per_uav:
+        click.echo(f"  UAV {u.uav_id}:")
+        click.echo(f"    flights       : {u.n_flights}")
+        click.echo(f"    T_air         : {u.T_air_s:.1f} s")
+        click.echo(f"    T_total       : {u.T_total_s:.1f} s")
+        click.echo(f"    T_charge      : {u.T_charge_s:.1f} s")
+        click.echo(f"    T_mission     : {u.T_mission_s:.1f} s")
+        click.echo(f"    E             : {u.E_wh:.2f} Wh")
+        click.echo(f"    mass          : {u.mass_kg:.2f} kg")
+
+    click.echo(f"\n  output          : {Path(out).resolve()}")
     log_info("cli", "done")
 
 

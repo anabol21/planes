@@ -12,6 +12,8 @@ class UAVSummary(BaseModel):
     T_total_s: float = Field(..., ge=0.0)
     E_wh: float = Field(..., ge=0.0)
     mass_kg: float = Field(..., ge=0.0)
+    T_charge_s: float = Field(0.0, ge=0.0)         # NEW
+    T_mission_s: float = Field(0.0, ge=0.0)        # NEW: полное время борта вкл. зарядки
 
 
 class Metrics(BaseModel):

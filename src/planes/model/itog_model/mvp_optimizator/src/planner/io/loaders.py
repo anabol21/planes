@@ -1,4 +1,4 @@
-"""Сборка MissionInput из пяти файлов."""
+"""Сборка MissionInput из пяти файлов (+ опциональный DEM)."""
 
 from __future__ import annotations
 
@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 
 from planner.io.catalog import get_default_catalog
+from planner.io.dem import load_dem
 from planner.io.geo import read_areas_geojson
 from planner.io.kml_in import read_obstacles_kml
 from planner.models import (
@@ -50,10 +51,19 @@ def load_mission(fixtures_dir: str | Path) -> MissionInput:
     params_data = _read_json(fixtures / "params.json")
     params = Params(**params_data)
 
-    # Опциональная проверка: алиасы через каталог
+    # 6. DEM
+    dem = None
+    if params.dem_file:
+        dem_path = Path(params.dem_file)
+        if not dem_path.is_absolute():
+            dem_path = fixtures / dem_path
+        dem_obj = load_dem(dem_path)
+        if not dem_obj.is_empty():
+            dem = dem_obj
+
+    # Проверка каталога
     catalog = get_default_catalog()
     for u in uavs:
-        # проверит, что модель есть в каталоге
         catalog.get_aircraft(u.model)
         catalog.get_camera(u.camera_id)
 
@@ -63,4 +73,5 @@ def load_mission(fixtures_dir: str | Path) -> MissionInput:
         vpps=vpps,
         uavs=uavs,
         params=params,
+        dem=dem,
     )

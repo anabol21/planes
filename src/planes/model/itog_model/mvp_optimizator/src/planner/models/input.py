@@ -85,6 +85,10 @@ class Params(BaseModel):
     decomposition: DecompositionMethod = DecompositionMethod.TRAPEZOID
     output_dir: str = "./out"
 
+    # DEM и безопасность
+    dem_file: str | None = None
+    safety_margin_m: float = Field(30.0, ge=0.0)
+
     @field_validator("angles_deg")
     @classmethod
     def _check_angles(cls, v: list[float]) -> list[float]:
@@ -104,6 +108,7 @@ class MissionInput(BaseModel):
     vpps: list[VPP]
     uavs: list[UAVConfig]
     params: Params
+    dem: Any | None = None   # DEM или None (см. planner.io.dem)
 
     def uav_by_id(self, uav_id: str) -> UAVConfig:
         for u in self.uavs:

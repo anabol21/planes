@@ -20,24 +20,22 @@ def build_physics_params(
 
     specs = aircraft.get("specs", {})
     perf = specs.get("performance", {})
-    power = specs.get("power", {})
 
-    # Масса — из паспорта или оценок
     mass_kg = _parse_mass(specs) or 2.0
 
-    # Крейсерская скорость
     v_air = float(mvp.get("v_air_mps", 12.0))
     v_vert = float(mvp.get("v_vert_mps", 5.0))
     v_survey = float(mvp.get("v_survey_mps", v_air))
 
-    # АКБ
     if battery:
         E_batt = _parse_energy(battery)
     else:
         E_batt = float(mvp.get("battery_energy_wh", 144.7))
 
-    # Время полёта (из паспорта или оценки)
     T_max_s = _parse_time_s(perf.get("max_flight_time", "40 min"))
+
+    # Время зарядки из каталога (charger)
+    T_charge_s = _parse_charge_time_s(uav, catalog)
 
     return PhysicsParams(
         uav_id=uav.id,
@@ -57,6 +55,7 @@ def build_physics_params(
         T_catapult_s=float(mvp.get("T_catapult_s", 0.0)),
         T_parachute_s=float(mvp.get("T_parachute_s", 0.0)),
         P_const_w=float(mvp.get("power_const_w", 0.0)),
+        T_charge_s=T_charge_s,
     )
 
 
@@ -68,9 +67,15 @@ def build_physics_model(params: PhysicsParams) -> RotorPhysics | FixedWingPhysic
     raise ValueError(f"Unknown model: {params.model}")
 
 
+# ============================================================
+# Парсеры каталога
+# ============================================================
+
 def _parse_mass(specs: dict) -> float | None:
-    """'2 kg (battery & propellers included)' → 2.0."""
-    raw = specs.get("general", {}).get("weight") or specs.get("general", {}).get("max_takeoff_mass")
+    raw = (
+        specs.get("general", {}).get("weight")
+        or specs.get("general", {}).get("max_takeoff_mass")
+    )
     if not raw:
         return None
     for token in str(raw).split():
@@ -96,17 +101,66 @@ def _parse_energy(battery: dict) -> float:
 
 
 def _parse_time_s(raw: str) -> float:
-    """'40 min' → 2400 s."""
+    """
+    Парсит строку времени в секунды.
+    Поддерживает: '40 min', '~105 min', '2 h', '2400 s', '180 мин'.
+    Убирает '~', другие не-числовые символы перед первым числом.
+    """
     if not raw:
         return 2400.0
-    parts = str(raw).split()
-    try:
-        val = float(parts[0])
-    except (ValueError, IndexError):
+
+    s = str(raw).strip()
+    parts = s.split()
+    if not parts:
         return 2400.0
+
+    # Очищаем первый токен: оставляем цифры, точку, минус
+    cleaned = "".join(c for c in parts[0] if c.isdigit() or c in ".-")
+    try:
+        val = float(cleaned) if cleaned else 0.0
+    except ValueError:
+        return 2400.0
+
+    # Определяем единицу
     unit = parts[1].lower() if len(parts) > 1 else "min"
-    if unit.startswith("min"):
+    # Убираем возможные точки/запятые в конце
+    unit = unit.rstrip(".,")
+
+    if unit.startswith("min") or unit.startswith("мин"):
         return val * 60.0
-    if unit.startswith("h"):
+    if unit.startswith("h") or unit.startswith("ч"):
         return val * 3600.0
-    return val
+    if unit.startswith("s") or unit.startswith("с"):
+        return val
+    # По умолчанию — минуты
+    return val * 60.0
+
+
+def _parse_charge_time_s(uav: UAVConfig, catalog: Catalog) -> float:
+    """
+    Ищет charger для модели борта и берёт charging_time.
+    Fallback: 105 мин для Gemini.
+    """
+    try:
+        aircraft = catalog.get_aircraft(uav.model)
+    except KeyError:
+        return 105.0 * 60.0 if uav.model == "gemini" else 0.0
+
+    chargers = aircraft.get("related", {}).get("chargers", [])
+    for cid in chargers:
+        try:
+            charger = catalog._data["chargers"][cid]
+        except (KeyError, AttributeError):
+            continue
+        ct = (
+            charger.get("specs", {})
+            .get("power", {})
+            .get("charging_time")
+        )
+        if ct:
+            return _parse_time_s(ct)
+
+    # Fallback для Gemini
+    if uav.model == "gemini":
+        return 105.0 * 60.0
+    return 0.0

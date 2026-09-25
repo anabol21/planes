@@ -1,4 +1,4 @@
-"""Валидатор: покрытие, ограничения времени/энергии/массы."""
+"""Валидатор: покрытие, время, энергия, масса, рельеф, препятствия."""
 
 from __future__ import annotations
 
@@ -15,6 +15,10 @@ class CheckResult:
     warnings: list[str] = field(default_factory=list)
 
 
+# ============================================================
+# Покрытие
+# ============================================================
+
 def check_coverage(
     all_swaths: list[Swath],
     routes: list[Route],
@@ -30,20 +34,22 @@ def check_coverage(
     for sid in covered:
         seen[sid] = seen.get(sid, 0) + 1
 
-    # Пропущенные
     all_ids = {s.id for s in all_swaths}
     covered_ids = set(covered)
     missing = all_ids - covered_ids
     if missing:
         errors.append(f"Swaths not covered: {sorted(missing)}")
 
-    # Дубликаты
     dupes = [sid for sid, cnt in seen.items() if cnt > 1]
     if dupes:
         errors.append(f"Swaths covered more than once: {sorted(dupes)}")
 
     return errors
 
+
+# ============================================================
+# Время / энергия
+# ============================================================
 
 def check_time_energy(
     routes: list[Route],
@@ -75,12 +81,15 @@ def check_time_energy(
     return errors
 
 
+# ============================================================
+# Масса
+# ============================================================
+
 def check_mass(
     routes: list[Route],
     params_by_uav: dict[str, PhysicsParams],
     max_takeoff_mass_kg: float | None = None,
 ) -> list[str]:
-    """Масса с нагрузкой ≤ max_takeoff (если задано)."""
     errors: list[str] = []
     if max_takeoff_mass_kg is None:
         return errors
@@ -93,20 +102,51 @@ def check_mass(
             errors.append(
                 f"UAV {r.uav_id}: mass {p.mass_kg}kg > max {max_takeoff_mass_kg}kg"
             )
+    return errors
+
+
+# ============================================================
+# Рельеф (DEM) — NEW
+# ============================================================
+
+def check_terrain_safety(
+    routes: list[Route],
+    swaths_by_id: dict[str, Swath],
+    safety_margin_m: float,
+) -> list[str]:
+    """
+    Для каждой полосы проверяет h_agl_m ≥ safety_margin_m.
+    Если DEM не задан, h_agl_m = h_agl_target (по GSD) — проверка пройдёт.
+    """
+    errors: list[str] = []
+
+    if safety_margin_m <= 0:
+        return errors
+
+    for r in routes:
+        for sid in r.swath_ids:
+            s = swaths_by_id.get(sid)
+            if s is None:
+                continue
+            if s.h_agl_m < safety_margin_m - 1e-3:
+                errors.append(
+                    f"Swath {sid}: h_agl={s.h_agl_m:.1f}m < "
+                    f"safety_margin={safety_margin_m:.1f}m"
+                )
 
     return errors
 
+
+# ============================================================
+# Препятствия
+# ============================================================
 
 def check_obstacles(
     routes: list[Route],
     swaths_by_id: dict[str, Swath],
     obstacles_polygons: list,
 ) -> list[str]:
-    """
-    Простая проверка: полоса не пересекает footprint препятствия.
-    На MVP полосы генерируются уже с вычетом препятствий,
-    но проверяем на всякий случай.
-    """
+    """Простая проверка: полоса не пересекает footprint препятствия."""
     from shapely.geometry import LineString, shape
 
     errors: list[str] = []
@@ -129,6 +169,10 @@ def check_obstacles(
     return errors
 
 
+# ============================================================
+# Полная валидация
+# ============================================================
+
 def validate(
     mission: MissionInput,
     all_swaths: list[Swath],
@@ -143,8 +187,16 @@ def validate(
     errors.extend(check_time_energy(routes, params_by_uav))
     errors.extend(check_mass(routes, params_by_uav, max_takeoff_mass_kg))
 
-    # Препятствия — опционально
+    # NEW: проверка рельефа
     swaths_by_id = {s.id: s for s in all_swaths}
+    if mission.params.safety_margin_m > 0:
+        errors.extend(
+            check_terrain_safety(
+                routes, swaths_by_id, mission.params.safety_margin_m
+            )
+        )
+
+    # Препятствия
     obstacles_polys = [o.polygon for o in mission.obstacles]
     if obstacles_polys:
         errors.extend(check_obstacles(routes, swaths_by_id, obstacles_polys))
