@@ -1,0 +1,1026 @@
+{
+  "meta": {
+    "version": "1.1.0",
+    "updated": "2026-09-25",
+    "source_docs": [
+      "Gemini_Specs_EN_RUS.pdf",
+      "Geoscan_201_Manual.pdf",
+      "Geoscan_801.pdf",
+      "mvp.pdf"
+    ],
+    "language": ["ru", "en"],
+    "units": "SI",
+    "notes": "Все ID — латиница в нижнем регистре, дефисы. Связи только через ID. Блок mvp_estimates содержит оценочные параметры для MVP (не паспортные)."
+  },
+
+  "aircraft": {
+    "gemini": {
+      "id": "gemini",
+      "category": "aircraft",
+      "model": "Geoscan Gemini",
+      "aliases": ["Геоскан Гемини", "Geoscan Gemini", "Gemini", "Гемини"],
+      "specs": {
+        "general": {
+          "type": "multirotor",
+          "motors": "electric brushless, 4 pcs",
+          "weight": "2 kg (battery & propellers included)",
+          "diagonal_size": "550 mm (excluding propellers)"
+        },
+        "performance": {
+          "max_flight_time": "40 min",
+          "max_flight_speed_vertical": "5 m/s",
+          "max_flight_speed_horizontal": "15 m/s",
+          "max_flight_altitude_asl": "4000 m",
+          "max_flight_altitude_agl": "500 m"
+        },
+        "environment": {
+          "max_wind_resistance": "10 m/s",
+          "operating_temperature": "-15 to 40 °C"
+        },
+        "power": {
+          "battery": "Li-Ion 21.6 V, 6700 mAh, 144.7 Wh, 710 g"
+        },
+        "sensors": {
+          "gnss": "ublox-zed-f9p",
+          "cameras": ["pf1b", "pollux", "umc-r10c"]
+        },
+        "comms": {
+          "radio_modems": ["868-mhz-gemini", "2.4-ghz-gemini"]
+        }
+      },
+      "related": {
+        "cameras": ["pf1b", "pollux", "umc-r10c"],
+        "gnss": ["ublox-zed-f9p"],
+        "radio_modems": ["868-mhz-gemini", "2.4-ghz-gemini"],
+        "batteries": ["battery-gemini"],
+        "chargers": ["charger-gemini"],
+        "transport_cases": ["case-gemini"]
+      }
+    },
+
+    "geoscan201": {
+      "id": "geoscan201",
+      "category": "aircraft",
+      "model": "Geoscan 201",
+      "aliases": ["Геоскан 201", "Geoscan 201", "201", "Геоскан-201"],
+      "specs": {
+        "general": {
+          "type": "flying wing",
+          "operation_mode": "automatic control",
+          "max_takeoff_mass": "8.5 kg",
+          "max_payload_mass": "1.5 kg",
+          "wing_span": "2.22 m",
+          "engine": "electric brushless, 220 W"
+        },
+        "performance": {
+          "flight_speed": "64-130 km/h",
+          "max_flight_time": "180 min",
+          "max_route_length": "210 km",
+          "survey_area_per_flight": "7-22 km²",
+          "min_safe_altitude": "100 m",
+          "max_flight_altitude": "4000 m",
+          "takeoff": "from launcher",
+          "landing": "automatic parachute"
+        },
+        "environment": {
+          "max_wind": "12 m/s",
+          "operating_temperature": "base battery: -20 to +40 °C; Arctic battery: -40 to +20 °C"
+        },
+        "power": {
+          "battery": "5S LiPo, 40,000 mAh, nominal 18.5 V, upper 21 V, lower 15 V",
+          "battery_energy_wh": 740,
+          "battery_energy_note": "расчёт: 40 А·ч × 18.5 В"
+        },
+        "sensors": {
+          "gnss": "ublox-zed-f9p",
+          "cameras": ["riebo-r4", "riebo-r6", "rx1rm3", "rx1rm2", "zv-e10", "pollux"],
+          "camera_offsets": "offsets-201"
+        },
+        "comms": {
+          "radio_modem": "868-mhz-201"
+        },
+        "software": {
+          "planner": "geoscan-planner"
+        }
+      },
+      "related": {
+        "cameras": ["riebo-r4", "riebo-r6", "rx1rm3", "rx1rm2", "zv-e10", "pollux"],
+        "gnss": ["ublox-zed-f9p"],
+        "radio_modems": ["868-mhz-201"],
+        "batteries": ["battery-201"],
+        "chargers": ["cm1620", "50010b", "icharger-3010b", "icharger-x12", "icharger-4010-duo"],
+        "launchers": ["standard-launcher", "arctic-launcher"],
+        "accessories": ["modem-stand", "assembly-stand", "fuselage-cradle", "spare-parts-kit"],
+        "software": ["geoscan-planner"],
+        "camera_offsets": ["offsets-201"]
+      }
+    },
+
+    "geoscan801": {
+      "id": "geoscan801",
+      "category": "aircraft",
+      "model": "Geoscan 801",
+      "aliases": ["Геоскан 801", "Geoscan 801", "801", "Геоскан-801"],
+      "specs": {
+        "general": {
+          "type": "quadcopter",
+          "weight": "1.5 kg",
+          "diagonal_size": "435 mm",
+          "propellers": "10.5\", folding, quick-release",
+          "gimbal": "3-axis, roll -30 to +30°, pitch -97.5 to +32.5°, yaw -48 to +48°"
+        },
+        "performance": {
+          "max_flight_time": "40 min",
+          "max_horizontal_speed": "15 m/s",
+          "max_flight_altitude": "4000 m"
+        },
+        "environment": {
+          "max_wind": "10 m/s",
+          "operating_temperature": "-20 to +40 °C"
+        },
+        "power": {
+          "battery": "with heating, -20 to +40 °C",
+          "battery_energy_wh": 90,
+          "battery_energy_note": "оценка из 40 мин при ~135 Вт"
+        },
+        "sensors": {
+          "gnss": "gnss-801",
+          "cameras": ["801-visible", "801-thermal"]
+        },
+        "comms": {
+          "radio": "801-radio",
+          "remote_control": "remote-801"
+        },
+        "software": {
+          "builtin": "801-software"
+        }
+      },
+      "related": {
+        "cameras": ["801-visible", "801-thermal"],
+        "gnss": ["gnss-801"],
+        "radio_modems": ["801-radio"],
+        "batteries": ["battery-801"],
+        "chargers": ["charger-801"],
+        "accessories": ["remote-801", "case-801"],
+        "software": ["801-software"]
+      }
+    }
+  },
+
+  "cameras": {
+    "pf1b": {
+      "id": "pf1b",
+      "category": "camera",
+      "model": "Geoscan PF1B",
+      "aliases": ["PF1B", "Геоскан PF1B", "Geoscan PF1B"],
+      "for": ["gemini"],
+      "specs": {
+        "general": {
+          "type": "digital",
+          "max_resolution": "6000 x 4000 (24.3 MP)",
+          "sensor_size": "APS-C (23.5 x 15.6 mm)"
+        },
+        "performance": {
+          "shutter_type": "mechanical, focal-plane",
+          "focal_length": "20 mm",
+          "max_aperture": "f/2.8",
+          "iso_range": "100–25600",
+          "mechanical_shutter_speed": "1/4000–30 sec"
+        }
+      }
+    },
+
+    "umc-r10c": {
+      "id": "umc-r10c",
+      "category": "camera",
+      "model": "Sony UMC-R10C",
+      "aliases": ["UMC-R10C", "Sony UMC-R10C"],
+      "for": ["gemini"],
+      "specs": {
+        "general": {
+          "type": "digital",
+          "sensor_size": "APS-C (23.2 × 15.4 mm)",
+          "max_resolution": "5456 × 3632"
+        },
+        "performance": {
+          "focal_length": "16 или 20 mm"
+        }
+      },
+      "notes": "Данные оценочные, в PDF ТТХ отсутствуют. Optional camera for Gemini, separate from PF1B."
+    },
+
+    "pollux": {
+      "id": "pollux",
+      "category": "camera",
+      "model": "Geoscan Pollux",
+      "aliases": ["Pollux", "Поллукс", "Геоскан Pollux", "Мультиспектральная камера Геоскан Pollux"],
+      "for": ["gemini", "geoscan201"],
+      "specs": {
+        "general": {
+          "type": "multispectral",
+          "spectral_bands_number": 5,
+          "resolution": "1440×1080 (1.55 MP)",
+          "sensor_diagonal": "6.3 mm",
+          "rgb_shooting": "Yes"
+        },
+        "performance": {
+          "lens_focal_length": "8 mm",
+          "efl_35mm": "44.4 mm",
+          "angle_of_view": "43° (diagonal)",
+          "hyperfocal_distance": "10.3 m",
+          "electronic_shutter": "global shutter"
+        },
+        "power": {
+          "supply_voltage": "8.4-15 V"
+        },
+        "physical": {
+          "image_format": "TIFF, 16 bit",
+          "memory_card": "microSDXC"
+        },
+        "spectral_bands": [
+          { "name": "Blue", "wavelength_nm": 470 },
+          { "name": "Green", "wavelength_nm": 560 },
+          { "name": "Red", "wavelength_nm": 668 },
+          { "name": "Red Edge", "wavelength_nm": 720 },
+          { "name": "NIR", "wavelength_nm": 840 }
+        ]
+      }
+    },
+
+    "riebo-r4": {
+      "id": "riebo-r4",
+      "category": "camera",
+      "model": "Riebo R4",
+      "aliases": ["Riebo R4", "R4"],
+      "for": ["geoscan201"],
+      "specs": {
+        "general": {
+          "type": "digital",
+          "resolution": "45 MP",
+          "sensor": "full-frame CMOS Extmor R (35.9×24 mm)"
+        },
+        "performance": {
+          "shutter": "central",
+          "aperture": "f/2–22",
+          "iso": "100–102400",
+          "shutter_speed": "1/100 ~ 1/2000 s (electronic), 1/4000–30 s (mechanical)",
+          "focal_length": "40 mm",
+          "min_focus_distance": "10 m",
+          "horizontal_angle": "89.84°",
+          "vertical_angle": "67.16°"
+        },
+        "power": {
+          "voltage": "12–27 V DC"
+        }
+      }
+    },
+
+    "riebo-r6": {
+      "id": "riebo-r6",
+      "category": "camera",
+      "model": "Riebo R6",
+      "aliases": ["Riebo R6", "R6"],
+      "for": ["geoscan201"],
+      "specs": {
+        "general": {
+          "type": "digital",
+          "resolution": "61 MP",
+          "sensor": "full-frame CMOS Extmor R (35.9×24 mm)"
+        },
+        "performance": {
+          "shutter": "central",
+          "aperture": "f/2–22",
+          "iso": "100–102400",
+          "shutter_speed": "1/100 ~ 1/2000 s (electronic), 1/4000–30 s (mechanical)",
+          "focal_length": "40 mm",
+          "min_focus_distance": "4 m",
+          "horizontal_angle": "89.84°",
+          "vertical_angle": "67.16°"
+        },
+        "power": {
+          "voltage": "12–27 V DC"
+        }
+      }
+    },
+
+    "rx1rm3": {
+      "id": "rx1rm3",
+      "category": "camera",
+      "model": "Sony DSC-RX1RM3",
+      "aliases": ["DSC-RX1RM3", "RX1RM3", "Sony RX1RM3"],
+      "for": ["geoscan201"],
+      "specs": {
+        "general": {
+          "type": "digital",
+          "max_resolution": "61 MP",
+          "sensor": "full-frame CMOS Extmor R (35.9 × 24 mm)"
+        },
+        "performance": {
+          "shutter": "central",
+          "aperture": "f/2–22",
+          "iso": "100–102400",
+          "mechanical_shutter_speed": "1/4000–30 s"
+        }
+      }
+    },
+
+    "rx1rm2": {
+      "id": "rx1rm2",
+      "category": "camera",
+      "model": "Sony DSC-RX1RM2",
+      "aliases": ["DSC-RX1RM2", "RX1RM2", "Sony RX1RM2"],
+      "for": ["geoscan201"],
+      "specs": {
+        "general": {
+          "type": "digital",
+          "max_resolution": "43.6 MP",
+          "sensor": "full-frame CMOS Extmor R (35.9 × 24 mm)"
+        },
+        "performance": {
+          "shutter": "central",
+          "aperture": "f/2–22",
+          "iso": "100–102400",
+          "mechanical_shutter_speed": "1/4000–30 s"
+        }
+      },
+      "notes": "Similar to RX1RM3, has presets. В PDF Geoscan указано 43,6 Мп (маркетинговое), физическое ≈ 42,4 Мп."
+    },
+
+    "zv-e10": {
+      "id": "zv-e10",
+      "category": "camera",
+      "model": "Sony ZV-E10",
+      "aliases": ["ZV-E10", "Sony ZV-E10"],
+      "for": ["geoscan201"],
+      "specs": {
+        "general": {
+          "type": "digital",
+          "max_resolution": "24.3 MP",
+          "sensor": "APS-C (23.5 × 15.6 mm)"
+        },
+        "performance": {
+          "shutter": "focal-plane",
+          "iso": "100–32200",
+          "max_survey_speed": "8 m/s",
+          "max_survey_speed_note": "оценка из-за электронного затвора"
+        }
+      },
+      "notes": "Used with manual focus, ISO Auto, daylight white balance."
+    },
+
+    "801-visible": {
+      "id": "801-visible",
+      "category": "camera",
+      "model": "Geoscan 801 visible camera",
+      "aliases": ["801 visible", "камера видимого спектра 801"],
+      "for": ["geoscan801"],
+      "specs": {
+        "general": {
+          "type": "digital video",
+          "sensor": "1/2.3\", 12 MP",
+          "resolution": "4000 × 3000 (оценка, 4:3)"
+        },
+        "performance": {
+          "wide_angle_lens": "F=4.35 mm",
+          "narrow_angle_lens": "F=16 mm",
+          "hybrid_zoom": "up to 12x"
+        }
+      }
+    },
+
+    "801-thermal": {
+      "id": "801-thermal",
+      "category": "camera",
+      "model": "Geoscan 801 thermal camera",
+      "aliases": ["801 thermal", "тепловизор 801", "Тепловизионная камера 801"],
+      "for": ["geoscan801"],
+      "specs": {
+        "general": {
+          "type": "thermal",
+          "sensor": "640x512",
+          "pixel_pitch_um": 17,
+          "pixel_pitch_note": "типовое для класса 640 × 512"
+        },
+        "performance": {
+          "lens": "F=9.1 mm",
+          "spectral_range": "8-14 µm",
+          "thermal_sensitivity": "less than 40 mK at f/1.0",
+          "temperature_ranges": ["-20~150 °C", "100~550 °C"]
+        }
+      }
+    }
+  },
+
+  "mvp_estimates": {
+    "meta": {
+      "note": "Оценочные параметры для MVP. Не являются паспортными ТТХ. Источник — mvp.pdf, раздел 6."
+    },
+    "gemini": {
+      "v_air_mps": 12,
+      "v_air_note": "оценка (0,8 · 15)",
+      "v_vert_mps": 5,
+      "v_survey_mps": 12,
+      "k_h": 90.0,
+      "k_v": 0.02,
+      "k_w": 0.008,
+      "t_turn_s": [5, 3, 1],
+      "power_model": "P = k_h * m + k_v * v^3 + k_w * |w|^2 * m",
+      "reserve_fraction": 0.05
+    },
+    "geoscan801": {
+      "v_air_mps": 12,
+      "v_air_note": "оценка",
+      "v_vert_mps": 4,
+      "v_vert_note": "оценка",
+      "v_survey_mps": 12,
+      "k_h": 90.0,
+      "k_v": 0.02,
+      "k_w": 0.008,
+      "t_turn_s": [5, 3, 1],
+      "power_model": "P = k_h * m + k_v * v^3 + k_w * |w|^2 * m",
+      "reserve_fraction": 0.05,
+      "battery_energy_wh": 90,
+      "camera_resolution": "4000x3000"
+    },
+    "geoscan201": {
+      "v_air_mps": 25,
+      "v_air_note": "середина диапазона 18–36 м/с",
+      "v_stall_mps": 15,
+      "v_stall_note": "оценка",
+      "v_climb_mps": 3,
+      "v_climb_note": "оценка",
+      "v_survey_mps": 25,
+      "turn_radius_m": 110,
+      "turn_radius_note": "расчёт при v = 25, φ = 30°",
+      "bank_angle_deg": 30,
+      "power_const_w": 220,
+      "power_const_note": "оценка из 180 мин при батарее 740 Вт·ч",
+      "T_catapult_s": 10,
+      "T_catapult_note": "оценка",
+      "T_parachute_s": 120,
+      "T_parachute_note": "оценка",
+      "battery_energy_wh": 740,
+      "battery_energy_note": "расчёт: 40 А·ч × 18.5 В",
+      "airframe_mass_kg": 7.0,
+      "airframe_mass_note": "оценка: 8,5 – 1,5 кг",
+      "power_model": "P ≈ 220 Вт (константа для MVP)",
+      "reserve_fraction": 0.05
+    }
+  },
+
+  "gnss": {
+    "ublox-zed-f9p": {
+      "id": "ublox-zed-f9p",
+      "category": "gnss",
+      "model": "U-blox ZED-F9P",
+      "aliases": ["ZED-F9P", "U-blox ZED-F9P", "GNSS U-blox ZED-F9P"],
+      "for": ["gemini", "geoscan201"],
+      "specs": {
+        "general": {
+          "channels": 184
+        },
+        "performance": {
+          "acquisition_time": "< 2 / < 25 sec (hot/cold)",
+          "signals": ["GPS L1/L2", "GLONASS L1/L2", "Galileo E1B/E1C/E5c", "BeiDou B1I/B2I"],
+          "accuracy_ppk": {
+            "horizontal": "10 mm + 1 ppm × baseline length",
+            "vertical": "10 mm + 1 ppm × baseline length"
+          }
+        }
+      }
+    },
+
+    "gnss-801": {
+      "id": "gnss-801",
+      "category": "gnss",
+      "model": "GNSS receiver (801)",
+      "aliases": ["GNSS 801", "ГНСС-приемник 801"],
+      "for": ["geoscan801"],
+      "specs": {
+        "performance": {
+          "signals": "L1, L2: GPS, GLONASS, BeiDou"
+        }
+      },
+      "notes": "specs not detailed"
+    }
+  },
+
+  "radio_modems": {
+    "868-mhz-gemini": {
+      "id": "868-mhz-gemini",
+      "category": "radio_modem",
+      "model": "868 MHz Radio Modem (Gemini)",
+      "aliases": ["868 MHz Gemini", "Радиомодем 868 МГц Gemini"],
+      "for": ["gemini"],
+      "specs": {
+        "comms": {
+          "operating_frequency": "867.75–872.25 MHz",
+          "transmitting_power": "< 100 mW",
+          "max_bandwidth": "500 kb/s",
+          "max_delay": "20 ms",
+          "channel_separation": "FDM",
+          "duplexing": "TDD",
+          "max_range": "5 km"
+        }
+      }
+    },
+
+    "2.4-ghz-gemini": {
+      "id": "2.4-ghz-gemini",
+      "category": "radio_modem",
+      "model": "2.4 GHz Radio Modem (Gemini)",
+      "aliases": ["2.4 GHz Gemini", "Радиомодем 2,4 ГГц Gemini"],
+      "for": ["gemini"],
+      "specs": {
+        "comms": {
+          "operating_frequency": "2402-2480 MHz",
+          "transmitting_power": "< 100 mW",
+          "max_bandwidth": "125 kb/s",
+          "channel_separation": "FDM",
+          "duplexing": "TDD",
+          "max_range": "5 km"
+        }
+      }
+    },
+
+    "868-mhz-201": {
+      "id": "868-mhz-201",
+      "category": "radio_modem",
+      "model": "868 MHz Radio Modem (201)",
+      "aliases": ["868 MHz 201", "Радиомодем 868 МГц 201"],
+      "for": ["geoscan201"],
+      "specs": {
+        "comms": {
+          "operating_frequency": "867.75–872.25 MHz",
+          "transmitting_power": "< 1 W",
+          "max_bandwidth": "500 kb/s",
+          "max_delay": "20 ms",
+          "duplexing": "TDD",
+          "max_range": "40 km"
+        }
+      }
+    },
+
+    "801-radio": {
+      "id": "801-radio",
+      "category": "radio_modem",
+      "model": "801 radio",
+      "aliases": ["Радиоканал 801", "801 радиоканал"],
+      "for": ["geoscan801"],
+      "specs": {
+        "comms": {
+          "video_range": "up to 10 km",
+          "technology": "Beamforming"
+        }
+      }
+    }
+  },
+
+  "batteries": {
+    "battery-gemini": {
+      "id": "battery-gemini",
+      "category": "battery",
+      "model": "Flight Battery Gemini",
+      "aliases": ["АКБ Gemini", "Flight Battery Gemini"],
+      "for": ["gemini"],
+      "specs": {
+        "power": {
+          "type": "Li-Ion",
+          "voltage": "21.6 V",
+          "capacity": "6700 mAh",
+          "energy": "144.7 Wh",
+          "weight": "710 g",
+          "operating_temperature": "-15 to 40 °C"
+        }
+      }
+    },
+
+    "battery-201": {
+      "id": "battery-201",
+      "category": "battery",
+      "model": "Flight Battery 201",
+      "aliases": ["АКБ 201", "Батарея 201"],
+      "for": ["geoscan201"],
+      "specs": {
+        "power": {
+          "type": "5S LiPo",
+          "capacity": "40,000 mAh",
+          "nominal_voltage": "18.5 V",
+          "upper_voltage_limit": "21 V",
+          "lower_voltage_limit": "15 V",
+          "energy_wh": 740,
+          "energy_note": "расчёт: 40 А·ч × 18.5 В",
+          "recommended_charge_current": "10 A",
+          "max_charge_current": "17 A",
+          "cells": 5,
+          "life": "1 year",
+          "cycles": "≥80"
+        }
+      }
+    },
+
+    "battery-801": {
+      "id": "battery-801",
+      "category": "battery",
+      "model": "Flight Battery 801",
+      "aliases": ["АКБ 801", "Батарея 801"],
+      "for": ["geoscan801"],
+      "specs": {
+        "power": {
+          "energy_wh": 90,
+          "energy_note": "оценка из 40 мин при ~135 Вт"
+        },
+        "environment": {
+          "operating_temperature": "-20 to +40 °C"
+        }
+      },
+      "notes": "with heating"
+    }
+  },
+
+  "chargers": {
+    "charger-gemini": {
+      "id": "charger-gemini",
+      "category": "charger",
+      "model": "Battery Charger Gemini",
+      "aliases": ["ЗУ Gemini", "Зарядное устройство Gemini"],
+      "for": ["gemini"],
+      "specs": {
+        "power": {
+          "input_voltage": "100-240 V",
+          "max_input_current": "2 A",
+          "max_charge_current": "6 A",
+          "max_discharge_current": "120 mA",
+          "charging_time": "~105 min",
+          "operating_temperature": "0 to 40 °C"
+        }
+      }
+    },
+
+    "cm1620": {
+      "id": "cm1620",
+      "category": "charger",
+      "model": "CM1620",
+      "aliases": ["CM1620", "ЗУ CM1620"],
+      "for": ["geoscan201"],
+      "specs": {
+        "power": {
+          "settings": "LiPo, 5S, 10 A"
+        }
+      }
+    },
+
+    "50010b": {
+      "id": "50010b",
+      "category": "charger",
+      "model": "50010B",
+      "aliases": ["50010B", "ЗУ 50010B"],
+      "for": ["geoscan201"],
+      "specs": {
+        "power": {
+          "settings": "LiPo, 5S, 10 A, End Voltage 4.2 V"
+        }
+      }
+    },
+
+    "icharger-3010b": {
+      "id": "icharger-3010b",
+      "category": "charger",
+      "model": "iCharger 3010B",
+      "aliases": ["iCharger 3010B", "3010B"],
+      "for": ["geoscan201"],
+      "specs": {
+        "power": {
+          "settings": "LiPo, AUTO cells, 10 A"
+        }
+      }
+    },
+
+    "icharger-x12": {
+      "id": "icharger-x12",
+      "category": "charger",
+      "model": "iCharger X12",
+      "aliases": ["iCharger X12", "X12"],
+      "for": ["geoscan201"],
+      "specs": {
+        "power": {
+          "settings": "LiPo, Charge, 10 A, Slow Balance"
+        }
+      }
+    },
+
+    "icharger-4010-duo": {
+      "id": "icharger-4010-duo",
+      "category": "charger",
+      "model": "iCharger 4010 Duo",
+      "aliases": ["iCharger 4010 Duo", "4010 Duo"],
+      "for": ["geoscan201"],
+      "specs": {
+        "power": {
+          "settings": "LiPo, Charge, 10 A, Slow Balance, dual channel"
+        }
+      }
+    },
+
+    "charger-801": {
+      "id": "charger-801",
+      "category": "charger",
+      "model": "Battery Charger 801",
+      "aliases": ["ЗУ 801", "Зарядное устройство 801"],
+      "for": ["geoscan801"],
+      "specs": {},
+      "notes": "specs not detailed"
+    }
+  },
+
+  "launchers": {
+    "standard-launcher": {
+      "id": "standard-launcher",
+      "category": "launcher",
+      "model": "Standard Launcher",
+      "aliases": ["Стандартная пусковая установка", "Пусковая установка с резиновыми жгутами"],
+      "for": ["geoscan201"],
+      "specs": {
+        "general": {
+          "type": "rubber cords",
+          "T_catapult_s": 10,
+          "T_catapult_note": "оценка",
+          "components": [
+            "carriage",
+            "front part",
+            "middle extension",
+            "middle part with winch",
+            "rear part",
+            "rubber cords set",
+            "winch handle",
+            "stop peg",
+            "hammer"
+          ]
+        }
+      }
+    },
+
+    "arctic-launcher": {
+      "id": "arctic-launcher",
+      "category": "launcher",
+      "model": "Arctic Launcher",
+      "aliases": ["Пусковая установка «Арктика»", "Арктика"],
+      "for": ["geoscan201"],
+      "specs": {
+        "general": {
+          "type": "springs",
+          "T_catapult_s": 10,
+          "T_catapult_note": "оценка",
+          "components": ["springs", "pulley system", "carriage"]
+        }
+      }
+    }
+  },
+
+  "accessories": {
+    "modem-stand": {
+      "id": "modem-stand",
+      "category": "accessory",
+      "model": "Modem Stand",
+      "aliases": ["Стойка модема"],
+      "for": ["geoscan201"],
+      "specs": {}
+    },
+
+    "assembly-stand": {
+      "id": "assembly-stand",
+      "category": "accessory",
+      "model": "Assembly Stand",
+      "aliases": ["Раскладная подставка для сборки", "Подставка для сборки БВС"],
+      "for": ["geoscan201"],
+      "specs": {}
+    },
+
+    "fuselage-cradle": {
+      "id": "fuselage-cradle",
+      "category": "accessory",
+      "model": "Fuselage Cradle",
+      "aliases": ["Ложемент фюзеляжа"],
+      "for": ["geoscan201"],
+      "specs": {}
+    },
+
+    "spare-parts-kit": {
+      "id": "spare-parts-kit",
+      "category": "accessory",
+      "model": "Spare Parts Kit",
+      "aliases": ["Комплект запасных частей", "ЗИП"],
+      "for": ["geoscan201"],
+      "specs": {}
+    },
+
+    "remote-801": {
+      "id": "remote-801",
+      "category": "accessory",
+      "model": "Remote Control 801",
+      "aliases": ["Пульт 801", "Пульт дистанционного управления 801"],
+      "for": ["geoscan801"],
+      "specs": {
+        "general": {
+          "display": "7\" touchscreen Full HD 1920x1200, 2000 nit",
+          "weight": "1300 g"
+        },
+        "power": {
+          "battery_life": "up to 4 hours",
+          "charging_time": "2 hours (USB-PD)"
+        },
+        "environment": {
+          "operating_temperature": "-20 to +40 °C"
+        }
+      }
+    },
+
+    "case-gemini": {
+      "id": "case-gemini",
+      "category": "accessory",
+      "model": "Transport Case Gemini",
+      "aliases": ["Транспортировочный кейс Gemini"],
+      "for": ["gemini"],
+      "specs": {
+        "general": {
+          "dimensions": "638 × 505 × 224 mm",
+          "weight": "10 kg (including all parts)",
+          "protection_class": "IP67",
+          "wheeled": "yes"
+        }
+      }
+    },
+
+    "case-801": {
+      "id": "case-801",
+      "category": "accessory",
+      "model": "Transport Case 801",
+      "aliases": ["Транспортировочный кейс 801"],
+      "for": ["geoscan801"],
+      "specs": {}
+    }
+  },
+
+  "software": {
+    "geoscan-planner": {
+      "id": "geoscan-planner",
+      "category": "software",
+      "model": "Geoscan Planner",
+      "aliases": ["Geoscan Planner", "Геоскан Планер"],
+      "for": ["gemini", "geoscan201"],
+      "specs": {
+        "software": {
+          "features": [
+            "planning area and linear AFS",
+            "flights",
+            "waypoints",
+            "landing",
+            "binding"
+          ]
+        }
+      }
+    },
+
+    "801-software": {
+      "id": "801-software",
+      "category": "software",
+      "model": "801 built-in software",
+      "aliases": ["ПО 801", "Встроенное ПО 801"],
+      "for": ["geoscan801"],
+      "specs": {
+        "software": {
+          "features": [
+            "flight planning",
+            "automatic flight",
+            "return to point"
+          ]
+        }
+      }
+    }
+  },
+
+  "camera_offsets": {
+    "offsets-201": {
+      "id": "offsets-201",
+      "category": "offsets",
+      "model": "Camera offsets for Geoscan 201",
+      "aliases": ["Офсеты камер 201", "Смещения центров фотографирования 201"],
+      "for": ["geoscan201"],
+      "specs": {
+        "left_slot": [
+          { "camera": "zv-e10", "angle": "nadir", "x": 0.505, "y": -0.180, "z": -0.033 },
+          { "camera": "riebo-r4", "angle": "nadir", "x": 0.490, "y": -0.180, "z": 0.018 },
+          { "camera": "riebo-r6", "angle": "nadir", "x": 0.490, "y": -0.180, "z": 0.018 },
+          { "camera": "rx1rm2", "angle": "15°", "x": 0.503, "y": -0.181, "z": -0.033 },
+          { "camera": "rx1rm2", "angle": "20°", "x": 0.505, "y": -0.175, "z": -0.25 }
+        ],
+        "right_slot": [
+          { "camera": "zv-e10", "angle": "nadir", "x": 0.374, "y": -0.179, "z": -0.04 },
+          { "camera": "riebo-r4", "angle": "nadir", "x": 0.368, "y": -0.178, "z": 0.018 },
+          { "camera": "riebo-r6", "angle": "nadir", "x": 0.368, "y": -0.178, "z": 0.018 },
+          { "camera": "rx1rm2", "angle": "15°", "x": 0.357, "y": -0.181, "z": -0.033 },
+          { "camera": "rx1rm2", "angle": "nadir", "x": 0.368, "y": -0.181, "z": -0.032 }
+        ],
+        "center": [
+          { "camera": "rx1rm2", "angle": "nadir", "x": 0.489, "y": -0.175, "z": -0.032 }
+        ],
+        "pollux_left_slot": [
+          { "channel": "Blue (470 nm)", "x": 0.344, "y": -0.1907, "z": 0.0257 },
+          { "channel": "Green (560 nm)", "x": 0.384, "y": -0.1907, "z": 0.0257 },
+          { "channel": "NIR (840 nm)", "x": 0.384, "y": -0.1687, "z": 0.0257 },
+          { "channel": "Red Edge (720 nm)", "x": 0.344, "y": -0.1687, "z": 0.0257 },
+          { "channel": "Red (668 nm)", "x": 0.364, "y": -0.1797, "z": 0.0257 }
+        ]
+      }
+    }
+  },
+
+  "search_index": {
+    "geoscan gemini": "gemini",
+    "gemini": "gemini",
+    "гемини": "gemini",
+    "геоскан гемини": "gemini",
+    "geoscan 201": "geoscan201",
+    "201": "geoscan201",
+    "геоскан 201": "geoscan201",
+    "геоскан-201": "geoscan201",
+    "geoscan 801": "geoscan801",
+    "801": "geoscan801",
+    "геоскан 801": "geoscan801",
+    "геоскан-801": "geoscan801",
+
+    "pf1b": "pf1b",
+    "геоскан pf1b": "pf1b",
+    "umc-r10c": "umc-r10c",
+    "sony umc-r10c": "umc-r10c",
+    "pollux": "pollux",
+    "поллукс": "pollux",
+    "геоскан pollux": "pollux",
+    "riebo r4": "riebo-r4",
+    "riebo r6": "riebo-r6",
+    "rx1rm3": "rx1rm3",
+    "sony rx1rm3": "rx1rm3",
+    "dsc-rx1rm3": "rx1rm3",
+    "rx1rm2": "rx1rm2",
+    "sony rx1rm2": "rx1rm2",
+    "dsc-rx1rm2": "rx1rm2",
+    "zv-e10": "zv-e10",
+    "sony zv-e10": "zv-e10",
+    "801 visible": "801-visible",
+    "801 thermal": "801-thermal",
+    "тепловизор 801": "801-thermal",
+
+    "ublox zed-f9p": "ublox-zed-f9p",
+    "zed-f9p": "ublox-zed-f9p",
+    "gnss 801": "gnss-801",
+
+    "868 mhz gemini": "868-mhz-gemini",
+    "2.4 ghz gemini": "2.4-ghz-gemini",
+    "868 mhz 201": "868-mhz-201",
+    "801 radio": "801-radio",
+
+    "battery gemini": "battery-gemini",
+    "акб gemini": "battery-gemini",
+    "battery 201": "battery-201",
+    "акб 201": "battery-201",
+    "battery 801": "battery-801",
+    "акб 801": "battery-801",
+
+    "charger gemini": "charger-gemini",
+    "зу gemini": "charger-gemini",
+    "cm1620": "cm1620",
+    "50010b": "50010b",
+    "icharger 3010b": "icharger-3010b",
+    "icharger x12": "icharger-x12",
+    "icharger 4010 duo": "icharger-4010-duo",
+    "charger 801": "charger-801",
+    "зу 801": "charger-801",
+
+    "standard launcher": "standard-launcher",
+    "arctic launcher": "arctic-launcher",
+    "арктика": "arctic-launcher",
+
+    "modem stand": "modem-stand",
+    "стойка модема": "modem-stand",
+    "assembly stand": "assembly-stand",
+    "подставка для сборки": "assembly-stand",
+    "fuselage cradle": "fuselage-cradle",
+    "ложемент фюзеляжа": "fuselage-cradle",
+    "spare parts kit": "spare-parts-kit",
+    "зип": "spare-parts-kit",
+    "remote 801": "remote-801",
+    "пульт 801": "remote-801",
+    "case gemini": "case-gemini",
+    "кейс gemini": "case-gemini",
+    "case 801": "case-801",
+    "кейс 801": "case-801",
+
+    "geoscan planner": "geoscan-planner",
+    "геоскан планер": "geoscan-planner",
+    "801 software": "801-software",
+    "по 801": "801-software",
+
+    "offsets 201": "offsets-201",
+    "офсеты 201": "offsets-201"
+  }
+}

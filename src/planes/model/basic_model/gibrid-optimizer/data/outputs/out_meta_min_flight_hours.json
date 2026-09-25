@@ -1,0 +1,262 @@
+{
+  "status": "heuristic",
+  "criterion": "min_flight_hours",
+  "solver": "meta",
+  "flight_altitude_m": 153.19148936170214,
+  "strip_width_m": 120.0,
+  "strip_count": 10,
+  "mission": {
+    "makespan_air_s": 862.527287497554,
+    "mission_time_s": 923.8038832422349,
+    "total_flight_time_s": 862.5272874975539,
+    "uav_used": 1,
+    "uav_total": 2
+  },
+  "strips": [
+    {
+      "id": 0,
+      "lat_start": 55.748,
+      "lon_start": 37.60861649930861,
+      "lat_end": 55.7525,
+      "lon_end": 37.60861649930861
+    },
+    {
+      "id": 1,
+      "lat_start": 55.748,
+      "lon_start": 37.60784949792582,
+      "lat_end": 55.7525,
+      "lon_end": 37.60784949792582
+    },
+    {
+      "id": 2,
+      "lat_start": 55.748,
+      "lon_start": 37.60708249654303,
+      "lat_end": 55.7525,
+      "lon_end": 37.60708249654303
+    },
+    {
+      "id": 3,
+      "lat_start": 55.748,
+      "lon_start": 37.606315495160246,
+      "lat_end": 55.7525,
+      "lon_end": 37.606315495160246
+    },
+    {
+      "id": 4,
+      "lat_start": 55.748,
+      "lon_start": 37.605548493777455,
+      "lat_end": 55.7525,
+      "lon_end": 37.605548493777455
+    },
+    {
+      "id": 5,
+      "lat_start": 55.748,
+      "lon_start": 37.60478149239467,
+      "lat_end": 55.7525,
+      "lon_end": 37.60478149239467
+    },
+    {
+      "id": 6,
+      "lat_start": 55.748,
+      "lon_start": 37.60401449101188,
+      "lat_end": 55.7525,
+      "lon_end": 37.60401449101188
+    },
+    {
+      "id": 7,
+      "lat_start": 55.748,
+      "lon_start": 37.60324748962909,
+      "lat_end": 55.7525,
+      "lon_end": 37.60324748962909
+    },
+    {
+      "id": 8,
+      "lat_start": 55.748,
+      "lon_start": 37.60248048824631,
+      "lat_end": 55.7525,
+      "lon_end": 37.60248048824631
+    },
+    {
+      "id": 9,
+      "lat_start": 55.748,
+      "lon_start": 37.60171348686352,
+      "lat_end": 55.7525,
+      "lon_end": 37.60171348686352
+    }
+  ],
+  "routes": [
+    {
+      "uav_id": 0,
+      "strips": [
+        9,
+        8,
+        7,
+        6,
+        5,
+        4,
+        3,
+        2,
+        1,
+        0
+      ],
+      "waypoints": [
+        {
+          "type": "takeoff",
+          "lat": 55.747,
+          "lon": 37.6
+        },
+        {
+          "type": "strip_start",
+          "strip": 9,
+          "lat": 55.748,
+          "lon": 37.60171348686352
+        },
+        {
+          "type": "strip_end",
+          "strip": 9,
+          "lat": 55.7525,
+          "lon": 37.60171348686352
+        },
+        {
+          "type": "strip_start",
+          "strip": 8,
+          "lat": 55.748,
+          "lon": 37.60248048824631
+        },
+        {
+          "type": "strip_end",
+          "strip": 8,
+          "lat": 55.7525,
+          "lon": 37.60248048824631
+        },
+        {
+          "type": "strip_start",
+          "strip": 7,
+          "lat": 55.748,
+          "lon": 37.60324748962909
+        },
+        {
+          "type": "strip_end",
+          "strip": 7,
+          "lat": 55.7525,
+          "lon": 37.60324748962909
+        },
+        {
+          "type": "strip_start",
+          "strip": 6,
+          "lat": 55.748,
+          "lon": 37.60401449101188
+        },
+        {
+          "type": "strip_end",
+          "strip": 6,
+          "lat": 55.7525,
+          "lon": 37.60401449101188
+        },
+        {
+          "type": "strip_start",
+          "strip": 5,
+          "lat": 55.748,
+          "lon": 37.60478149239467
+        },
+        {
+          "type": "strip_end",
+          "strip": 5,
+          "lat": 55.7525,
+          "lon": 37.60478149239467
+        },
+        {
+          "type": "strip_start",
+          "strip": 4,
+          "lat": 55.748,
+          "lon": 37.605548493777455
+        },
+        {
+          "type": "strip_end",
+          "strip": 4,
+          "lat": 55.7525,
+          "lon": 37.605548493777455
+        },
+        {
+          "type": "strip_start",
+          "strip": 3,
+          "lat": 55.748,
+          "lon": 37.606315495160246
+        },
+        {
+          "type": "strip_end",
+          "strip": 3,
+          "lat": 55.7525,
+          "lon": 37.606315495160246
+        },
+        {
+          "type": "strip_start",
+          "strip": 2,
+          "lat": 55.748,
+          "lon": 37.60708249654303
+        },
+        {
+          "type": "strip_end",
+          "strip": 2,
+          "lat": 55.7525,
+          "lon": 37.60708249654303
+        },
+        {
+          "type": "strip_start",
+          "strip": 1,
+          "lat": 55.748,
+          "lon": 37.60784949792582
+        },
+        {
+          "type": "strip_end",
+          "strip": 1,
+          "lat": 55.7525,
+          "lon": 37.60784949792582
+        },
+        {
+          "type": "strip_start",
+          "strip": 0,
+          "lat": 55.748,
+          "lon": 37.60861649930861
+        },
+        {
+          "type": "strip_end",
+          "strip": 0,
+          "lat": 55.7525,
+          "lon": 37.60861649930861
+        },
+        {
+          "type": "landing",
+          "lat": 55.747,
+          "lon": 37.6
+        }
+      ],
+      "time_breakdown_s": {
+        "takeoff": 30.638297872340427,
+        "transit": 432.6217721894514,
+        "turns": 45.0,
+        "survey": 384.9055153081025,
+        "landing": 30.638297872340427,
+        "total": 923.8038832422349
+      },
+      "energy_breakdown_wh": {
+        "takeoff": 1.5319148936170213,
+        "transit": 25.83232670829013,
+        "turns": 2.687,
+        "survey": 22.98313599184159,
+        "landing": 1.5319148936170213,
+        "total": 54.566292487365764
+      }
+    }
+  ],
+  "validation": {
+    "all_strips_covered": true,
+    "no_duplicate_strips": true,
+    "time_ok": true,
+    "energy_ok": true,
+    "returned_to_base": true,
+    "uav_count_ok": true,
+    "uav_ids_contiguous": true,
+    "no_empty_routes": true
+  }
+}
