@@ -11,7 +11,7 @@ contract_version: v0
 
 # Backend status
 
-- `blocked/superseded`: RUS-002 is retained as history but grants no implementation authority because its `target: main` conflicts with root governance. Terrain model work moved to `TER-001` under model ownership and is blocked on `DEV-SYNC REQUIRED`.
+- `superseded`: RUS-002 is retained as history but grants no implementation authority because its `target: main` conflicts with root governance. Terrain model work moved to planned task `TER-001` under model ownership; INT-002 resolved the dev synchronization prerequisite.
 
 ## Completed
 

@@ -2,7 +2,7 @@
 workstream: integration
 owner: Team
 task: INT-002
-status: in_progress
+status: done
 updated: 2026-09-25
 checkpoint: 2026-09-25
 branch: integration/INT-002-dev-sync
@@ -13,6 +13,7 @@ contract_version: v0
 
 ## Completed
 
+- [x] INT-002 fast-forwarded `dev` from `4c459a6c8e1383f1fbf8b87d2416686e3cfab866` to canonical `main` at `e4ec3fa825f08eb9136c9c0c283904c4187c380a` without merge, rebase, force, or unrelated feature branches.
 - [x] Defined non-overlapping workstream boundaries and the initial engine port.
 - [x] Added a backend-owned runtime wrapper that converts backend-local v0 requests through runtime-owned parsing.
 - [x] Reused `RuntimeEngineAdapter` unchanged for HTTP transport and converted its structured response back to the backend model.
@@ -26,12 +27,12 @@ contract_version: v0
 
 ## In progress
 
-- [ ] INT-002: fast-forward `dev` from `4c459a6c8e1383f1fbf8b87d2416686e3cfab866` to canonical `main` at `e4ec3fa825f08eb9136c9c0c283904c4187c380a`, then verify the remote ref before publishing TER-001 documentation to `dev`.
+- [ ] Publish the reviewed TER-001/INT-002 documentation-only commits to `dev`, then create the clean TER-001 implementation branch without implementation changes.
 - [ ] Team review and fresh-machine replay from `main`.
 
 ## Next action
 
-Run the fresh INT-002 topology checks from `docs/workstreams/integration/INT-002.md`. If and only if they still show a true fast-forward, update `dev` normally and verify the remote SHA.
+Fast-forward `dev` through the reviewed documentation-only INT-002 branch, verify the remote, and hand off a clean `model/TER-001-terrain-awareness` branch.
 
 ## Evidence
 
@@ -40,6 +41,7 @@ Run the fresh INT-002 topology checks from `docs/workstreams/integration/INT-002
 - Task brief: `docs/workstreams/integration/INT-001.md`.
 - INT-002 brief: `docs/workstreams/integration/INT-002.md`.
 - INT-002 pre-sync topology: `origin/dev...origin/main` returned `0 23`; ancestor check passed; dry-run advertised `4c459a6..e4ec3fa`.
+- INT-002 result: normal push advertised `4c459a6..e4ec3fa`; post-fetch `origin/dev == origin/main == e4ec3fa825f08eb9136c9c0c283904c4187c380a`; workspace validation passed.
 - `python -m compileall -q src/planes/backend tests/backend` — passed, exit 0.
 - `python -m unittest discover -s tests/backend -v` — passed, 32 tests, `OK`.
 - `python -m unittest tests.backend.test_runtime_engine -v` — passed, 12 runtime-wrapper tests, `OK`.
@@ -55,7 +57,6 @@ Run the fresh INT-002 topology checks from `docs/workstreams/integration/INT-002
 
 ## Blockers / limitations
 
-- INT-002 must stop if refreshed topology diverges or the server rejects a normal fast-forward. Force push, rebase, and a synchronization merge commit are prohibited.
 - Real VPS smoke requires out-of-band `COMPUTE_HOST`, `COMPUTE_TOKEN`, and `COMPUTE_TIMEOUT_SECONDS`; none were present during verification.
 - Runtime server tests are Linux/VPS-only: direct discovery under Windows fails at import because `planes.runtime.lock` intentionally uses POSIX `fcntl`; backend runtime-wrapper tests pass on Windows without changing runtime internals.
 - Concrete shared DTO fields and equipment profile provenance remain unfrozen. INT-001 converts between the existing backend-local and runtime-local v0 models without claiming a shared contract freeze.
