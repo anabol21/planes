@@ -11,7 +11,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from planes.runtime.enumeration import is_outer_scenario, run_candidates, select_winner
+from planes.runtime.enumeration import (
+    is_outer_scenario,
+    run_candidates,
+    select_winner,
+    skip_limitation,
+)
 
 
 @dataclass(frozen=True)
@@ -67,14 +72,17 @@ _optimizer: tuple[Any, Any, Any] | None = None
 def solve(problem: Problem, deadline: float) -> Solution | Infeasible | TimedOut:
     """Build one ``InputData`` and call ``run``.
 
-    An envelope with ``pads`` and ``uav_types`` enumerates admitted pairs
-    and returns the single best successful call. A scenario that still has
-    one ``takeoff`` and one ``uav`` stays on that one-call path.
+    An envelope with ``pads`` and ``required_spectrum`` enumerates admitted
+    catalog triples and returns the single best successful call. An envelope
+    that still has ``uav_types`` is rejected. A scenario that still has one
+    ``takeoff`` and one ``uav`` stays on that one-call path.
 
     ``deadline`` is ``time.monotonic()`` plus the problem time limit.
     Missing fields and pydantic or import failures raise ``ValueError``.
     The pipeline turns that into ``outcome=error``.
     """
+    if isinstance(problem.scenario, dict) and "uav_types" in problem.scenario:
+        raise ValueError("uav_types is not accepted")
     if is_outer_scenario(problem.scenario):
         return _solve_outer(problem, deadline)
     payload = _scenario_payload(problem.scenario)
@@ -90,7 +98,7 @@ def solve(problem: Problem, deadline: float) -> Solution | Infeasible | TimedOut
 
 
 def _solve_outer(problem: Problem, deadline: float) -> Solution | Infeasible | TimedOut:
-    """Enumerate admitted pairs and return the single best successful call."""
+    """Enumerate admitted triples and return the single best successful call."""
     if time.monotonic() >= deadline:
         return TimedOut((_TIME_LIMIT,))
     outcome = run_candidates(
@@ -102,6 +110,7 @@ def _solve_outer(problem: Problem, deadline: float) -> Solution | Infeasible | T
     criterion = problem.scenario.get("criterion")
     if not isinstance(criterion, str):
         raise ValueError("missing fields: criterion")
+    noted = tuple(skip_limitation(skip) for skip in outcome.skips)
     winner = select_winner(outcome.attempts, criterion)
     if winner is not None:
         mapped = _map_result(winner.result)
@@ -114,20 +123,25 @@ def _solve_outer(problem: Problem, deadline: float) -> Solution | Infeasible | T
             limitations=(
                 *mapped.limitations,
                 f"winning pad id: {winner.pad_id}",
-                f"winning type id: {winner.type_id}",
+                f"winning model id: {winner.model_id}",
+                f"winning camera id: {winner.camera_id}",
+                *noted,
             ),
         )
     if outcome.stopped_for_deadline or any(
         item.result.get("status") == "unknown" for item in outcome.attempts
     ):
-        return TimedOut((_TIME_LIMIT,))
+        return TimedOut((_TIME_LIMIT, *noted))
     reasons: list[str] = []
     if not outcome.attempts:
-        reasons.append("no compatible pad and type")
+        reasons.append(outcome.reason or "no runnable uav and camera for spectrum")
     for item in outcome.attempts:
         reason = item.result.get("reason")
         if isinstance(reason, str) and reason and reason not in reasons:
             reasons.append(reason)
+    for line in noted:
+        if line not in reasons:
+            reasons.append(line)
     return Infeasible(tuple(reasons))
 
 

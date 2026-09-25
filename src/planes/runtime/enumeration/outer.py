@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import sys
 import time
 from dataclasses import dataclass
@@ -9,7 +10,6 @@ from pathlib import Path
 from typing import Any, Callable
 
 MAX_PADS = 4
-MAX_TYPES = 4
 MAX_CALLS = 16
 
 _SHARED = (
@@ -36,7 +36,17 @@ _OPTICS = (
     "image_width_px",
     "image_height_px",
 )
+_PIXELS = ("image_width_px", "image_height_px")
+# Catalog fields that fill ``_FLIGHT`` besides the two the brief names.
+_OTHER_FLIGHT = (
+    ("mass_kg", "mass_kg"),
+    ("flight_time_s", "max_flight_time_s"),
+    ("climb_m_s", "v_vertical_ms"),
+    ("max_wind_m_s", "max_wind_ms"),
+)
 _OK = frozenset({"optimal", "feasible", "heuristic"})
+_NO_RUNNABLE = "no runnable uav and camera for spectrum"
+_CATALOG_PATH = Path(__file__).resolve().parents[1] / "catalog" / "fleet_catalog.json"
 _GIBRID_ROOT = (
     Path(__file__).resolve().parents[2] / "model" / "basic_model" / "gibrid-optimizer"
 )
@@ -48,57 +58,80 @@ _input_api: tuple[Any, Any] | None = None
 @dataclass(frozen=True)
 class Candidate:
     pad_id: str
-    type_id: str
+    model_id: str
+    camera_id: str
     data: Any
 
 
 @dataclass(frozen=True)
 class Attempt:
     pad_id: str
-    type_id: str
+    model_id: str
+    camera_id: str
     data: Any
     result: dict[str, Any]
+
+
+@dataclass(frozen=True)
+class Skip:
+    model_id: str
+    camera_id: str
+    missing: tuple[str, ...]
 
 
 @dataclass(frozen=True)
 class EnumerationResult:
     attempts: tuple[Attempt, ...]
     stopped_for_deadline: bool
+    skips: tuple[Skip, ...] = ()
+    reason: str | None = None
 
 
 @dataclass(frozen=True)
 class Winner:
     pad_id: str
-    type_id: str
+    model_id: str
+    camera_id: str
     result: dict[str, Any]
     objective_value: float
 
 
 def is_outer_scenario(scenario: dict[str, Any]) -> bool:
-    return isinstance(scenario, dict) and "pads" in scenario and "uav_types" in scenario
+    """An outer envelope has pads and a spectrum, and no ``uav_types``."""
+    return (
+        isinstance(scenario, dict)
+        and "pads" in scenario
+        and "required_spectrum" in scenario
+        and "uav_types" not in scenario
+    )
+
+
+def skip_limitation(skip: Skip) -> str:
+    return (
+        f"skipped model {skip.model_id} camera {skip.camera_id}: "
+        f"missing {', '.join(skip.missing)}"
+    )
+
+
+def load_catalog() -> dict[str, Any]:
+    """Read ``fleet_catalog.json``. Callers do not invent values for empty cells."""
+    try:
+        raw = json.loads(_CATALOG_PATH.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise ValueError(f"fleet catalog unreadable: {exc}") from exc
+    if not isinstance(raw, dict):
+        raise ValueError("missing fields: fleet catalog")
+    return raw
 
 
 def candidates(scenario: dict[str, Any], *, time_limit_s: int | float = 60) -> list[Candidate]:
-    """Admit (pad, type) pairs and build one ``InputData`` for each.
+    """Admit runnable (pad, model, camera) triples and build one ``InputData`` each.
 
-    Order is the envelope order: pads as listed, then the types listed on
-    that pad. A pair is kept only when the type is on the pad and its camera
-    name and one of its spectra equal the zone requirement.
+    Order is pads as given, then catalog compatibility edges. A spectrum match
+    that lacks optics or flight numbers is skipped, not filled with nulls.
     """
-    planned = _planned(scenario)
-    if len(planned) > MAX_CALLS:
-        raise ValueError("at most 16 calls")
-    limit = _positive_int(time_limit_s, "time_limit_s")
-    input_data_cls, validation_error = _input_api_types()
-    built: list[Candidate] = []
-    for pad_id, type_id, payload in planned:
-        payload["solver"] = {"time_limit_s": limit}
-        try:
-            data = input_data_cls(**payload)
-        except validation_error as exc:
-            raise ValueError(_invalid_fields(exc)) from exc
-        built.append(Candidate(pad_id=pad_id, type_id=type_id, data=data))
-    return built
+    admitted, _skips = _prepare(scenario, time_limit_s=time_limit_s)
+    return admitted
 
 
 def run_candidates(
@@ -109,8 +142,20 @@ def run_candidates(
     core: CoreFn | None = None,
     deadline: float | None = None,
 ) -> EnumerationResult:
-    """Call ``core`` once per admitted candidate. The default core is ``run``."""
-    admitted = candidates(scenario, time_limit_s=time_limit_s)
+    """Call ``core`` once per admitted triple. The default core is ``run``.
+
+    Incomplete spectrum matches are recorded and are not calls. No runnable
+    pair means no core call.
+    """
+    admitted, skips = _prepare(scenario, time_limit_s=time_limit_s)
+    recorded = tuple(skips)
+    if not admitted:
+        return EnumerationResult(
+            attempts=(),
+            stopped_for_deadline=False,
+            skips=recorded,
+            reason=_NO_RUNNABLE,
+        )
     call = core if core is not None else _default_core
     attempts: list[Attempt] = []
     stopped = False
@@ -128,9 +173,19 @@ def run_candidates(
         if not isinstance(result, dict):
             raise ValueError("missing fields: solver result")
         attempts.append(
-            Attempt(pad_id=item.pad_id, type_id=item.type_id, data=data, result=result)
+            Attempt(
+                pad_id=item.pad_id,
+                model_id=item.model_id,
+                camera_id=item.camera_id,
+                data=data,
+                result=result,
+            )
         )
-    return EnumerationResult(attempts=tuple(attempts), stopped_for_deadline=stopped)
+    return EnumerationResult(
+        attempts=tuple(attempts),
+        stopped_for_deadline=stopped,
+        skips=recorded,
+    )
 
 
 def select_winner(attempts: tuple[Attempt, ...] | list[Attempt], criterion: str) -> Winner | None:
@@ -154,77 +209,167 @@ def select_winner(attempts: tuple[Attempt, ...] | list[Attempt], criterion: str)
         return None
     return Winner(
         pad_id=best.pad_id,
-        type_id=best.type_id,
+        model_id=best.model_id,
+        camera_id=best.camera_id,
         result=best.result,
         objective_value=best_value,
     )
 
 
-def _planned(scenario: dict[str, Any]) -> list[tuple[str, str, dict[str, Any]]]:
+def _prepare(
+    scenario: dict[str, Any],
+    *,
+    time_limit_s: int | float,
+) -> tuple[list[Candidate], list[Skip]]:
     if not isinstance(scenario, dict):
         raise ValueError("missing fields: scenario")
-    missing = [name for name in ("required_camera", "required_spectrum", *_SHARED, "uav_types", "pads") if name not in scenario]
+    if "uav_types" in scenario:
+        raise ValueError("uav_types is not accepted")
+    missing = [name for name in ("required_spectrum", *_SHARED, "pads") if name not in scenario]
     if missing:
         raise ValueError("missing fields: " + ", ".join(missing))
-    required_camera = _text(scenario["required_camera"], "required_camera")
     required_spectrum = _text(scenario["required_spectrum"], "required_spectrum")
     if scenario["criterion"] not in ("min_time", "min_flight_hours"):
         raise ValueError("missing fields: criterion")
-    types = _types(scenario["uav_types"])
-    pads = _pads(scenario["pads"], types)
+    pads = _pads(scenario["pads"])
+    runnable, skips = _pool(load_catalog(), required_spectrum)
+    planned = [(pad, pair) for pad in pads for pair in runnable]
+    if len(planned) > MAX_CALLS:
+        raise ValueError("at most 16 calls")
+    limit = _positive_int(time_limit_s, "time_limit_s")
+    input_data_cls, validation_error = _input_api_types()
     shared = {name: scenario[name] for name in _SHARED}
-    planned: list[tuple[str, str, dict[str, Any]]] = []
-    for pad in pads:
-        for stock in pad["types"]:
-            vehicle = types[stock["id"]]
-            if not _compatible(vehicle, required_camera, required_spectrum):
-                continue
-            payload = {
-                **shared,
-                "takeoff": {"lat": pad["lat"], "lon": pad["lon"]},
-                "uav": {**vehicle["flight"], "count": stock["count"]},
-                "camera": dict(vehicle["optics"]),
+    built: list[Candidate] = []
+    for pad, pair in planned:
+        payload = {
+            **shared,
+            "takeoff": {"lat": pad["lat"], "lon": pad["lon"]},
+            "uav": _flight(pair["model"], pad["count"]),
+            "camera": _optics(pair["camera"]),
+            "solver": {"time_limit_s": limit},
+        }
+        try:
+            data = input_data_cls(**payload)
+        except validation_error as exc:
+            raise ValueError(_invalid_fields(exc)) from exc
+        built.append(
+            Candidate(
+                pad_id=pad["id"],
+                model_id=pair["model_id"],
+                camera_id=pair["camera_id"],
+                data=data,
+            )
+        )
+    return built, skips
+
+
+def _pool(catalog: dict[str, Any], required_spectrum: str) -> tuple[list[dict[str, Any]], list[Skip]]:
+    models = _index(catalog.get("uav_models"), "uav_models")
+    cameras = _index(catalog.get("cameras"), "cameras")
+    edges = catalog.get("compatibility")
+    if not isinstance(edges, list):
+        raise ValueError("missing fields: compatibility")
+    runnable: list[dict[str, Any]] = []
+    skips: list[Skip] = []
+    for index, edge in enumerate(edges):
+        if not isinstance(edge, dict):
+            raise ValueError(f"missing fields: compatibility[{index}]")
+        model_id = _text(edge.get("uav_model_id"), f"compatibility[{index}].uav_model_id")
+        camera_id = _text(edge.get("camera_id"), f"compatibility[{index}].camera_id")
+        if model_id not in models:
+            raise ValueError(f"unknown uav model in catalog: {model_id}")
+        if camera_id not in cameras:
+            raise ValueError(f"unknown camera in catalog: {camera_id}")
+        camera = cameras[camera_id]
+        if required_spectrum not in _spectra(camera):
+            continue
+        missing = _missing_fields(models[model_id], camera)
+        if missing:
+            skips.append(Skip(model_id=model_id, camera_id=camera_id, missing=tuple(missing)))
+            continue
+        runnable.append(
+            {
+                "model_id": model_id,
+                "camera_id": camera_id,
+                "model": models[model_id],
+                "camera": camera,
             }
-            planned.append((pad["id"], vehicle["id"], payload))
-    return planned
+        )
+    return runnable, skips
 
 
-def _types(raw: Any) -> dict[str, dict[str, Any]]:
+def _index(raw: Any, label: str) -> dict[str, dict[str, Any]]:
     if not isinstance(raw, list):
-        raise ValueError("missing fields: uav_types")
-    if len(raw) > MAX_TYPES:
-        raise ValueError("at most 4 uav types")
-    catalog: dict[str, dict[str, Any]] = {}
+        raise ValueError(f"missing fields: {label}")
+    indexed: dict[str, dict[str, Any]] = {}
     for index, item in enumerate(raw):
         if not isinstance(item, dict):
-            raise ValueError(f"missing fields: uav_types[{index}]")
-        type_id = _text(item.get("id"), f"uav_types[{index}].id")
-        if type_id in catalog:
-            raise ValueError(f"duplicate uav type: {type_id}")
-        camera = item.get("camera")
-        if not isinstance(camera, dict):
-            raise ValueError(f"missing fields: uav_types[{index}].camera")
-        name = _text(camera.get("name"), f"uav_types[{index}].camera.name")
-        missing_optics = [key for key in _OPTICS if key not in camera]
-        if missing_optics:
-            raise ValueError("missing fields: " + ", ".join(f"uav_types[{index}].camera.{key}" for key in missing_optics))
-        spectra = item.get("spectra")
-        if not isinstance(spectra, list) or not spectra or not all(isinstance(part, str) for part in spectra):
-            raise ValueError(f"missing fields: uav_types[{index}].spectra")
-        missing_flight = [key for key in _FLIGHT if key not in item]
-        if missing_flight:
-            raise ValueError("missing fields: " + ", ".join(f"uav_types[{index}].{key}" for key in missing_flight))
-        catalog[type_id] = {
-            "id": type_id,
-            "camera_name": name,
-            "spectra": list(spectra),
-            "optics": {key: camera[key] for key in _OPTICS},
-            "flight": {key: item[key] for key in _FLIGHT},
-        }
-    return catalog
+            raise ValueError(f"missing fields: {label}[{index}]")
+        row_id = _text(item.get("id"), f"{label}[{index}].id")
+        if row_id in indexed:
+            raise ValueError(f"duplicate catalog id: {row_id}")
+        indexed[row_id] = item
+    return indexed
 
 
-def _pads(raw: Any, types: dict[str, dict[str, Any]]) -> list[dict[str, Any]]:
+def _spectra(camera: dict[str, Any]) -> list[str]:
+    raw = camera.get("spectra")
+    if not isinstance(raw, list):
+        return []
+    return [item for item in raw if isinstance(item, str)]
+
+
+def _missing_fields(model: dict[str, Any], camera: dict[str, Any]) -> list[str]:
+    missing: list[str] = []
+    for key in _OPTICS:
+        value = camera.get(key)
+        if key in _PIXELS:
+            if not _whole_number(value):
+                missing.append(key)
+        elif not _number(value):
+            missing.append(key)
+    if not _number(model.get("airspeed_m_s")):
+        missing.append("airspeed_m_s")
+    battery = model.get("battery")
+    energy = battery.get("energy_wh") if isinstance(battery, dict) else None
+    if not _number(energy):
+        missing.append("battery.energy_wh")
+    for key, _input_name in _OTHER_FLIGHT:
+        if not _number(model.get(key)):
+            missing.append(key)
+    name = model.get("name")
+    if not isinstance(name, str) or not name:
+        missing.append("name")
+    return missing
+
+
+def _optics(camera: dict[str, Any]) -> dict[str, Any]:
+    optics: dict[str, Any] = {}
+    for key in _OPTICS:
+        value = camera[key]
+        optics[key] = int(value) if key in _PIXELS else float(value)
+    return optics
+
+
+def _flight(model: dict[str, Any], count: int) -> dict[str, Any]:
+    battery = model["battery"]
+    flight = {
+        "model": model["name"],
+        "count": count,
+        "mass_kg": float(model["mass_kg"]),
+        "max_flight_time_s": float(model["flight_time_s"]),
+        "battery_wh": float(battery["energy_wh"]),
+        "v_air_ms": float(model["airspeed_m_s"]),
+        "v_vertical_ms": float(model["climb_m_s"]),
+        "max_wind_ms": float(model["max_wind_m_s"]),
+    }
+    present = tuple(key for key in flight if key != "count")
+    if present != _FLIGHT:
+        raise ValueError("missing fields: " + ", ".join(key for key in _FLIGHT if key not in flight))
+    return flight
+
+
+def _pads(raw: Any) -> list[dict[str, Any]]:
     if not isinstance(raw, list):
         raise ValueError("missing fields: pads")
     if len(raw) > MAX_PADS:
@@ -240,26 +385,11 @@ def _pads(raw: Any, types: dict[str, dict[str, Any]]) -> list[dict[str, Any]]:
         seen.add(pad_id)
         lat = _coord(item.get("lat"), f"pads[{index}].lat")
         lon = _coord(item.get("lon"), f"pads[{index}].lon")
-        listed = item.get("types")
-        if not isinstance(listed, list):
-            raise ValueError(f"missing fields: pads[{index}].types")
-        stock: list[dict[str, Any]] = []
-        for type_index, entry in enumerate(listed):
-            if not isinstance(entry, dict):
-                raise ValueError(f"missing fields: pads[{index}].types[{type_index}]")
-            type_id = _text(entry.get("id"), f"pads[{index}].types[{type_index}].id")
-            if type_id not in types:
-                raise ValueError(f"unknown uav type on pad {pad_id}: {type_id}")
-            count = entry.get("count")
-            if isinstance(count, bool) or not isinstance(count, int) or count < 1:
-                raise ValueError(f"missing fields: pads[{index}].types[{type_index}].count")
-            stock.append({"id": type_id, "count": count})
-        pads.append({"id": pad_id, "lat": lat, "lon": lon, "types": stock})
+        count = item.get("count")
+        if isinstance(count, bool) or not isinstance(count, int) or count < 1:
+            raise ValueError(f"missing fields: pads[{index}].count")
+        pads.append({"id": pad_id, "lat": lat, "lon": lon, "count": count})
     return pads
-
-
-def _compatible(vehicle: dict[str, Any], required_camera: str, required_spectrum: str) -> bool:
-    return vehicle["camera_name"] == required_camera and required_spectrum in vehicle["spectra"]
 
 
 def _text(value: Any, label: str) -> str:
@@ -272,6 +402,18 @@ def _coord(value: Any, label: str) -> float:
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         raise ValueError(f"missing fields: {label}")
     return float(value)
+
+
+def _number(value: Any) -> bool:
+    return isinstance(value, (int, float)) and not isinstance(value, bool)
+
+
+def _whole_number(value: Any) -> bool:
+    if not _number(value):
+        return False
+    if isinstance(value, float) and not value.is_integer():
+        return False
+    return True
 
 
 def _positive_int(value: int | float, label: str) -> int:

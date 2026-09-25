@@ -24,15 +24,15 @@ import {
 import { formatDecimalInput, normalizeDecimalDraft, parseDecimalInput } from "./numberInput";
 import { getResultPresentation } from "./presentation";
 import {
-  DEFAULT_UAVS,
-  addUav,
+  DEFAULT_PADS,
+  addPad,
   DEFAULT_TIME_LIMIT,
   MAX_TIME_LIMIT_SECONDS,
   buildOptimization,
   buildPrototypeScenario,
   validateScenarioInputs,
   withDefaultProfileLimitation,
-  type FleetUav,
+  type PadInput,
   type ScenarioInputs,
   type SurveyType,
 } from "./scenario";
@@ -292,33 +292,18 @@ function NumberField({
   );
 }
 
-function UavCard({ uav, index, removable, onChange, onRemove }: { uav: FleetUav; index: number; removable: boolean; onChange: (next: FleetUav) => void; onRemove: () => void }) {
-  const set = <K extends keyof FleetUav>(key: K, value: FleetUav[K]) => onChange({ ...uav, [key]: value });
+function PadCard({ pad, index, removable, onChange, onRemove }: { pad: PadInput; index: number; removable: boolean; onChange: (next: PadInput) => void; onRemove: () => void }) {
+  const set = <K extends keyof PadInput>(key: K, value: PadInput[K]) => onChange({ ...pad, [key]: value });
   return (
     <article className="uav-card">
-      <div className="uav-card-head"><div><span className="uav-index">БВС {index + 1}</span><strong>{uav.uav_id || "Без ID"}</strong></div><button className="text-button danger" type="button" disabled={!removable} onClick={onRemove}>Удалить</button></div>
+      <div className="uav-card-head"><div><span className="uav-index">Площадка {index + 1}</span><strong>{pad.id || "Без ID"}</strong></div><button className="text-button danger" type="button" disabled={!removable} onClick={onRemove}>Удалить</button></div>
       <div className="uav-grid">
-        <label><span>Локальный ID</span><input value={uav.uav_id} onChange={(event) => set("uav_id", event.target.value)} /></label>
-        <label><span>Модель</span><input value={uav.model} onChange={(event) => set("model", event.target.value)} /></label>
-        <label><span>Полезная нагрузка / сенсор</span><input value={uav.payload_model} onChange={(event) => set("payload_model", event.target.value)} /></label>
-        <NumberField label="Крейсерская скорость" unit="м/с" placeholder="15" value={uav.cruise_speed_m_s} onChange={(value) => set("cruise_speed_m_s", value)} />
-        <NumberField label="Ёмкость батареи" unit="Вт·ч" placeholder="144.7" value={uav.battery_capacity_wh} onChange={(value) => set("battery_capacity_wh", value)} />
-        <NumberField label="Макс. время полёта" unit="с" placeholder="2400" value={uav.max_flight_time_s} onChange={(value) => set("max_flight_time_s", value)} />
+        <label><span>ID</span><input value={pad.id} onChange={(event) => set("id", event.target.value)} /></label>
+        <NumberField label="Долгота" unit="°" placeholder="37.6000" value={pad.lon} onChange={(value) => set("lon", value)} />
+        <NumberField label="Широта" unit="°" placeholder="55.7470" value={pad.lat} onChange={(value) => set("lat", value)} />
+        <NumberField label="Число бортов" unit="шт" placeholder="1" integer value={pad.count} onChange={(value) => set("count", value)} />
       </div>
-      <div className="point-grid">
-        <fieldset>
-          <legend>Точка старта · EPSG:4326</legend>
-          <NumberField label="Долгота" unit="°" placeholder="37.6000" value={uav.launch_lon_deg} onChange={(value) => set("launch_lon_deg", value)} />
-          <NumberField label="Широта" unit="°" placeholder="55.7470" value={uav.launch_lat_deg} onChange={(value) => set("launch_lat_deg", value)} />
-          <small className="field-hint point-hint">Пример: 37.6000 и 55.7470</small>
-        </fieldset>
-        <fieldset>
-          <legend>Точка посадки · EPSG:4326</legend>
-          <NumberField label="Долгота" unit="°" placeholder="37.6000" value={uav.landing_lon_deg} onChange={(value) => set("landing_lon_deg", value)} />
-          <NumberField label="Широта" unit="°" placeholder="55.7470" value={uav.landing_lat_deg} onChange={(value) => set("landing_lat_deg", value)} />
-          <small className="field-hint point-hint">Пример: 37.6000 и 55.7470</small>
-        </fieldset>
-      </div>
+      <small className="field-hint point-hint">Координаты EPSG:4326. Пример: долгота 37.6000, широта 55.7470.</small>
     </article>
   );
 }
@@ -326,7 +311,7 @@ function UavCard({ uav, index, removable, onChange, onRemove }: { uav: FleetUav;
 export default function App() {
   const api = useMemo(() => createApiClient(), []);
   const [scenarioId, setScenarioId] = useState("demo-multi-uav-001");
-  const [uavs, setUavs] = useState<FleetUav[]>(() => DEFAULT_UAVS.map((uav) => ({ ...uav })));
+  const [pads, setPads] = useState<PadInput[]>(() => DEFAULT_PADS.map((pad) => ({ ...pad })));
   const [surveyType, setSurveyType] = useState<SurveyType>("RGB");
   const [windSpeed, setWindSpeed] = useState(3);
   const [windDirection, setWindDirection] = useState(270);
@@ -350,14 +335,14 @@ export default function App() {
 
   const scenarioInputs = useMemo<ScenarioInputs>(() => ({
     scenarioId,
-    uavs,
+    pads,
     surveyType,
     windSpeedMps: windSpeed,
     windDirectionFromDeg: windDirection,
     surveyTask,
     restrictedZones,
     obstacles,
-  }), [scenarioId, uavs, surveyType, windSpeed, windDirection, surveyTask, restrictedZones, obstacles]);
+  }), [scenarioId, pads, surveyType, windSpeed, windDirection, surveyTask, restrictedZones, obstacles]);
 
   const scenarioPreview = useMemo(() => {
     try {
@@ -439,7 +424,7 @@ export default function App() {
         <div className="header-copy">
           <p className="eyebrow">Инженерный прототип планирования</p>
           <h1>UAV Mission Planner</h1>
-          <p className="subtitle">Подготовка групповой миссии БВС на основе KML-геоданных, параметров флота и выбранного критерия оптимизации.</p>
+          <p className="subtitle">Подготовка групповой миссии БВС на основе KML-геоданных, площадок и выбранного критерия оптимизации.</p>
           <div className="connection-row" aria-label="Состояние приложения">
             <div className="connection-pill ready"><span className="status-dot" /><small>Frontend</small><strong>Готов</strong></div>
             <div className={`connection-pill ${backendTone}`}><span className="status-dot" /><small>Backend / задача</small><strong>{backendLabel}</strong></div>
@@ -450,7 +435,7 @@ export default function App() {
 
       <div className="honesty-banner">
         <strong>Prototype scenario profile</strong>
-        <p>KML читается локально. В запрос уходят кольца полигонов, а не исходные файлы. Недостающие поля сенсора и энергетики берутся из профиля по умолчанию и отмечены в ограничениях. Маршруты рассчитывает только backend/runtime.</p>
+        <p>KML читается локально. В запрос уходят кольца полигонов, площадки и спектр. Модель и камера читаются на сервере из справочника. GSD, перекрытия и коэффициенты мощности остаются профилем по умолчанию. Маршруты рассчитывает только backend/runtime.</p>
       </div>
 
       <form onSubmit={handleSubmit} noValidate>
@@ -469,8 +454,8 @@ export default function App() {
         </section>
 
         <section className="card workflow-section" aria-labelledby="fleet-title">
-          <div className="section-heading"><div><p className="eyebrow">03 · Доступные БВС</p><h2 id="fleet-title">Параметры флота</h2><p className="section-description">Каждая карточка — отдельный тип с count 1 на площадке своей точки старта. В перебор попадает карточка, у которой полезная нагрузка и спектр совпадают с требованием съёмки.</p></div><button className="secondary-button" type="button" onClick={() => setUavs((current) => addUav(current))}>+ Добавить БВС</button></div>
-          <div className="fleet-list">{uavs.map((uav, index) => <UavCard key={`${uav.uav_id}-${index}`} uav={uav} index={index} removable={uavs.length > 1} onChange={(next) => setUavs((current) => current.map((item, itemIndex) => itemIndex === index ? next : item))} onRemove={() => setUavs((current) => current.filter((_item, itemIndex) => itemIndex !== index))} />)}</div>
+          <div className="section-heading"><div><p className="eyebrow">03 · Площадки</p><h2 id="fleet-title">Площадки старта</h2><p className="section-description">Каждая карточка — площадка: широта, долгота и число одинаковых бортов. Модель и камера берутся из справочника по типу съёмки. Не больше 4 площадок.</p></div><button className="secondary-button" type="button" disabled={pads.length >= 4} onClick={() => setPads((current) => addPad(current))}>+ Добавить площадку</button></div>
+          <div className="fleet-list">{pads.map((pad, index) => <PadCard key={`${pad.id}-${index}`} pad={pad} index={index} removable={pads.length > 1} onChange={(next) => setPads((current) => current.map((item, itemIndex) => itemIndex === index ? next : item))} onRemove={() => setPads((current) => current.filter((_item, itemIndex) => itemIndex !== index))} />)}</div>
         </section>
 
         <section className="card workflow-section" aria-labelledby="survey-title">
@@ -492,7 +477,7 @@ export default function App() {
 
           <details className="advanced-panel">
             <summary><span>Расширенные настройки / Raw scenario</span><small>Фактическое тело запроса для инженерной проверки</small></summary>
-            <p className="advanced-note">Сценарий формируется из полей выше. Исходные KML остаются в памяти браузера; в запрос уходят кольца и поля InputData. Поля профиля по умолчанию помечены в default_profile.</p>
+            <p className="advanced-note">Сценарий формируется из полей выше. Исходные KML остаются в памяти браузера; в запрос уходят кольца, площадки и параметры оптимизации. Поля профиля по умолчанию помечены в default_profile.</p>
             {scenarioPreview.error && <p className="file-error">{scenarioPreview.error}</p>}
             <div className="editor-grid"><label><span>Scenario JSON · только чтение</span><textarea readOnly value={scenarioPreview.text} spellCheck={false} rows={18} /></label><label><span>Optimization JSON · только чтение</span><textarea readOnly value={optimizationText} spellCheck={false} rows={18} /></label></div>
           </details>

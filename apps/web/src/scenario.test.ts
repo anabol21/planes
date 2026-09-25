@@ -4,14 +4,14 @@ import { describe, expect, it } from "vitest";
 import { parseSubmission } from "./api";
 import type { KmlFileRecord, KmlSummary, XmlParser } from "./kml";
 import {
+  DEFAULT_PADS,
   DEFAULT_PROFILE_NOTE,
   DEFAULT_TIME_LIMIT,
-  DEFAULT_UAVS,
   MAX_TIME_LIMIT_SECONDS,
-  addUav,
+  addPad,
   buildOptimization,
   buildPrototypeScenario,
-  removeUav,
+  removePad,
   validateScenarioInputs,
   withDefaultProfileLimitation,
   type ScenarioInputs,
@@ -133,7 +133,7 @@ function kml(
 function inputs(): ScenarioInputs {
   return {
     scenarioId: "demo-multi-uav-001",
-    uavs: DEFAULT_UAVS.map((uav) => ({ ...uav })),
+    pads: DEFAULT_PADS.map((pad) => ({ ...pad })),
     surveyType: "RGB",
     windSpeedMps: 3,
     windDirectionFromDeg: 270,
@@ -147,20 +147,22 @@ function scenario(objective = "min_time") {
   return buildPrototypeScenario(inputs(), objective, xmlParser());
 }
 
-describe("prototype fleet", () => {
-  it("adds a UAV with a stable unique local ID", () => {
-    const expanded = addUav(DEFAULT_UAVS);
-    expect(expanded.map((uav) => uav.uav_id)).toEqual(["uav-01", "uav-02", "uav-03"]);
+describe("prototype pads", () => {
+  it("adds a pad with a stable unique id", () => {
+    const expanded = addPad(DEFAULT_PADS);
+    expect(expanded.map((pad) => pad.id)).toEqual(["pad-01", "pad-02"]);
+    expect(expanded[1]).toMatchObject({ lon: 37.6, lat: 55.747, count: 1 });
   });
 
-  it("removes one UAV while retaining at least one", () => {
-    expect(removeUav(DEFAULT_UAVS, "uav-01").map((uav) => uav.uav_id)).toEqual(["uav-02"]);
-    expect(removeUav([DEFAULT_UAVS[0]], "uav-01")).toHaveLength(1);
+  it("removes one pad while retaining at least one", () => {
+    const two = addPad(DEFAULT_PADS);
+    expect(removePad(two, "pad-01").map((pad) => pad.id)).toEqual(["pad-02"]);
+    expect(removePad([DEFAULT_PADS[0]], "pad-01")).toHaveLength(1);
   });
 });
 
 describe("prototype scenario", () => {
-  it("sends one pad per launch point and one type per card", () => {
+  it("sends pads with count and the survey spectrum", () => {
     expect(scenario()).toMatchObject({
       criterion: "min_time",
       crs: "EPSG:4326",
@@ -172,7 +174,6 @@ describe("prototype scenario", () => {
         [37.601, 55.7525],
         [37.601, 55.748],
       ],
-      required_camera: "Sony UMC-R10C",
       required_spectrum: "RGB",
       survey: { forward_overlap: 0.7, side_overlap: 0.6, strip_direction_deg: 0 },
       wind: { speed_ms: 3, direction_deg: 270 },
@@ -181,63 +182,15 @@ describe("prototype scenario", () => {
     const built = scenario();
     expect(built).not.toHaveProperty("uav");
     expect(built).not.toHaveProperty("takeoff");
-    expect(built.uav_types).toEqual([
-      {
-        id: "uav-01",
-        camera: { name: "Sony UMC-R10C", sensor_width_mm: 23.5, sensor_height_mm: 15.6, focal_length_mm: 20, image_width_px: 6000, image_height_px: 4000 },
-        spectra: ["RGB"],
-        model: "Geoscan Gemini",
-        mass_kg: 2,
-        max_flight_time_s: 2400,
-        battery_wh: 144.7,
-        v_air_ms: 15,
-        v_vertical_ms: 5,
-        max_wind_ms: 10,
-      },
-      {
-        id: "uav-02",
-        camera: { name: "Sony UMC-R10C", sensor_width_mm: 23.5, sensor_height_mm: 15.6, focal_length_mm: 20, image_width_px: 6000, image_height_px: 4000 },
-        spectra: ["RGB"],
-        model: "Geoscan Gemini",
-        mass_kg: 2,
-        max_flight_time_s: 2400,
-        battery_wh: 144.7,
-        v_air_ms: 15,
-        v_vertical_ms: 5,
-        max_wind_ms: 10,
-      },
-    ]);
+    expect(built).not.toHaveProperty("required_camera");
+    expect(built).not.toHaveProperty("uav_types");
     expect(built.pads).toEqual([
       {
         id: "pad-01",
         lat: 55.747,
         lon: 37.6,
-        types: [
-          { id: "uav-01", count: 1 },
-          { id: "uav-02", count: 1 },
-        ],
+        count: 1,
       },
-    ]);
-  });
-
-  it("keeps a card that does not match the fixed camera or spectrum", () => {
-    const mismatched = inputs();
-    mismatched.uavs[1] = { ...mismatched.uavs[1], payload_model: "Other sensor" };
-    mismatched.surveyType = "infrared";
-    const built = buildPrototypeScenario(mismatched, "min_time", xmlParser());
-    expect(built.required_camera).toBe("Sony UMC-R10C");
-    expect(built.required_spectrum).toBe("infrared");
-    expect(built.uav_types).toEqual([
-      expect.objectContaining({ camera: expect.objectContaining({ name: "Sony UMC-R10C" }), spectra: ["RGB"] }),
-      expect.objectContaining({ camera: expect.objectContaining({ name: "Other sensor" }), spectra: ["RGB"] }),
-    ]);
-    expect(built.pads).toEqual([
-      expect.objectContaining({
-        types: [
-          { id: "uav-01", count: 1 },
-          { id: "uav-02", count: 1 },
-        ],
-      }),
     ]);
   });
 
@@ -338,7 +291,8 @@ describe("prototype scenario", () => {
     expect(request.contract_version).toBe("v0");
     expect(request.scenario.uav).toBeUndefined();
     expect(request.scenario.pads).toHaveLength(1);
-    expect(request.scenario.uav_types).toHaveLength(2);
+    expect(request.scenario.uav_types).toBeUndefined();
+    expect(request.scenario.required_camera).toBeUndefined();
     expect(request.scenario.area).toHaveLength(5);
     expect(request.scenario.obstacles).toHaveLength(2);
     expect(request.scenario.zone_constraints).toHaveLength(1);
@@ -349,105 +303,58 @@ describe("prototype scenario", () => {
     expect(() => validateScenarioInputs(invalid)).toThrow("Загрузите корректный KML");
   });
 
-  it("rejects duplicate UAV IDs and invalid required fleet data", () => {
+  it("rejects duplicate pad IDs", () => {
     const invalid = inputs();
-    invalid.uavs[1] = { ...invalid.uavs[1], uav_id: "uav-01" };
+    invalid.pads = addPad(invalid.pads);
+    invalid.pads[1] = { ...invalid.pads[1], id: "pad-01" };
     expect(() => validateScenarioInputs(invalid)).toThrow("ID должен быть заполнен и уникален");
   });
 });
 
 describe("enumeration input", () => {
-  it("defaults launch and landing to lon 37.6 and lat 55.747", () => {
-    for (const uav of DEFAULT_UAVS) {
-      expect(uav.launch_lon_deg).toBe(37.6);
-      expect(uav.launch_lat_deg).toBe(55.747);
-      expect(uav.landing_lon_deg).toBe(37.6);
-      expect(uav.landing_lat_deg).toBe(55.747);
-    }
+  it("defaults a pad to lon 37.6, lat 55.747, and count 1", () => {
+    expect(DEFAULT_PADS).toEqual([{ id: "pad-01", lon: 37.6, lat: 55.747, count: 1 }]);
   });
 
-  it("emits pads and uav_types so solver.solve takes the enumeration path", () => {
+  it("emits pads and required_spectrum so solver.solve takes the enumeration path", () => {
     const built = scenario();
-    expect(built.pads).toBeDefined();
-    expect(built.uav_types).toBeDefined();
+    expect(built.pads).toEqual([{ id: "pad-01", lat: 55.747, lon: 37.6, count: 1 }]);
+    expect(built.required_spectrum).toBe("RGB");
     expect(built).not.toHaveProperty("takeoff");
     expect(built).not.toHaveProperty("uav");
+    expect(built).not.toHaveProperty("uav_types");
+    expect(built).not.toHaveProperty("required_camera");
   });
 
-  it("sets required_spectrum from the survey type and required_camera from the first payload", () => {
+  it("sets required_spectrum from the survey type and does not stamp RGB on the pad", () => {
     const built = scenario();
     expect(built.required_spectrum).toBe("RGB");
-    expect(built.required_camera).toBe(DEFAULT_UAVS[0].payload_model);
-    expect(built.required_camera).toBe("Sony UMC-R10C");
+    expect(built.pads).toEqual([{ id: "pad-01", lat: 55.747, lon: 37.6, count: 1 }]);
+    expect(JSON.stringify(built.pads)).not.toContain("RGB");
   });
 
-  it("maps each card to one type with count 1, spectra RGB, and that card's payload as the camera name", () => {
-    const built = scenario();
-    expect(built.uav_types).toEqual([
-      expect.objectContaining({
-        id: "uav-01",
-        spectra: ["RGB"],
-        camera: expect.objectContaining({ name: "Sony UMC-R10C" }),
-      }),
-      expect.objectContaining({
-        id: "uav-02",
-        spectra: ["RGB"],
-        camera: expect.objectContaining({ name: "Sony UMC-R10C" }),
-      }),
-    ]);
+  it("keeps two pads in the order the user entered, each with its own count", () => {
+    const two = inputs();
+    two.pads = [
+      { id: "pad-01", lat: 55.747, lon: 37.6, count: 2 },
+      { id: "pad-02", lat: 55.75, lon: 37.61, count: 1 },
+    ];
+    const built = buildPrototypeScenario(two, "min_time", xmlParser());
     expect(built.pads).toEqual([
-      {
-        id: "pad-01",
-        lat: 55.747,
-        lon: 37.6,
-        types: [
-          { id: "uav-01", count: 1 },
-          { id: "uav-02", count: 1 },
-        ],
-      },
+      { id: "pad-01", lat: 55.747, lon: 37.6, count: 2 },
+      { id: "pad-02", lat: 55.75, lon: 37.61, count: 1 },
     ]);
+    expect(built).not.toHaveProperty("uav_types");
+    expect(built).not.toHaveProperty("required_camera");
   });
 
-  it("stocks two pairs when both cards share the RGB survey payload", () => {
-    const built = scenario();
-    const pads = built.pads as Array<{ id: string; types: Array<{ id: string; count: number }> }>;
-    const stocked = pads.flatMap((pad) => pad.types.map((stock) => ({ padId: pad.id, ...stock })));
-    expect(built.required_spectrum).toBe("RGB");
-    expect(built.required_camera).toBe("Sony UMC-R10C");
-    expect(stocked).toEqual([
-      { padId: "pad-01", id: "uav-01", count: 1 },
-      { padId: "pad-01", id: "uav-02", count: 1 },
-    ]);
-    const types = built.uav_types as Array<{ id: string; spectra: string[]; camera: { name: string } }>;
-    for (const pair of stocked) {
-      const vehicle = types.find((item) => item.id === pair.id);
-      expect(vehicle?.camera.name).toBe(built.required_camera);
-      expect(vehicle?.spectra).toContain(built.required_spectrum);
-    }
-  });
-
-  it("keeps a different payload in the envelope; the server filter drops it because camera.name must equal required_camera", () => {
-    const mismatched = inputs();
-    mismatched.uavs[1] = { ...mismatched.uavs[1], payload_model: "Other sensor" };
-    const built = buildPrototypeScenario(mismatched, "min_time", xmlParser());
-    const types = built.uav_types as Array<{ id: string; camera: { name: string } }>;
-    expect(types.map((item) => item.id)).toEqual(["uav-01", "uav-02"]);
-    expect(types[1].camera.name).toBe("Other sensor");
-    expect(types[1].camera.name).not.toBe(built.required_camera);
-    const pads = built.pads as Array<{ types: Array<{ id: string }> }>;
-    expect(pads.flatMap((pad) => pad.types.map((stock) => stock.id))).toContain("uav-02");
-  });
-
-  it("sends a non-RGB survey as required_spectrum, which drops every card because spectra is RGB", () => {
+  it("sends a non-RGB survey as required_spectrum without a camera or type list", () => {
     const infrared = inputs();
     infrared.surveyType = "infrared";
     const built = buildPrototypeScenario(infrared, "min_time", xmlParser());
     expect(built.required_spectrum).toBe("infrared");
-    const types = built.uav_types as Array<{ spectra: string[] }>;
-    expect(types.length).toBeGreaterThan(0);
-    for (const vehicle of types) {
-      expect(vehicle.spectra).toEqual(["RGB"]);
-      expect(vehicle.spectra).not.toContain(built.required_spectrum);
-    }
+    expect(built).not.toHaveProperty("required_camera");
+    expect(built).not.toHaveProperty("uav_types");
+    expect(built.pads).toHaveLength(1);
   });
 });
