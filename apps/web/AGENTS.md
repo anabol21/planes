@@ -10,3 +10,7 @@ Read `docs/workstreams/web/WEB-001.md` and `docs/status/web.md` before changing 
 - Preserve contract version `v0` in requests, response types, fixtures, and displays.
 - Cancel active polling when a job is resubmitted and when the owning component unmounts.
 - Show request, network, and backend errors explicitly; never turn them into successful UI states.
+
+## Current path at main da3da56
+
+At `main` `da3da562b3d38d92dcc3dfc2f3b46636331cb8fc`, the current path for teammate agents is `docs/architecture/agent-brief-runtime.md` and `docs/architecture/agent-brief-backend.md`. Those briefs do not replace or weaken the rules above. Model agents must not edit the optimizer body. Backend agents must not fill optics or power.

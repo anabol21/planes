@@ -64,3 +64,7 @@ Status text is evidence-aware: “done” without a command, artifact, or test r
 ## Pull request gate
 
 A PR to `dev` must include: task ID, scope, contract changes, verification commands and results, limitations, status-file update, and rollback note. The author may not be the only reviewer. Integration must rerun the vertical-slice smoke test before `dev → main`.
+
+## Current path at main da3da56
+
+At `main` `da3da562b3d38d92dcc3dfc2f3b46636331cb8fc`, the current path for teammate agents is `docs/architecture/agent-brief-runtime.md` and `docs/architecture/agent-brief-backend.md`. Those briefs do not replace or weaken the rules above. Model agents must not edit the optimizer body. Backend agents must not fill optics or power.
