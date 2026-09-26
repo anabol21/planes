@@ -38,6 +38,10 @@ export interface ScenarioInputs {
   aerodromes: AerodromeInput[];
   boards: BoardInput[];
   surveyType: SurveyType;
+  gsdCmPerPx: number;
+  forwardOverlap: number;
+  sideOverlap: number;
+  stripDirectionDeg: number;
   windSpeedMps: number;
   windDirectionFromDeg: number | null;
   surveyTask: KmlFileRecord | null;
@@ -47,6 +51,10 @@ export interface ScenarioInputs {
 
 export const DEFAULT_AERODROME_LON = 37.6;
 export const DEFAULT_AERODROME_LAT = 55.747;
+export const DEFAULT_GSD_CM_PER_PX = 3;
+export const DEFAULT_FORWARD_OVERLAP = 0.7;
+export const DEFAULT_SIDE_OVERLAP = 0.6;
+export const DEFAULT_STRIP_DIRECTION_DEG = 0;
 
 export const DEFAULT_AERODROMES: AerodromeInput[] = [
   { lon: DEFAULT_AERODROME_LON, lat: DEFAULT_AERODROME_LAT },
@@ -174,6 +182,17 @@ export function validateScenarioInputs(inputs: ScenarioInputs): void {
       throw new Error(`${label}: укажите количество не меньше 1.`);
     }
   }
+  requireFinite(inputs.gsdCmPerPx, "GSD", 0);
+  if (inputs.gsdCmPerPx <= 0) throw new Error("GSD: укажите корректное числовое значение.");
+  requireFinite(inputs.forwardOverlap, "Перекрытие вдоль");
+  requireFinite(inputs.sideOverlap, "Перекрытие поперёк");
+  if (inputs.forwardOverlap < 0 || inputs.forwardOverlap >= 1) {
+    throw new Error("Перекрытие вдоль должно быть от 0 до 1, не включая 1.");
+  }
+  if (inputs.sideOverlap < 0 || inputs.sideOverlap >= 1) {
+    throw new Error("Перекрытие поперёк должно быть от 0 до 1, не включая 1.");
+  }
+  requireFinite(inputs.stripDirectionDeg, "Направление полос");
   requireFinite(inputs.windSpeedMps, "Скорость ветра", 0);
   if (inputs.windDirectionFromDeg === null) {
     throw new Error("Укажите направление ветра от 0 до 360 градусов.");
@@ -184,29 +203,10 @@ export function validateScenarioInputs(inputs: ScenarioInputs): void {
   }
 }
 
-export const DEFAULT_PROFILE_SOURCE =
-  "src/planes/model/basic_model/gibrid-optimizer/data/input.json";
-
-export const DEFAULT_PROFILE_NOTE =
-  "gsd_cm_per_px, survey overlaps and strip direction, and power_coeffs are the default profile from src/planes/model/basic_model/gibrid-optimizer/data/input.json, not user input.";
-
-const DEFAULT_GSD_CM_PER_PX = 3.0;
-const DEFAULT_SURVEY = {
-  forward_overlap: 0.7,
-  side_overlap: 0.6,
-  strip_direction_deg: 0.0,
-};
-const DEFAULT_POWER_COEFFS = { kh: 90.0, kv: 0.02, kw: 0.008 };
-
 export function solverCriterion(objective: string): "min_time" | "min_flight_hours" {
   if (objective === "min_time") return "min_time";
   if (objective === "min_total_flight_time") return "min_flight_hours";
   throw new Error("Выберите критерий оптимизации.");
-}
-
-export function withDefaultProfileLimitation(limitations: readonly string[]): string[] {
-  if (limitations.includes(DEFAULT_PROFILE_NOTE)) return [...limitations];
-  return [...limitations, DEFAULT_PROFILE_NOTE];
 }
 
 function extendedValue(data: Record<string, string>, key: string): string | null {
@@ -291,6 +291,17 @@ export function buildPrototypeScenario(
   for (const [index, aerodrome] of inputs.aerodromes.entries()) {
     validatePoint(aerodrome.lon, aerodrome.lat, aerodromeId(index));
   }
+  requireFinite(inputs.gsdCmPerPx, "GSD", 0);
+  if (inputs.gsdCmPerPx <= 0) throw new Error("GSD: укажите корректное числовое значение.");
+  requireFinite(inputs.forwardOverlap, "Перекрытие вдоль");
+  requireFinite(inputs.sideOverlap, "Перекрытие поперёк");
+  if (inputs.forwardOverlap < 0 || inputs.forwardOverlap >= 1) {
+    throw new Error("Перекрытие вдоль должно быть от 0 до 1, не включая 1.");
+  }
+  if (inputs.sideOverlap < 0 || inputs.sideOverlap >= 1) {
+    throw new Error("Перекрытие поперёк должно быть от 0 до 1, не включая 1.");
+  }
+  requireFinite(inputs.stripDirectionDeg, "Направление полос");
   const area = surveyRing(inputs.surveyTask, parser);
   const bounds = ringBounds(area);
   if (!bounds) throw new Error("В KML задания нет полигона съёмки.");
@@ -316,7 +327,7 @@ export function buildPrototypeScenario(
     scenario_id: inputs.scenarioId.trim(),
     crs: "EPSG:4326",
     criterion: solverCriterion(objective),
-    gsd_cm_per_px: DEFAULT_GSD_CM_PER_PX,
+    gsd_cm_per_px: inputs.gsdCmPerPx,
     area,
     required_spectrum: inputs.surveyType,
     aerodromes: inputs.aerodromes.map((aerodrome, index) => ({
@@ -325,25 +336,23 @@ export function buildPrototypeScenario(
       lon: aerodrome.lon,
     })),
     boards: boardRows(inputs),
-    survey: DEFAULT_SURVEY,
+    survey: {
+      forward_overlap: inputs.forwardOverlap,
+      side_overlap: inputs.sideOverlap,
+      strip_direction_deg: inputs.stripDirectionDeg,
+    },
     survey_type: inputs.surveyType,
     wind: {
       speed_ms: inputs.windSpeedMps,
       direction_deg: windDirectionDeg(inputs.windDirectionFromDeg),
     },
-    power_coeffs: DEFAULT_POWER_COEFFS,
     zone_constraints: zoneConstraints,
     obstacles,
-    default_profile: {
-      note: DEFAULT_PROFILE_NOTE,
-      source: DEFAULT_PROFILE_SOURCE,
-    },
     prototype_limitations: [
       "KML rings are extracted in the browser. Source files stay local and are not uploaded.",
       "Altitude sentences in zone constraints are copied as text and are not parsed.",
       "Obstacles are limited to footprints that intersect the survey bounding box.",
-      "Each board card names a catalog model, a compatible camera, an aerodrome, and a count of identical aircraft. The server reads flight and optic numbers from the fleet catalog. Survey spectrum does not filter cameras.",
-      DEFAULT_PROFILE_NOTE,
+      "Each board card names a catalog model, a compatible camera, an aerodrome, and a count of identical aircraft. The server reads flight and optic numbers from the fleet catalog. Power coefficients and turn time come from the selected model. Survey spectrum does not filter cameras.",
     ],
   };
 }

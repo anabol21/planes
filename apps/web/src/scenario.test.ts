@@ -6,7 +6,10 @@ import type { KmlFileRecord, KmlSummary, XmlParser } from "./kml";
 import {
   DEFAULT_AERODROMES,
   DEFAULT_BOARDS,
-  DEFAULT_PROFILE_NOTE,
+  DEFAULT_FORWARD_OVERLAP,
+  DEFAULT_GSD_CM_PER_PX,
+  DEFAULT_SIDE_OVERLAP,
+  DEFAULT_STRIP_DIRECTION_DEG,
   DEFAULT_TIME_LIMIT,
   MAX_TIME_LIMIT_SECONDS,
   addBoard,
@@ -18,7 +21,6 @@ import {
   buildOptimization,
   buildPrototypeScenario,
   validateScenarioInputs,
-  withDefaultProfileLimitation,
   withModel,
   type ScenarioInputs,
 } from "./scenario";
@@ -149,6 +151,10 @@ function inputs(): ScenarioInputs {
       },
     ],
     surveyType: "RGB",
+    gsdCmPerPx: DEFAULT_GSD_CM_PER_PX,
+    forwardOverlap: DEFAULT_FORWARD_OVERLAP,
+    sideOverlap: DEFAULT_SIDE_OVERLAP,
+    stripDirectionDeg: DEFAULT_STRIP_DIRECTION_DEG,
     windSpeedMps: 3,
     windDirectionFromDeg: 270,
     surveyTask: kml("survey", "survey_task", SURVEY_KML),
@@ -180,16 +186,23 @@ describe("aerodromes and boards", () => {
   it("lists cameras from the model compatibility edges and ignores survey spectrum", () => {
     expect(camerasForModel("geoscan-gemini").map((camera) => camera.id)).toEqual([
       "geoscan-pf1b",
-      "sony-umc-r10c",
+      "sony-umc-r10c-16",
+      "sony-umc-r10c-20",
       "geoscan-pollux",
     ]);
     expect(camerasForModel("geoscan-gemini").map(cameraOptionLabel)).toEqual([
       "Geoscan PF1B (RGB)",
-      "Sony UMC-R10C (RGB)",
+      "Sony UMC-R10C 16 mm (RGB)",
+      "Sony UMC-R10C 20 mm (RGB)",
       "Geoscan Pollux (multispectral, RGB)",
     ]);
     expect(camerasForModel("")).toEqual([]);
-    expect(camerasForModel("geoscan-gemini").some((camera) => camera.id === "sony-a6000")).toBe(false);
+    expect(camerasForModel("geoscan-gemini").some((camera) => camera.id === "riebo-r4")).toBe(false);
+    expect(camerasForModel("geoscan-801").map((camera) => camera.id)).toEqual([
+      "geoscan-801-visible-4-35",
+      "geoscan-801-visible-16",
+      "geoscan-801-thermal",
+    ]);
     expect(camerasForModel("geoscan-gemini").some((camera) => camera.id === "geoscan-pf1b")).toBe(true);
   });
 
@@ -224,8 +237,8 @@ describe("prototype scenario", () => {
       required_spectrum: "RGB",
       survey: { forward_overlap: 0.7, side_overlap: 0.6, strip_direction_deg: 0 },
       wind: { speed_ms: 3, direction_deg: 270 },
-      power_coeffs: { kh: 90, kv: 0.02, kw: 0.008 },
     });
+    expect(scenario()).not.toHaveProperty("power_coeffs");
     const built = scenario();
     expect(built).not.toHaveProperty("uav");
     expect(built).not.toHaveProperty("takeoff");
@@ -286,7 +299,8 @@ describe("prototype scenario", () => {
         kind: "COMMUNICATION_TOWER",
       },
     ]);
-    expect(built.default_profile).toMatchObject({ note: DEFAULT_PROFILE_NOTE });
+    expect(built).not.toHaveProperty("default_profile");
+    expect(built).not.toHaveProperty("power_coeffs");
   });
 
   it("rejects a survey KML without a polygon as an error", () => {
@@ -305,11 +319,20 @@ describe("prototype scenario", () => {
     expect(() => buildPrototypeScenario(invalid, "min_time", xmlParser())).toThrow(/South/);
   });
 
-  it("shows the default profile next to client-side limitations", () => {
-    expect(withDefaultProfileLimitation(["heuristic result is not globally optimal"])).toEqual([
-      "heuristic result is not globally optimal",
-      DEFAULT_PROFILE_NOTE,
-    ]);
+  it("writes GSD, overlaps, and strip direction from the form fields", () => {
+    const custom = inputs();
+    custom.gsdCmPerPx = 4.5;
+    custom.forwardOverlap = 0.8;
+    custom.sideOverlap = 0.5;
+    custom.stripDirectionDeg = 12;
+    const built = buildPrototypeScenario(custom, "min_time", xmlParser());
+    expect(built.gsd_cm_per_px).toBe(4.5);
+    expect(built.survey).toEqual({
+      forward_overlap: 0.8,
+      side_overlap: 0.5,
+      strip_direction_deg: 12,
+    });
+    expect(built).not.toHaveProperty("power_coeffs");
   });
 
   it("serializes both supported objectives consistently", () => {

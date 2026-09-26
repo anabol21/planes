@@ -2,8 +2,9 @@
 
 A card names a catalog model, a compatible camera, an aerodrome, and a count.
 A card is a flight candidate only when ``required_spectrum`` is one of that
-camera's catalog spectra. Calls are not merged. This module does not read
-zone or terrain KML.
+camera's catalog spectra. Power coefficients and ``turn_time_s`` come from
+that model. Calls are not merged. This module does not read zone or terrain
+KML and does not put restriction zones or obstacles on ``InputData``.
 """
 
 from __future__ import annotations
@@ -24,8 +25,13 @@ _SHARED = (
     "wind",
     "gsd_cm_per_px",
     "survey",
-    "power_coeffs",
 )
+_MARKS = frozenset({"passport", "estimate", "calculation"})
+_POWER_KEYS = ("kh", "kv", "kw")
+# The core accepts only kh, kv, kw. Geoscan 201's constant watts cannot be sent.
+_CORE_POWER = {"kh": 90.0, "kv": 0.02, "kw": 0.008}
+_CORE_POWER_TEXT = "90 / 0.02 / 0.008"
+_CORE_TURN_S = 5.0
 _FLIGHT = (
     "model",
     "mass_kg",
@@ -43,6 +49,21 @@ _OPTICS = (
     "image_height_px",
 )
 _PIXELS = ("image_width_px", "image_height_px")
+_MODEL_QUANTITIES = (
+    ("mass_kg", "kg"),
+    ("airspeed_m_s", "m/s"),
+    ("climb_m_s", "m/s"),
+    ("max_wind_m_s", "m/s"),
+    ("flight_time_s", "s"),
+)
+_CAMERA_QUANTITIES = (
+    ("sensor_width_mm", "mm"),
+    ("sensor_height_mm", "mm"),
+    ("focal_length_mm", "mm"),
+    ("image_width_px", "px"),
+    ("image_height_px", "px"),
+    ("pixel_pitch_um", "um"),
+)
 # Catalog fields that fill ``_FLIGHT`` besides the two the brief names.
 _OTHER_FLIGHT = (
     ("mass_kg", "mass_kg"),
@@ -103,6 +124,7 @@ class EnumerationResult:
     skips: tuple[Skip, ...] = ()
     mismatches: tuple[SpectrumMismatch, ...] = ()
     reason: str | None = None
+    disclosures: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -161,7 +183,7 @@ def candidates(scenario: dict[str, Any], *, time_limit_s: int | float = 60) -> l
     numbers is skipped. A camera with no compatibility edge to the model is
     rejected.
     """
-    admitted, _skips, _mismatches = _prepare(scenario, time_limit_s=time_limit_s)
+    admitted, _skips, _mismatches, _notes = _prepare(scenario, time_limit_s=time_limit_s)
     return admitted
 
 
@@ -179,9 +201,10 @@ def run_candidates(
     A spectrum mismatch is recorded and is not a call. No runnable card means
     no core call.
     """
-    admitted, skips, mismatches = _prepare(scenario, time_limit_s=time_limit_s)
+    admitted, skips, mismatches, notes = _prepare(scenario, time_limit_s=time_limit_s)
     recorded = tuple(skips)
     recorded_mismatches = tuple(mismatches)
+    disclosures = tuple(notes)
     if not admitted:
         return EnumerationResult(
             attempts=(),
@@ -189,6 +212,7 @@ def run_candidates(
             skips=recorded,
             mismatches=recorded_mismatches,
             reason=_empty_reason(recorded, recorded_mismatches),
+            disclosures=disclosures,
         )
     call = core if core is not None else _default_core
     attempts: list[Attempt] = []
@@ -221,6 +245,7 @@ def run_candidates(
         stopped_for_deadline=stopped,
         skips=recorded,
         mismatches=recorded_mismatches,
+        disclosures=disclosures,
     )
 
 
@@ -257,7 +282,7 @@ def _prepare(
     scenario: dict[str, Any],
     *,
     time_limit_s: int | float,
-) -> tuple[list[Candidate], list[Skip], list[SpectrumMismatch]]:
+) -> tuple[list[Candidate], list[Skip], list[SpectrumMismatch], list[str]]:
     if not isinstance(scenario, dict):
         raise ValueError("missing fields: scenario")
     if "uav_types" in scenario:
@@ -284,6 +309,7 @@ def _prepare(
     runnable: list[tuple[dict[str, Any], dict[str, Any], dict[str, Any], dict[str, Any]]] = []
     skips: list[Skip] = []
     mismatches: list[SpectrumMismatch] = []
+    notes: list[str] = []
     for board in boards:
         model_id = board["model_id"]
         camera_id = board["camera_id"]
@@ -295,6 +321,7 @@ def _prepare(
             raise ValueError(f"camera {camera_id} is not compatible with model {model_id}")
         model = models[model_id]
         camera = cameras[camera_id]
+        board_notes = _catalog_notes(board["id"], model, camera)
         camera_spectra = _spectra(camera)
         if required_spectrum not in camera_spectra:
             mismatches.append(
@@ -305,14 +332,18 @@ def _prepare(
                     camera_spectra=camera_spectra,
                 )
             )
+            notes.extend(board_notes)
             continue
         missing_fields = _missing_fields(model, camera)
         if missing_fields:
             skips.append(Skip(model_id=model_id, camera_id=camera_id, missing=tuple(missing_fields)))
+            notes.extend(board_notes)
             continue
+        notes.extend(board_notes)
+        notes.extend(_fixed_default_notes(board["id"], model, camera))
         runnable.append((board, by_aerodrome[board["aerodrome_id"]], model, camera))
     if not runnable:
-        return [], skips, mismatches
+        return [], skips, mismatches, notes
     if len(runnable) > MAX_CALLS:
         raise ValueError("at most 16 calls")
     limit = _positive_int(time_limit_s, "time_limit_s")
@@ -325,7 +356,8 @@ def _prepare(
             "takeoff": {"lat": aerodrome["lat"], "lon": aerodrome["lon"]},
             "uav": _flight(model, board["count"]),
             "camera": _optics(camera),
-            "solver": _solver_cfg(limit, scenario.get("solver")),
+            "power_coeffs": _power_coeffs(model),
+            "solver": _solver_cfg(limit, model),
         }
         try:
             data = input_data_cls(**payload)
@@ -340,7 +372,7 @@ def _prepare(
                 data=data,
             )
         )
-    return built, skips, mismatches
+    return built, skips, mismatches, notes
 
 
 def _empty_reason(
@@ -399,31 +431,87 @@ def _index(raw: Any, label: str) -> dict[str, dict[str, Any]]:
 def _missing_fields(model: dict[str, Any], camera: dict[str, Any]) -> list[str]:
     missing: list[str] = []
     for key in _OPTICS:
-        value = camera.get(key)
-        if key in _PIXELS:
-            if not _whole_number(value):
-                missing.append(key)
-        elif not _number(value):
+        if not _tagged_number(camera.get(key), whole=key in _PIXELS):
             missing.append(key)
-    if not _number(model.get("airspeed_m_s")):
+    if not _tagged_number(model.get("airspeed_m_s")):
         missing.append("airspeed_m_s")
     battery = model.get("battery")
     energy = battery.get("energy_wh") if isinstance(battery, dict) else None
-    if not _number(energy):
+    if not _tagged_number(energy):
         missing.append("battery.energy_wh")
     for key, _input_name in _OTHER_FLIGHT:
-        if not _number(model.get(key)):
+        if not _tagged_number(model.get(key)):
             missing.append(key)
+    if not _has_power(model):
+        missing.append("power_coeffs")
     name = model.get("name")
     if not isinstance(name, str) or not name:
         missing.append("name")
     return missing
 
 
+def _catalog_notes(board_id: str, model: dict[str, Any], camera: dict[str, Any]) -> list[str]:
+    """Name estimate and calculation numbers on this card.
+
+    A card that never reaches ``run()`` still names them. Passport numbers
+    are not listed. Quantities that are not copied into ``InputData`` are
+    not listed, except the 201 constant-power substitution the core cannot
+    accept as watts.
+    """
+    prefix = _note_prefix(board_id, model["id"], camera["id"])
+    lines: list[str] = []
+    for key, unit in _MODEL_QUANTITIES:
+        lines.extend(_quantity_note(prefix, key, model.get(key), unit))
+    battery = model.get("battery")
+    energy = battery.get("energy_wh") if isinstance(battery, dict) else None
+    lines.extend(_quantity_note(prefix, "battery.energy_wh", energy, "Wh"))
+    for key, unit in _CAMERA_QUANTITIES:
+        lines.extend(_quantity_note(prefix, key, camera.get(key), unit))
+    coeffs = model.get("power_coeffs")
+    if isinstance(coeffs, dict):
+        for key in _POWER_KEYS:
+            lines.extend(_quantity_note(prefix, f"power_coeffs.{key}", coeffs.get(key), ""))
+    turn = _turn_entry(model)
+    if turn is not None:
+        lines.extend(_quantity_note(prefix, "turn_time_s", turn, "s"))
+    constant = _tagged(model.get("power_const_w"))
+    if constant is not None and not _power_triple(model):
+        value, mark = constant
+        lines.append(
+            f"{prefix}: power coefficients sent to the core are kh/kv/kw {_CORE_POWER_TEXT} "
+            f"because it cannot accept constant {_format_number(value)} W ({mark})"
+        )
+    return lines
+
+
+def _fixed_default_notes(board_id: str, model: dict[str, Any], camera: dict[str, Any]) -> list[str]:
+    """Fixed solver values copied into ``InputData`` that are not catalog or form fields."""
+    prefix = _note_prefix(board_id, model["id"], camera["id"])
+    lines = [f"{prefix}: apply_turn_to_base=false is a fixed core default"]
+    if _turn_entry(model) is None:
+        lines.append(f"{prefix}: turn_time_s={_format_number(_CORE_TURN_S)} s is a fixed core default")
+    return lines
+
+
+def _note_prefix(board_id: str, model_id: str, camera_id: str) -> str:
+    return f"non-passport board {board_id} model {model_id} camera {camera_id}"
+
+
+def _quantity_note(prefix: str, field: str, raw: Any, unit: str) -> list[str]:
+    tagged = _tagged(raw)
+    if tagged is None:
+        return []
+    value, mark = tagged
+    if mark == "passport":
+        return []
+    unit_text = f" {unit}" if unit else ""
+    return [f"{prefix}: {field}={_format_number(value)}{unit_text} ({mark})"]
+
+
 def _optics(camera: dict[str, Any]) -> dict[str, Any]:
     optics: dict[str, Any] = {}
     for key in _OPTICS:
-        value = camera[key]
+        value, _mark = _require_tagged(camera.get(key), key, whole=key in _PIXELS)
         optics[key] = int(value) if key in _PIXELS else float(value)
     return optics
 
@@ -433,12 +521,12 @@ def _flight(model: dict[str, Any], count: int) -> dict[str, Any]:
     flight = {
         "model": model["name"],
         "count": count,
-        "mass_kg": float(model["mass_kg"]),
-        "max_flight_time_s": float(model["flight_time_s"]),
-        "battery_wh": float(battery["energy_wh"]),
-        "v_air_ms": float(model["airspeed_m_s"]),
-        "v_vertical_ms": float(model["climb_m_s"]),
-        "max_wind_ms": float(model["max_wind_m_s"]),
+        "mass_kg": float(_require_tagged(model.get("mass_kg"), "mass_kg")[0]),
+        "max_flight_time_s": float(_require_tagged(model.get("flight_time_s"), "flight_time_s")[0]),
+        "battery_wh": float(_require_tagged(battery.get("energy_wh"), "battery.energy_wh")[0]),
+        "v_air_ms": float(_require_tagged(model.get("airspeed_m_s"), "airspeed_m_s")[0]),
+        "v_vertical_ms": float(_require_tagged(model.get("climb_m_s"), "climb_m_s")[0]),
+        "max_wind_ms": float(_require_tagged(model.get("max_wind_m_s"), "max_wind_m_s")[0]),
     }
     present = tuple(key for key in flight if key != "count")
     if present != _FLIGHT:
@@ -532,15 +620,82 @@ def _positive_int(value: int | float, label: str) -> int:
     return limit
 
 
-def _solver_cfg(time_limit_s: int, existing: Any) -> dict[str, Any]:
-    """Task time limit. Other ``SolverCfg`` fields stay on Grisha's values."""
-    block: dict[str, Any] = {}
-    if isinstance(existing, dict):
-        for key in ("turn_time_s", "apply_turn_to_base"):
-            if key in existing:
-                block[key] = existing[key]
-    block["time_limit_s"] = time_limit_s
+def _solver_cfg(time_limit_s: int, model: dict[str, Any]) -> dict[str, Any]:
+    """Task time limit. Turn time comes from the model. The core default flag stays false."""
+    block: dict[str, Any] = {
+        "time_limit_s": time_limit_s,
+        "apply_turn_to_base": False,
+    }
+    turn = _turn_entry(model)
+    if turn is not None:
+        block["turn_time_s"] = float(_require_tagged(turn, "turn_time_s")[0])
     return block
+
+
+def _power_coeffs(model: dict[str, Any]) -> dict[str, float]:
+    triple = _power_triple(model)
+    if triple is not None:
+        return {key: float(value) for key, value in triple.items()}
+    if _tagged(model.get("power_const_w")) is not None:
+        return dict(_CORE_POWER)
+    raise ValueError("missing fields: power_coeffs")
+
+
+def _power_triple(model: dict[str, Any]) -> dict[str, Any] | None:
+    raw = model.get("power_coeffs")
+    if not isinstance(raw, dict):
+        return None
+    found: dict[str, Any] = {}
+    for key in _POWER_KEYS:
+        tagged = _tagged(raw.get(key))
+        if tagged is None:
+            return None
+        found[key] = tagged[0]
+    return found
+
+
+def _has_power(model: dict[str, Any]) -> bool:
+    return _power_triple(model) is not None or _tagged(model.get("power_const_w")) is not None
+
+
+def _turn_entry(model: dict[str, Any]) -> Any:
+    raw = model.get("turn_time_s")
+    if isinstance(raw, list) and raw:
+        return raw[0]
+    return None
+
+
+def _tagged(value: Any) -> tuple[Any, str] | None:
+    if not isinstance(value, dict):
+        return None
+    number = value.get("value")
+    mark = value.get("mark")
+    if not _number(number) or mark not in _MARKS:
+        return None
+    return number, mark
+
+
+def _tagged_number(value: Any, *, whole: bool = False) -> bool:
+    tagged = _tagged(value)
+    if tagged is None:
+        return False
+    if whole and not _whole_number(tagged[0]):
+        return False
+    return True
+
+
+def _require_tagged(value: Any, label: str, *, whole: bool = False) -> tuple[Any, str]:
+    tagged = _tagged(value)
+    if tagged is None or (whole and not _whole_number(tagged[0])):
+        raise ValueError(f"missing fields: {label}")
+    return tagged
+
+
+def _format_number(value: Any) -> str:
+    number = float(value)
+    if number.is_integer():
+        return str(int(number))
+    return format(number, ".12g")
 
 
 def _default_core(data: Any, seed: int = 42) -> dict[str, Any]:

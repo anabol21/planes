@@ -26,6 +26,10 @@ import { getResultPresentation } from "./presentation";
 import {
   DEFAULT_AERODROMES,
   DEFAULT_BOARDS,
+  DEFAULT_FORWARD_OVERLAP,
+  DEFAULT_GSD_CM_PER_PX,
+  DEFAULT_SIDE_OVERLAP,
+  DEFAULT_STRIP_DIRECTION_DEG,
   DEFAULT_TIME_LIMIT,
   MAX_TIME_LIMIT_SECONDS,
   addBoard,
@@ -39,7 +43,6 @@ import {
   removeBoard,
   resizeAerodromes,
   validateScenarioInputs,
-  withDefaultProfileLimitation,
   withModel,
   type AerodromeInput,
   type BoardInput,
@@ -106,7 +109,7 @@ function SolverSummary({ report }: { report: JsonObject }) {
   const method = readString(report.method);
   const objective = readString(report.objective);
   const runtime = readNumber(report.runtime_seconds);
-  const limitations = withDefaultProfileLimitation(getLimitations(report));
+  const limitations = getLimitations(report);
   return (
     <div className="result-section">
       <h3>Сводка расчёта</h3>
@@ -378,6 +381,10 @@ export default function App() {
   const [aerodromes, setAerodromes] = useState<AerodromeInput[]>(() => DEFAULT_AERODROMES.map((item) => ({ ...item })));
   const [boards, setBoards] = useState<BoardInput[]>(() => DEFAULT_BOARDS.map((item) => ({ ...item })));
   const [surveyType, setSurveyType] = useState<SurveyType>("RGB");
+  const [gsdCmPerPx, setGsdCmPerPx] = useState(DEFAULT_GSD_CM_PER_PX);
+  const [forwardOverlap, setForwardOverlap] = useState(DEFAULT_FORWARD_OVERLAP);
+  const [sideOverlap, setSideOverlap] = useState(DEFAULT_SIDE_OVERLAP);
+  const [stripDirectionDeg, setStripDirectionDeg] = useState(DEFAULT_STRIP_DIRECTION_DEG);
   const [windSpeed, setWindSpeed] = useState(3);
   const [windDirection, setWindDirection] = useState(270);
   const [objective, setObjective] = useState(DEFAULT_OBJECTIVE);
@@ -403,12 +410,16 @@ export default function App() {
     aerodromes,
     boards,
     surveyType,
+    gsdCmPerPx,
+    forwardOverlap,
+    sideOverlap,
+    stripDirectionDeg,
     windSpeedMps: windSpeed,
     windDirectionFromDeg: windDirection,
     surveyTask,
     restrictedZones,
     obstacles,
-  }), [scenarioId, aerodromes, boards, surveyType, windSpeed, windDirection, surveyTask, restrictedZones, obstacles]);
+  }), [scenarioId, aerodromes, boards, surveyType, gsdCmPerPx, forwardOverlap, sideOverlap, stripDirectionDeg, windSpeed, windDirection, surveyTask, restrictedZones, obstacles]);
 
   function changeAerodromeCount(count: number) {
     setAerodromes((current) => resizeAerodromes(current, count));
@@ -506,7 +517,7 @@ export default function App() {
 
       <div className="honesty-banner">
         <strong>Prototype scenario profile</strong>
-        <p>KML читается локально. В запрос уходят кольца полигонов, аэродромы и борты. Камера берётся из рёбер совместимости выбранной модели. Скорость, батарея и оптика подставляются на сервере из справочника. GSD, перекрытия и коэффициенты мощности остаются профилем по умолчанию. Маршруты рассчитывает только backend/runtime.</p>
+        <p>KML читается локально. В запрос уходят кольца полигонов, аэродромы, борты, GSD, перекрытия и направление полос. Камера берётся из рёбер совместимости выбранной модели. Скорость, батарея, оптика и коэффициенты мощности подставляются на сервере из справочника модели. Маршруты рассчитывает только backend/runtime.</p>
       </div>
 
       <form onSubmit={handleSubmit} noValidate>
@@ -545,9 +556,13 @@ export default function App() {
         </section>
 
         <section className="card workflow-section" aria-labelledby="survey-title">
-          <div className="section-heading"><div><p className="eyebrow">05 · Параметры съёмки</p><h2 id="survey-title">Сенсорный профиль и ветер</h2><p className="section-description">Единицы указаны явно. Браузер не рассчитывает покрытие, энергетику или выполнимость. Тип съёмки не фильтрует список камер.</p></div></div>
+          <div className="section-heading"><div><p className="eyebrow">05 · Параметры съёмки</p><h2 id="survey-title">Сенсорный профиль и ветер</h2><p className="section-description">GSD, перекрытия и направление полос задаются здесь и уходят в конверт. Единицы указаны явно. Браузер не рассчитывает покрытие, энергетику или выполнимость. Тип съёмки не фильтрует список камер.</p></div></div>
           <div className="control-grid">
             <label><span>Тип съёмки</span><select value={surveyType} onChange={(event) => setSurveyType(event.target.value as SurveyType)}><option value="RGB">RGB</option><option value="multispectral">Мультиспектральная</option><option value="infrared">Инфракрасная</option><option value="LiDAR">LiDAR</option><option value="geophysical">Геофизическая</option></select></label>
+            <NumberField label="GSD" unit="см/пикс" placeholder="3" value={gsdCmPerPx} onChange={setGsdCmPerPx} />
+            <NumberField label="Перекрытие вдоль" placeholder="0.7" value={forwardOverlap} onChange={setForwardOverlap} hint="Доля кадра, от 0 до 1, не включая 1." />
+            <NumberField label="Перекрытие поперёк" placeholder="0.6" value={sideOverlap} onChange={setSideOverlap} hint="Доля кадра, от 0 до 1, не включая 1." />
+            <NumberField label="Направление полос" unit="°" placeholder="0" value={stripDirectionDeg} onChange={setStripDirectionDeg} />
             <NumberField label="Скорость ветра" unit="м/с" placeholder="3" value={windSpeed} onChange={setWindSpeed} />
             <NumberField label="Направление ветра, откуда · °" placeholder="270" value={windDirection} onChange={setWindDirection} hint="0 — север. Значение 360 записывается как 0." />
           </div>
@@ -563,7 +578,7 @@ export default function App() {
 
           <details className="advanced-panel">
             <summary><span>Расширенные настройки / Raw scenario</span><small>Фактическое тело запроса для инженерной проверки</small></summary>
-            <p className="advanced-note">Сценарий формируется из полей выше. Исходные KML остаются в памяти браузера; в запрос уходят кольца, аэродромы, борты и параметры оптимизации. Поля профиля по умолчанию помечены в default_profile.</p>
+            <p className="advanced-note">Сценарий формируется из полей выше. Исходные KML остаются в памяти браузера; в запрос уходят кольца, аэродромы, борты, GSD, перекрытия, направление полос и ветер. Коэффициенты мощности читает сервер из записи модели.</p>
             {scenarioPreview.error && <p className="file-error">{scenarioPreview.error}</p>}
             <div className="editor-grid"><label><span>Scenario JSON · только чтение</span><textarea readOnly value={scenarioPreview.text} spellCheck={false} rows={18} /></label><label><span>Optimization JSON · только чтение</span><textarea readOnly value={optimizationText} spellCheck={false} rows={18} /></label></div>
           </details>
