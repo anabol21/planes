@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2">
+  <Document>
+    <name>Test obstacles</name>
+
+    <Placemark>
+      <name>tower-1</name>
+      <description>height=50</description>
+      <Polygon>
+        <outerBoundaryIs>
+          <LinearRing>
+            <coordinates>
+              37.6225,55.7515,0
+              37.6228,55.7515,0
+              37.6228,55.7518,0
+              37.6225,55.7518,0
+              37.6225,55.7515,0
+            </coordinates>
+          </LinearRing>
+        </outerBoundaryIs>
+      </Polygon>
+    </Placemark>
+
+    <Placemark>
+      <name>building-1</name>
+      <description>height=30</description>
+      <Polygon>
+        <outerBoundaryIs>
+          <LinearRing>
+            <coordinates>
+              37.6250,55.7525,0
+              37.6255,55.7525,0
+              37.6255,55.7530,0
+              37.6250,55.7530,0
+              37.6250,55.7525,0
+            </coordinates>
+          </LinearRing>
+        </outerBoundaryIs>
+      </Polygon>
+    </Placemark>
+
+  </Document>
+</kml>

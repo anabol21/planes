@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2">
+  <Document>
+    <name>Synthetic DEM</name>
+
+    <Placemark><name>p1</name><Point><coordinates>37.619,55.749,0</coordinates></Point></Placemark>
+    <Placemark><name>p2</name><Point><coordinates>37.624,55.749,50</coordinates></Point></Placemark>
+    <Placemark><name>p3</name><Point><coordinates>37.629,55.749,100</coordinates></Point></Placemark>
+
+    <Placemark><name>p4</name><Point><coordinates>37.619,55.752,50</coordinates></Point></Placemark>
+    <Placemark><name>p5</name><Point><coordinates>37.624,55.752,100</coordinates></Point></Placemark>
+    <Placemark><name>p6</name><Point><coordinates>37.629,55.752,150</coordinates></Point></Placemark>
+
+    <Placemark><name>p7</name><Point><coordinates>37.619,55.755,100</coordinates></Point></Placemark>
+    <Placemark><name>p8</name><Point><coordinates>37.624,55.755,150</coordinates></Point></Placemark>
+    <Placemark><name>p9</name><Point><coordinates>37.629,55.755,200</coordinates></Point></Placemark>
+  </Document>
+</kml>
