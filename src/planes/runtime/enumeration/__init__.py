@@ -1,8 +1,7 @@
-"""Outer pad and catalog-pair enumeration.
+"""Outer board-card enumeration.
 
-One admitted (pad, uav model, camera) triple becomes one ``InputData`` and
-one core call. Calls are not merged. This package does not read zone or
-terrain KML.
+One admitted board card becomes one ``InputData`` and one core call. Calls
+are not merged. This package does not read zone or terrain KML.
 """
 
 from planes.runtime.enumeration.outer import (

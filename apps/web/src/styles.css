@@ -91,6 +91,7 @@ button:disabled { cursor: wait; filter: saturate(0.35); opacity: 0.68; }
 .honesty-banner p { margin: 0; color: #c8b978; font-size: 0.78rem; line-height: 1.55; }
 
 .scenario-id-field { display: block; max-width: 520px; }
+.bounded-count { display: block; max-width: 280px; margin: 0 0 16px; }
 .upload-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; align-items: start; }
 .upload-card { min-width: 0; padding: 19px; border: 1px solid rgba(148, 163, 184, 0.13); border-radius: 15px; background: rgba(2, 9, 19, 0.35); }
 .upload-card-copy { display: flex; gap: 12px; align-items: flex-start; min-height: 94px; }

@@ -1,3 +1,5 @@
+import fleetCatalog from "../../../src/planes/runtime/catalog/fleet_catalog.json";
+
 import type { JsonObject } from "./types";
 import {
   extractKmlPolygons,
@@ -10,16 +12,27 @@ import {
 
 export type SurveyType = "RGB" | "multispectral" | "infrared" | "LiDAR" | "geophysical";
 
-export interface PadInput {
+export interface CatalogOption {
   id: string;
-  lat: number;
+  name: string;
+}
+
+export interface AerodromeInput {
   lon: number;
+  lat: number;
+}
+
+export interface BoardInput {
+  modelId: string;
+  cameraId: string;
+  aerodromeIndex: number | null;
   count: number;
 }
 
 export interface ScenarioInputs {
   scenarioId: string;
-  pads: PadInput[];
+  aerodromes: AerodromeInput[];
+  boards: BoardInput[];
   surveyType: SurveyType;
   windSpeedMps: number;
   windDirectionFromDeg: number | null;
@@ -28,29 +41,80 @@ export interface ScenarioInputs {
   obstacles: KmlFileRecord[];
 }
 
-export const DEFAULT_PADS: PadInput[] = [
-  {
-    id: "pad-01",
-    lon: 37.6,
-    lat: 55.747,
-    count: 1,
-  },
+export const DEFAULT_AERODROME_LON = 37.6;
+export const DEFAULT_AERODROME_LAT = 55.747;
+
+export const DEFAULT_AERODROMES: AerodromeInput[] = [
+  { lon: DEFAULT_AERODROME_LON, lat: DEFAULT_AERODROME_LAT },
 ];
 
-function nextPadId(pads: PadInput[]): string {
-  const used = new Set(pads.map((pad) => pad.id));
-  let index = pads.length + 1;
-  while (used.has(`pad-${String(index).padStart(2, "0")}`)) index += 1;
-  return `pad-${String(index).padStart(2, "0")}`;
+export const DEFAULT_BOARDS: BoardInput[] = [
+  { modelId: "", cameraId: "", aerodromeIndex: 0, count: 1 },
+];
+
+export function aerodromeId(index: number): string {
+  return `аэродром ${index + 1}`;
 }
 
-export function addPad(pads: PadInput[]): PadInput[] {
-  const template = pads.at(-1) ?? DEFAULT_PADS[0];
-  return [...pads, { ...template, id: nextPadId(pads) }];
+export function boardId(index: number): string {
+  return `БВС ${index + 1}`;
 }
 
-export function removePad(pads: PadInput[], padId: string): PadInput[] {
-  return pads.length <= 1 ? pads : pads.filter((pad) => pad.id !== padId);
+export function catalogModels(): CatalogOption[] {
+  return fleetCatalog.uav_models.map((model) => ({ id: model.id, name: model.name }));
+}
+
+export function camerasForModel(modelId: string): CatalogOption[] {
+  if (!modelId) return [];
+  const names = new Map(fleetCatalog.cameras.map((camera) => [camera.id, camera.name]));
+  const seen = new Set<string>();
+  const options: CatalogOption[] = [];
+  for (const edge of fleetCatalog.compatibility) {
+    if (edge.uav_model_id !== modelId || seen.has(edge.camera_id)) continue;
+    const name = names.get(edge.camera_id);
+    if (!name) continue;
+    seen.add(edge.camera_id);
+    options.push({ id: edge.camera_id, name });
+  }
+  return options;
+}
+
+export function resizeAerodromes(aerodromes: AerodromeInput[], count: number): AerodromeInput[] {
+  if (!Number.isInteger(count) || count < 1 || count > 4) {
+    throw new Error("Число аэродромов от 1 до 4.");
+  }
+  if (count === aerodromes.length) return aerodromes;
+  if (count < aerodromes.length) return aerodromes.slice(0, count);
+  const added = Array.from({ length: count - aerodromes.length }, () => ({
+    lon: DEFAULT_AERODROME_LON,
+    lat: DEFAULT_AERODROME_LAT,
+  }));
+  return [...aerodromes, ...added];
+}
+
+export function clearMissingAerodromes(boards: BoardInput[], aerodromeCount: number): BoardInput[] {
+  return boards.map((board) =>
+    board.aerodromeIndex !== null && board.aerodromeIndex >= aerodromeCount
+      ? { ...board, aerodromeIndex: null }
+      : board,
+  );
+}
+
+export function addBoard(boards: BoardInput[]): BoardInput[] {
+  return [...boards, { modelId: "", cameraId: "", aerodromeIndex: 0, count: 1 }];
+}
+
+export function removeBoard(boards: BoardInput[], index: number): BoardInput[] {
+  return boards.filter((_, itemIndex) => itemIndex !== index);
+}
+
+export function withModel(board: BoardInput, modelId: string): BoardInput {
+  const allowed = new Set(camerasForModel(modelId).map((camera) => camera.id));
+  return {
+    ...board,
+    modelId,
+    cameraId: allowed.has(board.cameraId) ? board.cameraId : "",
+  };
 }
 
 function requireFinite(value: number, label: string, minimum?: number): void {
@@ -75,16 +139,31 @@ export function validateScenarioInputs(inputs: ScenarioInputs): void {
   if (inputs.restrictedZones?.status === "error" || inputs.obstacles.some((file) => file.status === "error")) {
     throw new Error("Исправьте ошибки чтения KML перед запуском.");
   }
-  if (!inputs.pads.length) throw new Error("Добавьте хотя бы одну площадку.");
-  if (inputs.pads.length > 4) throw new Error("Не больше 4 площадок.");
-  const ids = new Set<string>();
-  for (const [index, pad] of inputs.pads.entries()) {
-    const label = `Площадка ${index + 1}`;
-    if (!pad.id.trim() || ids.has(pad.id)) throw new Error(`${label}: ID должен быть заполнен и уникален.`);
-    ids.add(pad.id);
-    validatePoint(pad.lon, pad.lat, label);
-    if (!Number.isInteger(pad.count) || pad.count < 1) {
-      throw new Error(`${label}: укажите число бортов не меньше 1.`);
+  if (inputs.aerodromes.length < 1 || inputs.aerodromes.length > 4) {
+    throw new Error("Число аэродромов от 1 до 4.");
+  }
+  for (const [index, aerodrome] of inputs.aerodromes.entries()) {
+    validatePoint(aerodrome.lon, aerodrome.lat, aerodromeId(index));
+  }
+  if (!inputs.boards.length) throw new Error("Добавьте хотя бы один борт.");
+  for (const [index, board] of inputs.boards.entries()) {
+    const label = boardId(index);
+    if (!board.modelId.trim() || !catalogModels().some((model) => model.id === board.modelId)) {
+      throw new Error(`${label}: выберите модель.`);
+    }
+    if (!board.cameraId || !camerasForModel(board.modelId).some((camera) => camera.id === board.cameraId)) {
+      throw new Error(`${label}: выберите камеру, совместимую с моделью.`);
+    }
+    if (
+      board.aerodromeIndex === null ||
+      !Number.isInteger(board.aerodromeIndex) ||
+      board.aerodromeIndex < 0 ||
+      board.aerodromeIndex >= inputs.aerodromes.length
+    ) {
+      throw new Error(`${label}: выберите аэродром.`);
+    }
+    if (!Number.isInteger(board.count) || board.count < 1) {
+      throw new Error(`${label}: укажите количество не меньше 1.`);
     }
   }
   requireFinite(inputs.windSpeedMps, "Скорость ветра", 0);
@@ -152,6 +231,37 @@ function surveyRing(file: KmlFileRecord, parser?: XmlParser): number[][] {
   return polygons[0].ring;
 }
 
+function boardRows(inputs: ScenarioInputs) {
+  if (!inputs.boards.length) throw new Error("Добавьте хотя бы один борт.");
+  return inputs.boards.map((board, index) => {
+    const label = boardId(index);
+    if (!board.modelId.trim() || !catalogModels().some((model) => model.id === board.modelId)) {
+      throw new Error(`${label}: выберите модель.`);
+    }
+    if (!board.cameraId || !camerasForModel(board.modelId).some((camera) => camera.id === board.cameraId)) {
+      throw new Error(`${label}: выберите камеру, совместимую с моделью.`);
+    }
+    if (
+      board.aerodromeIndex === null ||
+      !Number.isInteger(board.aerodromeIndex) ||
+      board.aerodromeIndex < 0 ||
+      board.aerodromeIndex >= inputs.aerodromes.length
+    ) {
+      throw new Error(`${label}: выберите аэродром.`);
+    }
+    if (!Number.isInteger(board.count) || board.count < 1) {
+      throw new Error(`${label}: укажите количество не меньше 1.`);
+    }
+    return {
+      id: label,
+      model_id: board.modelId,
+      camera_id: board.cameraId,
+      aerodrome_id: aerodromeId(board.aerodromeIndex),
+      count: board.count,
+    };
+  });
+}
+
 function windDirectionDeg(value: number | null): number {
   if (value === null || !Number.isFinite(value) || value < 0 || value > 360) {
     throw new Error("Укажите направление ветра от 0 до 360 градусов.");
@@ -167,8 +277,12 @@ export function buildPrototypeScenario(
   if (!inputs.surveyTask || inputs.surveyTask.status !== "ready") {
     throw new Error("Загрузите корректный KML с границами задания на съёмку.");
   }
-  if (!inputs.pads.length) throw new Error("Добавьте хотя бы одну площадку.");
-  if (inputs.pads.length > 4) throw new Error("Не больше 4 площадок.");
+  if (inputs.aerodromes.length < 1 || inputs.aerodromes.length > 4) {
+    throw new Error("Число аэродромов от 1 до 4.");
+  }
+  for (const [index, aerodrome] of inputs.aerodromes.entries()) {
+    validatePoint(aerodrome.lon, aerodrome.lat, aerodromeId(index));
+  }
   const area = surveyRing(inputs.surveyTask, parser);
   const bounds = ringBounds(area);
   if (!bounds) throw new Error("В KML задания нет полигона съёмки.");
@@ -197,12 +311,12 @@ export function buildPrototypeScenario(
     gsd_cm_per_px: DEFAULT_GSD_CM_PER_PX,
     area,
     required_spectrum: inputs.surveyType,
-    pads: inputs.pads.map((pad) => ({
-      id: pad.id,
-      lat: pad.lat,
-      lon: pad.lon,
-      count: pad.count,
+    aerodromes: inputs.aerodromes.map((aerodrome, index) => ({
+      id: aerodromeId(index),
+      lat: aerodrome.lat,
+      lon: aerodrome.lon,
     })),
+    boards: boardRows(inputs),
     survey: DEFAULT_SURVEY,
     survey_type: inputs.surveyType,
     wind: {
@@ -220,7 +334,7 @@ export function buildPrototypeScenario(
       "KML rings are extracted in the browser. Source files stay local and are not uploaded.",
       "Altitude sentences in zone constraints are copied as text and are not parsed.",
       "Obstacles are limited to footprints that intersect the survey bounding box.",
-      "Each pad supplies latitude, longitude, and a count of identical aircraft. The server pairs that pad with catalog UAV and camera rows whose spectra contain required_spectrum.",
+      "Each board card names a catalog model, a compatible camera, an aerodrome, and a count of identical aircraft. The server reads flight and optic numbers from the fleet catalog. Survey spectrum does not filter cameras.",
       DEFAULT_PROFILE_NOTE,
     ],
   };

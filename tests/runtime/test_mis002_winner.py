@@ -46,7 +46,8 @@ def _plan(
 
 
 def _attempt(
-    pad_id: str,
+    aerodrome_id: str,
+    board_id: str,
     model_id: str,
     camera_id: str,
     mission_time: float,
@@ -55,7 +56,8 @@ def _attempt(
     criterion: str = "min_time",
 ) -> Attempt:
     return Attempt(
-        pad_id=pad_id,
+        aerodrome_id=aerodrome_id,
+        board_id=board_id,
         model_id=model_id,
         camera_id=camera_id,
         data=None,
@@ -75,7 +77,12 @@ class WinnerSelectionTest(unittest.TestCase):
         solver_module.run_candidates = fake_run
         problem = Problem(
             job_id="job_outer",
-            scenario={"pads": [], "required_spectrum": "RGB", "criterion": criterion},
+            scenario={
+                "aerodromes": [{"id": "аэродром 1", "lat": 55.747, "lon": 37.6}],
+                "boards": [],
+                "required_spectrum": "RGB",
+                "criterion": criterion,
+            },
             objective="min_time" if criterion == "min_time" else "min_total_flight_time",
             seed=7,
             time_limit_seconds=90,
@@ -86,49 +93,53 @@ class WinnerSelectionTest(unittest.TestCase):
             solver_module.run_candidates = original
 
     def test_min_time_keeps_the_shorter_mission_and_names_the_winner(self) -> None:
-        slow = _attempt("p-slow", "m-slow", "c-slow", 20.0, 5.0)
-        fast = _attempt("p-fast", "m-fast", "c-fast", 9.0, 30.0)
+        slow = _attempt("a-slow", "b-slow", "m-slow", "c-slow", 20.0, 5.0)
+        fast = _attempt("a-fast", "b-fast", "m-fast", "c-fast", 9.0, 30.0)
         result = self._solve([slow, fast], "min_time")
         self.assertIsInstance(result, Solution)
         self.assertEqual(result.objective_value, 9.0)
         self.assertEqual(result.mission_plan["mission"]["mission_time_s"], 9.0)
-        self.assertIn("winning pad id: p-fast", result.limitations)
+        self.assertIn("winning aerodrome id: a-fast", result.limitations)
+        self.assertIn("winning board id: b-fast", result.limitations)
         self.assertIn("winning model id: m-fast", result.limitations)
         self.assertIn("winning camera id: c-fast", result.limitations)
         for key in _ASSEMBLED:
             self.assertIn(key, result.mission_plan)
 
     def test_min_flight_hours_reads_total_flight_time(self) -> None:
-        slow = _attempt("p-slow", "m-slow", "c-slow", 20.0, 5.0, criterion="min_flight_hours")
-        fast = _attempt("p-fast", "m-fast", "c-fast", 9.0, 30.0, criterion="min_flight_hours")
+        slow = _attempt("a-slow", "b-slow", "m-slow", "c-slow", 20.0, 5.0, criterion="min_flight_hours")
+        fast = _attempt("a-fast", "b-fast", "m-fast", "c-fast", 9.0, 30.0, criterion="min_flight_hours")
         result = self._solve([slow, fast], "min_flight_hours")
         self.assertIsInstance(result, Solution)
         self.assertEqual(result.objective_value, 5.0)
-        self.assertIn("winning pad id: p-slow", result.limitations)
+        self.assertIn("winning aerodrome id: a-slow", result.limitations)
+        self.assertIn("winning board id: b-slow", result.limitations)
         self.assertIn("winning model id: m-slow", result.limitations)
         self.assertIn("winning camera id: c-slow", result.limitations)
 
     def test_tie_keeps_the_earlier_call(self) -> None:
-        first = _attempt("p1", "m1", "c1", 9.0, 9.0)
-        second = _attempt("p2", "m2", "c2", 9.0, 9.0)
+        first = _attempt("a1", "b1", "m1", "c1", 9.0, 9.0)
+        second = _attempt("a2", "b2", "m2", "c2", 9.0, 9.0)
         result = self._solve([first, second], "min_time")
         self.assertIsInstance(result, Solution)
-        self.assertIn("winning pad id: p1", result.limitations)
+        self.assertIn("winning aerodrome id: a1", result.limitations)
+        self.assertIn("winning board id: b1", result.limitations)
         self.assertIn("winning model id: m1", result.limitations)
 
     def test_heuristic_limitation_stays_with_the_winner(self) -> None:
-        attempt = _attempt("p1", "m1", "c1", 4.0, 4.0, status="heuristic")
+        attempt = _attempt("a1", "b1", "m1", "c1", 4.0, 4.0, status="heuristic")
         result = self._solve([attempt], "min_time")
         self.assertIsInstance(result, Solution)
         self.assertTrue(any("not globally optimal" in item for item in result.limitations))
-        self.assertIn("winning pad id: p1", result.limitations)
+        self.assertIn("winning aerodrome id: a1", result.limitations)
+        self.assertIn("winning board id: b1", result.limitations)
         self.assertIn("winning model id: m1", result.limitations)
         self.assertIn("winning camera id: c1", result.limitations)
 
-    def test_no_runnable_pair_is_infeasible(self) -> None:
+    def test_no_runnable_board_is_infeasible(self) -> None:
         result = self._solve([], "min_time")
         self.assertIsInstance(result, Infeasible)
-        self.assertIn("no runnable uav and camera for spectrum", result.limitations)
+        self.assertIn("no runnable board", result.limitations)
 
     def test_deadline_without_a_success_is_timed_out(self) -> None:
         result = self._solve([], "min_time", stopped=True)

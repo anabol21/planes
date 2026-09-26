@@ -4,16 +4,21 @@ import { describe, expect, it } from "vitest";
 import { parseSubmission } from "./api";
 import type { KmlFileRecord, KmlSummary, XmlParser } from "./kml";
 import {
-  DEFAULT_PADS,
+  DEFAULT_AERODROMES,
+  DEFAULT_BOARDS,
   DEFAULT_PROFILE_NOTE,
   DEFAULT_TIME_LIMIT,
   MAX_TIME_LIMIT_SECONDS,
-  addPad,
+  addBoard,
+  camerasForModel,
+  clearMissingAerodromes,
+  removeBoard,
+  resizeAerodromes,
   buildOptimization,
   buildPrototypeScenario,
-  removePad,
   validateScenarioInputs,
   withDefaultProfileLimitation,
+  withModel,
   type ScenarioInputs,
 } from "./scenario";
 
@@ -133,7 +138,15 @@ function kml(
 function inputs(): ScenarioInputs {
   return {
     scenarioId: "demo-multi-uav-001",
-    pads: DEFAULT_PADS.map((pad) => ({ ...pad })),
+    aerodromes: DEFAULT_AERODROMES.map((item) => ({ ...item })),
+    boards: [
+      {
+        modelId: "geoscan-gemini",
+        cameraId: "geoscan-pf1b",
+        aerodromeIndex: 0,
+        count: 1,
+      },
+    ],
     surveyType: "RGB",
     windSpeedMps: 3,
     windDirectionFromDeg: 270,
@@ -147,22 +160,50 @@ function scenario(objective = "min_time") {
   return buildPrototypeScenario(inputs(), objective, xmlParser());
 }
 
-describe("prototype pads", () => {
-  it("adds a pad with a stable unique id", () => {
-    const expanded = addPad(DEFAULT_PADS);
-    expect(expanded.map((pad) => pad.id)).toEqual(["pad-01", "pad-02"]);
-    expect(expanded[1]).toMatchObject({ lon: 37.6, lat: 55.747, count: 1 });
+describe("aerodromes and boards", () => {
+  it("keeps entered coordinates when the aerodrome count grows and shrinks", () => {
+    const edited = [{ lon: 30.1, lat: 60.2 }];
+    const two = resizeAerodromes(edited, 2);
+    expect(two[0]).toEqual({ lon: 30.1, lat: 60.2 });
+    expect(two[1]).toEqual({ lon: 37.6, lat: 55.747 });
+    expect(resizeAerodromes(two, 1)).toEqual([{ lon: 30.1, lat: 60.2 }]);
+    expect(() => resizeAerodromes(edited, 5)).toThrow("Число аэродромов от 1 до 4.");
   });
 
-  it("removes one pad while retaining at least one", () => {
-    const two = addPad(DEFAULT_PADS);
-    expect(removePad(two, "pad-01").map((pad) => pad.id)).toEqual(["pad-02"]);
-    expect(removePad([DEFAULT_PADS[0]], "pad-01")).toHaveLength(1);
+  it("clears a board aerodrome that the shorter list no longer has", () => {
+    const boards = [{ modelId: "geoscan-gemini", cameraId: "geoscan-pf1b", aerodromeIndex: 1, count: 1 }];
+    expect(clearMissingAerodromes(boards, 1)[0].aerodromeIndex).toBeNull();
+    expect(clearMissingAerodromes(boards, 2)[0].aerodromeIndex).toBe(1);
+  });
+
+  it("lists cameras from the model compatibility edges and ignores survey spectrum", () => {
+    expect(camerasForModel("geoscan-gemini").map((camera) => camera.id)).toEqual([
+      "geoscan-pf1b",
+      "sony-umc-r10c",
+      "geoscan-pollux",
+    ]);
+    expect(camerasForModel("")).toEqual([]);
+    expect(camerasForModel("geoscan-gemini").some((camera) => camera.id === "sony-a6000")).toBe(false);
+    expect(camerasForModel("geoscan-gemini").some((camera) => camera.id === "geoscan-pf1b")).toBe(true);
+  });
+
+  it("drops the camera when the new model has no edge to it", () => {
+    const board = { modelId: "geoscan-gemini", cameraId: "geoscan-pf1b", aerodromeIndex: 0, count: 1 };
+    expect(withModel(board, "geoscan-801").cameraId).toBe("");
+    expect(withModel(board, "geoscan-gemini").cameraId).toBe("geoscan-pf1b");
+  });
+
+  it("adds a board card without a cap and can remove it", () => {
+    const added = addBoard(DEFAULT_BOARDS);
+    expect(added).toHaveLength(2);
+    expect(added[1]).toEqual({ modelId: "", cameraId: "", aerodromeIndex: 0, count: 1 });
+    expect(removeBoard(added, 0)).toHaveLength(1);
+    expect(removeBoard(DEFAULT_BOARDS, 0)).toEqual([]);
   });
 });
 
 describe("prototype scenario", () => {
-  it("sends pads with count and the survey spectrum", () => {
+  it("sends aerodromes, boards, and the survey spectrum", () => {
     expect(scenario()).toMatchObject({
       criterion: "min_time",
       crs: "EPSG:4326",
@@ -184,11 +225,14 @@ describe("prototype scenario", () => {
     expect(built).not.toHaveProperty("takeoff");
     expect(built).not.toHaveProperty("required_camera");
     expect(built).not.toHaveProperty("uav_types");
-    expect(built.pads).toEqual([
+    expect(built).not.toHaveProperty("pads");
+    expect(built.aerodromes).toEqual([{ id: "аэродром 1", lat: 55.747, lon: 37.6 }]);
+    expect(built.boards).toEqual([
       {
-        id: "pad-01",
-        lat: 55.747,
-        lon: 37.6,
+        id: "БВС 1",
+        model_id: "geoscan-gemini",
+        camera_id: "geoscan-pf1b",
+        aerodrome_id: "аэродром 1",
         count: 1,
       },
     ]);
@@ -290,7 +334,9 @@ describe("prototype scenario", () => {
     );
     expect(request.contract_version).toBe("v0");
     expect(request.scenario.uav).toBeUndefined();
-    expect(request.scenario.pads).toHaveLength(1);
+    expect(request.scenario.pads).toBeUndefined();
+    expect(request.scenario.aerodromes).toHaveLength(1);
+    expect(request.scenario.boards).toHaveLength(1);
     expect(request.scenario.uav_types).toBeUndefined();
     expect(request.scenario.required_camera).toBeUndefined();
     expect(request.scenario.area).toHaveLength(5);
@@ -303,58 +349,100 @@ describe("prototype scenario", () => {
     expect(() => validateScenarioInputs(invalid)).toThrow("Загрузите корректный KML");
   });
 
-  it("rejects duplicate pad IDs", () => {
+  it("rejects a camera that is not compatible with the selected model", () => {
     const invalid = inputs();
-    invalid.pads = addPad(invalid.pads);
-    invalid.pads[1] = { ...invalid.pads[1], id: "pad-01" };
-    expect(() => validateScenarioInputs(invalid)).toThrow("ID должен быть заполнен и уникален");
+    invalid.boards = [{ modelId: "geoscan-gemini", cameraId: "sony-a6000", aerodromeIndex: 0, count: 1 }];
+    expect(() => validateScenarioInputs(invalid)).toThrow("выберите камеру, совместимую с моделью");
   });
 });
 
 describe("enumeration input", () => {
-  it("defaults a pad to lon 37.6, lat 55.747, and count 1", () => {
-    expect(DEFAULT_PADS).toEqual([{ id: "pad-01", lon: 37.6, lat: 55.747, count: 1 }]);
+  it("defaults the first aerodrome to lon 37.6, lat 55.747", () => {
+    expect(DEFAULT_AERODROMES).toEqual([{ lon: 37.6, lat: 55.747 }]);
+    expect(DEFAULT_BOARDS).toEqual([{ modelId: "", cameraId: "", aerodromeIndex: 0, count: 1 }]);
   });
 
-  it("emits pads and required_spectrum so solver.solve takes the enumeration path", () => {
+  it("emits aerodromes and boards so solver.solve takes the enumeration path", () => {
     const built = scenario();
-    expect(built.pads).toEqual([{ id: "pad-01", lat: 55.747, lon: 37.6, count: 1 }]);
+    expect(built.aerodromes).toEqual([{ id: "аэродром 1", lat: 55.747, lon: 37.6 }]);
+    expect(built.boards).toEqual([
+      {
+        id: "БВС 1",
+        model_id: "geoscan-gemini",
+        camera_id: "geoscan-pf1b",
+        aerodrome_id: "аэродром 1",
+        count: 1,
+      },
+    ]);
     expect(built.required_spectrum).toBe("RGB");
     expect(built).not.toHaveProperty("takeoff");
     expect(built).not.toHaveProperty("uav");
     expect(built).not.toHaveProperty("uav_types");
     expect(built).not.toHaveProperty("required_camera");
+    expect(built).not.toHaveProperty("pads");
   });
 
-  it("sets required_spectrum from the survey type and does not stamp RGB on the pad", () => {
+  it("sets required_spectrum from the survey type and does not stamp it on the aerodrome", () => {
     const built = scenario();
     expect(built.required_spectrum).toBe("RGB");
-    expect(built.pads).toEqual([{ id: "pad-01", lat: 55.747, lon: 37.6, count: 1 }]);
-    expect(JSON.stringify(built.pads)).not.toContain("RGB");
+    expect(built.aerodromes).toEqual([{ id: "аэродром 1", lat: 55.747, lon: 37.6 }]);
+    expect(JSON.stringify(built.aerodromes)).not.toContain("RGB");
+    expect(JSON.stringify(built.boards)).not.toContain("RGB");
   });
 
-  it("keeps two pads in the order the user entered, each with its own count", () => {
+  it("keeps two board cards in order, each with its own aerodrome and count", () => {
     const two = inputs();
-    two.pads = [
-      { id: "pad-01", lat: 55.747, lon: 37.6, count: 2 },
-      { id: "pad-02", lat: 55.75, lon: 37.61, count: 1 },
+    two.aerodromes = [
+      { lat: 55.747, lon: 37.6 },
+      { lat: 55.75, lon: 37.61 },
+    ];
+    two.boards = [
+      { modelId: "geoscan-gemini", cameraId: "geoscan-pf1b", aerodromeIndex: 0, count: 2 },
+      { modelId: "geoscan-gemini", cameraId: "geoscan-pollux", aerodromeIndex: 1, count: 1 },
     ];
     const built = buildPrototypeScenario(two, "min_time", xmlParser());
-    expect(built.pads).toEqual([
-      { id: "pad-01", lat: 55.747, lon: 37.6, count: 2 },
-      { id: "pad-02", lat: 55.75, lon: 37.61, count: 1 },
+    expect(built.aerodromes).toEqual([
+      { id: "аэродром 1", lat: 55.747, lon: 37.6 },
+      { id: "аэродром 2", lat: 55.75, lon: 37.61 },
     ]);
+    expect(built.boards).toEqual([
+      {
+        id: "БВС 1",
+        model_id: "geoscan-gemini",
+        camera_id: "geoscan-pf1b",
+        aerodrome_id: "аэродром 1",
+        count: 2,
+      },
+      {
+        id: "БВС 2",
+        model_id: "geoscan-gemini",
+        camera_id: "geoscan-pollux",
+        aerodrome_id: "аэродром 2",
+        count: 1,
+      },
+    ]);
+    expect(built).not.toHaveProperty("pads");
     expect(built).not.toHaveProperty("uav_types");
     expect(built).not.toHaveProperty("required_camera");
   });
 
-  it("sends a non-RGB survey as required_spectrum without a camera or type list", () => {
-    const infrared = inputs();
-    infrared.surveyType = "infrared";
-    const built = buildPrototypeScenario(infrared, "min_time", xmlParser());
-    expect(built.required_spectrum).toBe("infrared");
+  it("sends a non-RGB survey as required_spectrum without hiding the model RGB camera", () => {
+    const multispectral = inputs();
+    multispectral.surveyType = "multispectral";
+    const built = buildPrototypeScenario(multispectral, "min_time", xmlParser());
+    expect(built.required_spectrum).toBe("multispectral");
+    expect(built.boards).toEqual([
+      {
+        id: "БВС 1",
+        model_id: "geoscan-gemini",
+        camera_id: "geoscan-pf1b",
+        aerodrome_id: "аэродром 1",
+        count: 1,
+      },
+    ]);
+    expect(camerasForModel("geoscan-gemini").map((camera) => camera.id)).toContain("geoscan-pf1b");
     expect(built).not.toHaveProperty("required_camera");
     expect(built).not.toHaveProperty("uav_types");
-    expect(built.pads).toHaveLength(1);
+    expect(built).not.toHaveProperty("pads");
   });
 });

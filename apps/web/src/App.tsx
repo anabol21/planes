@@ -24,15 +24,24 @@ import {
 import { formatDecimalInput, normalizeDecimalDraft, parseDecimalInput } from "./numberInput";
 import { getResultPresentation } from "./presentation";
 import {
-  DEFAULT_PADS,
-  addPad,
+  DEFAULT_AERODROMES,
+  DEFAULT_BOARDS,
   DEFAULT_TIME_LIMIT,
   MAX_TIME_LIMIT_SECONDS,
+  addBoard,
+  aerodromeId,
   buildOptimization,
   buildPrototypeScenario,
+  camerasForModel,
+  catalogModels,
+  clearMissingAerodromes,
+  removeBoard,
+  resizeAerodromes,
   validateScenarioInputs,
   withDefaultProfileLimitation,
-  type PadInput,
+  withModel,
+  type AerodromeInput,
+  type BoardInput,
   type ScenarioInputs,
   type SurveyType,
 } from "./scenario";
@@ -292,18 +301,72 @@ function NumberField({
   );
 }
 
-function PadCard({ pad, index, removable, onChange, onRemove }: { pad: PadInput; index: number; removable: boolean; onChange: (next: PadInput) => void; onRemove: () => void }) {
-  const set = <K extends keyof PadInput>(key: K, value: PadInput[K]) => onChange({ ...pad, [key]: value });
+function BoardCard({
+  board,
+  index,
+  aerodromeCount,
+  onChange,
+  onRemove,
+}: {
+  board: BoardInput;
+  index: number;
+  aerodromeCount: number;
+  onChange: (next: BoardInput) => void;
+  onRemove: () => void;
+}) {
+  const cameras = camerasForModel(board.modelId);
   return (
     <article className="uav-card">
-      <div className="uav-card-head"><div><span className="uav-index">Площадка {index + 1}</span><strong>{pad.id || "Без ID"}</strong></div><button className="text-button danger" type="button" disabled={!removable} onClick={onRemove}>Удалить</button></div>
-      <div className="uav-grid">
-        <label><span>ID</span><input value={pad.id} onChange={(event) => set("id", event.target.value)} /></label>
-        <NumberField label="Долгота" unit="°" placeholder="37.6000" value={pad.lon} onChange={(value) => set("lon", value)} />
-        <NumberField label="Широта" unit="°" placeholder="55.7470" value={pad.lat} onChange={(value) => set("lat", value)} />
-        <NumberField label="Число бортов" unit="шт" placeholder="1" integer value={pad.count} onChange={(value) => set("count", value)} />
+      <div className="uav-card-head">
+        <div><strong>БВС {index + 1}</strong></div>
+        <button className="text-button danger" type="button" onClick={onRemove}>Удалить</button>
       </div>
-      <small className="field-hint point-hint">Координаты EPSG:4326. Пример: долгота 37.6000, широта 55.7470.</small>
+      <div className="uav-grid">
+        <label>
+          <span>Модель</span>
+          <select value={board.modelId} onChange={(event) => onChange(withModel(board, event.target.value))}>
+            <option value="">Выберите модель</option>
+            {catalogModels().map((model) => <option key={model.id} value={model.id}>{model.name}</option>)}
+          </select>
+        </label>
+        <label>
+          <span>Камера</span>
+          <select
+            value={board.cameraId}
+            disabled={!board.modelId}
+            onChange={(event) => onChange({ ...board, cameraId: event.target.value })}
+          >
+            <option value="">Выберите камеру</option>
+            {cameras.map((camera) => <option key={camera.id} value={camera.id}>{camera.name}</option>)}
+          </select>
+        </label>
+        <label>
+          <span>Аэродром</span>
+          <select
+            value={board.aerodromeIndex ?? ""}
+            onChange={(event) => onChange({
+              ...board,
+              aerodromeIndex: event.target.value === "" ? null : Number(event.target.value),
+            })}
+          >
+            <option value="">Выберите аэродром</option>
+            {Array.from({ length: aerodromeCount }, (_, aerodromeIndex) => (
+              <option key={aerodromeId(aerodromeIndex)} value={aerodromeIndex}>{aerodromeId(aerodromeIndex)}</option>
+            ))}
+          </select>
+        </label>
+        <NumberField
+          label="Количество"
+          unit="шт"
+          placeholder="1"
+          integer
+          value={board.count}
+          onChange={(value) => {
+            if (!Number.isInteger(value) || value < 1) return;
+            onChange({ ...board, count: value });
+          }}
+        />
+      </div>
     </article>
   );
 }
@@ -311,7 +374,8 @@ function PadCard({ pad, index, removable, onChange, onRemove }: { pad: PadInput;
 export default function App() {
   const api = useMemo(() => createApiClient(), []);
   const [scenarioId, setScenarioId] = useState("demo-multi-uav-001");
-  const [pads, setPads] = useState<PadInput[]>(() => DEFAULT_PADS.map((pad) => ({ ...pad })));
+  const [aerodromes, setAerodromes] = useState<AerodromeInput[]>(() => DEFAULT_AERODROMES.map((item) => ({ ...item })));
+  const [boards, setBoards] = useState<BoardInput[]>(() => DEFAULT_BOARDS.map((item) => ({ ...item })));
   const [surveyType, setSurveyType] = useState<SurveyType>("RGB");
   const [windSpeed, setWindSpeed] = useState(3);
   const [windDirection, setWindDirection] = useState(270);
@@ -335,14 +399,20 @@ export default function App() {
 
   const scenarioInputs = useMemo<ScenarioInputs>(() => ({
     scenarioId,
-    pads,
+    aerodromes,
+    boards,
     surveyType,
     windSpeedMps: windSpeed,
     windDirectionFromDeg: windDirection,
     surveyTask,
     restrictedZones,
     obstacles,
-  }), [scenarioId, pads, surveyType, windSpeed, windDirection, surveyTask, restrictedZones, obstacles]);
+  }), [scenarioId, aerodromes, boards, surveyType, windSpeed, windDirection, surveyTask, restrictedZones, obstacles]);
+
+  function changeAerodromeCount(count: number) {
+    setAerodromes((current) => resizeAerodromes(current, count));
+    setBoards((current) => clearMissingAerodromes(current, count));
+  }
 
   const scenarioPreview = useMemo(() => {
     try {
@@ -424,7 +494,7 @@ export default function App() {
         <div className="header-copy">
           <p className="eyebrow">Инженерный прототип планирования</p>
           <h1>UAV Mission Planner</h1>
-          <p className="subtitle">Подготовка групповой миссии БВС на основе KML-геоданных, площадок и выбранного критерия оптимизации.</p>
+          <p className="subtitle">Подготовка групповой миссии БВС на основе KML-геоданных, аэродромов, бортов и выбранного критерия оптимизации.</p>
           <div className="connection-row" aria-label="Состояние приложения">
             <div className="connection-pill ready"><span className="status-dot" /><small>Frontend</small><strong>Готов</strong></div>
             <div className={`connection-pill ${backendTone}`}><span className="status-dot" /><small>Backend / задача</small><strong>{backendLabel}</strong></div>
@@ -435,7 +505,7 @@ export default function App() {
 
       <div className="honesty-banner">
         <strong>Prototype scenario profile</strong>
-        <p>KML читается локально. В запрос уходят кольца полигонов, площадки и спектр. Модель и камера читаются на сервере из справочника. GSD, перекрытия и коэффициенты мощности остаются профилем по умолчанию. Маршруты рассчитывает только backend/runtime.</p>
+        <p>KML читается локально. В запрос уходят кольца полигонов, аэродромы и борты. Камера берётся из рёбер совместимости выбранной модели. Скорость, батарея и оптика подставляются на сервере из справочника. GSD, перекрытия и коэффициенты мощности остаются профилем по умолчанию. Маршруты рассчитывает только backend/runtime.</p>
       </div>
 
       <form onSubmit={handleSubmit} noValidate>
@@ -453,13 +523,28 @@ export default function App() {
           </div>
         </section>
 
+        <section className="card workflow-section" aria-labelledby="aerodrome-title">
+          <div className="section-heading"><div><p className="eyebrow">03 · Аэродромы</p><h2 id="aerodrome-title">Аэродромы</h2><p className="section-description">Число от 1 до 4. У каждой строки долгота и широта, EPSG:4326. Подпись «аэродром 1» ставит система.</p></div></div>
+          <label className="bounded-count"><span>Число аэродромов</span><select value={aerodromes.length} onChange={(event) => changeAerodromeCount(Number(event.target.value))}><option value={1}>1</option><option value={2}>2</option><option value={3}>3</option><option value={4}>4</option></select></label>
+          <div className="fleet-list">{aerodromes.map((aerodrome, index) => (
+            <article className="uav-card" key={aerodromeId(index)}>
+              <div className="uav-card-head"><strong>{aerodromeId(index)}</strong></div>
+              <div className="uav-grid">
+                <NumberField label="Долгота" unit="°" placeholder="37.6000" value={aerodrome.lon} onChange={(value) => setAerodromes((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, lon: value } : item))} />
+                <NumberField label="Широта" unit="°" placeholder="55.7470" value={aerodrome.lat} onChange={(value) => setAerodromes((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, lat: value } : item))} />
+              </div>
+              <small className="field-hint point-hint">Координаты EPSG:4326.</small>
+            </article>
+          ))}</div>
+        </section>
+
         <section className="card workflow-section" aria-labelledby="fleet-title">
-          <div className="section-heading"><div><p className="eyebrow">03 · Площадки</p><h2 id="fleet-title">Площадки старта</h2><p className="section-description">Каждая карточка — площадка: широта, долгота и число одинаковых бортов. Модель и камера берутся из справочника по типу съёмки. Не больше 4 площадок.</p></div><button className="secondary-button" type="button" disabled={pads.length >= 4} onClick={() => setPads((current) => addPad(current))}>+ Добавить площадку</button></div>
-          <div className="fleet-list">{pads.map((pad, index) => <PadCard key={`${pad.id}-${index}`} pad={pad} index={index} removable={pads.length > 1} onChange={(next) => setPads((current) => current.map((item, itemIndex) => itemIndex === index ? next : item))} onRemove={() => setPads((current) => current.filter((_item, itemIndex) => itemIndex !== index))} />)}</div>
+          <div className="section-heading"><div><p className="eyebrow">04 · Борта</p><h2 id="fleet-title">Борта</h2><p className="section-description">Карточка задаёт модель, совместимую с ней камеру, аэродром и количество одинаковых бортов. Список камер зависит только от модели. Потолка карточек нет.</p></div><button className="secondary-button" type="button" onClick={() => setBoards((current) => addBoard(current))}>+ Добавить борт</button></div>
+          <div className="fleet-list">{boards.map((board, index) => <BoardCard key={`board-${index}`} board={board} index={index} aerodromeCount={aerodromes.length} onChange={(next) => setBoards((current) => current.map((item, itemIndex) => itemIndex === index ? next : item))} onRemove={() => setBoards((current) => removeBoard(current, index))} />)}</div>
         </section>
 
         <section className="card workflow-section" aria-labelledby="survey-title">
-          <div className="section-heading"><div><p className="eyebrow">04 · Параметры съёмки</p><h2 id="survey-title">Сенсорный профиль и ветер</h2><p className="section-description">Единицы указаны явно. Браузер не рассчитывает покрытие, энергетику или выполнимость.</p></div></div>
+          <div className="section-heading"><div><p className="eyebrow">05 · Параметры съёмки</p><h2 id="survey-title">Сенсорный профиль и ветер</h2><p className="section-description">Единицы указаны явно. Браузер не рассчитывает покрытие, энергетику или выполнимость. Тип съёмки не фильтрует список камер.</p></div></div>
           <div className="control-grid">
             <label><span>Тип съёмки</span><select value={surveyType} onChange={(event) => setSurveyType(event.target.value as SurveyType)}><option value="RGB">RGB</option><option value="multispectral">Мультиспектральная</option><option value="infrared">Инфракрасная</option><option value="LiDAR">LiDAR</option><option value="geophysical">Геофизическая</option></select></label>
             <NumberField label="Скорость ветра" unit="м/с" placeholder="3" value={windSpeed} onChange={setWindSpeed} />
@@ -468,7 +553,7 @@ export default function App() {
         </section>
 
         <section className="card workflow-section" aria-labelledby="optimization-title">
-          <div className="section-heading"><div><p className="eyebrow">05 · Критерий оптимизации</p><h2 id="optimization-title">Настройки расчёта</h2><p className="section-description">Значения передаются в существующем envelope v0 без браузерной оптимизации.</p></div></div>
+          <div className="section-heading"><div><p className="eyebrow">06 · Критерий оптимизации</p><h2 id="optimization-title">Настройки расчёта</h2><p className="section-description">Значения передаются в существующем envelope v0 без браузерной оптимизации.</p></div></div>
           <div className="control-grid">
             <label><span>Критерий</span><select value={objective} onChange={(event) => setObjective(event.target.value)}><option value="min_time">Минимальное время выполнения</option><option value="min_total_flight_time">Минимальный суммарный налёт</option></select><small className="field-hint">scenario.criterion: {objective === "min_total_flight_time" ? "min_flight_hours" : objective}</small></label>
             <NumberField label="Лимит расчёта, с" placeholder={DEFAULT_TIME_LIMIT} value={timeLimit} onChange={setTimeLimit} hint={timeLimit > MAX_TIME_LIMIT_SECONDS ? TIME_LIMIT_TOO_LONG : `Не больше ${MAX_TIME_LIMIT_SECONDS}`} />
@@ -477,7 +562,7 @@ export default function App() {
 
           <details className="advanced-panel">
             <summary><span>Расширенные настройки / Raw scenario</span><small>Фактическое тело запроса для инженерной проверки</small></summary>
-            <p className="advanced-note">Сценарий формируется из полей выше. Исходные KML остаются в памяти браузера; в запрос уходят кольца, площадки и параметры оптимизации. Поля профиля по умолчанию помечены в default_profile.</p>
+            <p className="advanced-note">Сценарий формируется из полей выше. Исходные KML остаются в памяти браузера; в запрос уходят кольца, аэродромы, борты и параметры оптимизации. Поля профиля по умолчанию помечены в default_profile.</p>
             {scenarioPreview.error && <p className="file-error">{scenarioPreview.error}</p>}
             <div className="editor-grid"><label><span>Scenario JSON · только чтение</span><textarea readOnly value={scenarioPreview.text} spellCheck={false} rows={18} /></label><label><span>Optimization JSON · только чтение</span><textarea readOnly value={optimizationText} spellCheck={false} rows={18} /></label></div>
           </details>
@@ -487,7 +572,7 @@ export default function App() {
       </form>
 
       {error && <div className="error-banner" role="alert"><span className="error-mark" aria-hidden="true">!</span><div><strong>Не удалось выполнить запрос</strong><span>{error}</span></div></div>}
-      {job && <section className="card status-card" aria-labelledby="job-status-title" aria-live="polite"><div className="section-heading"><div><p className="eyebrow">06 · Статус задачи</p><h2 id="job-status-title">Ход выполнения</h2></div><span className={`status-badge ${job.state}`}>{STATE_LABELS[job.state]}</span></div><Lifecycle observedStates={observedStates} result={result} /><dl className="job-details"><div className="job-id-row"><dt>Job ID</dt><dd>{job.job_id}</dd></div><div><dt>Создано</dt><dd>{formatTimestamp(job.created_at)}</dd></div><div><dt>Запущено</dt><dd>{formatTimestamp(job.started_at)}</dd></div><div><dt>Завершено</dt><dd>{formatTimestamp(job.finished_at)}</dd></div></dl>{isPolling && <div className="polling-indicator"><span className="pulse" /> Backend выполняет задачу, статус обновляется автоматически</div>}</section>}
+      {job && <section className="card status-card" aria-labelledby="job-status-title" aria-live="polite"><div className="section-heading"><div><p className="eyebrow">07 · Статус задачи</p><h2 id="job-status-title">Ход выполнения</h2></div><span className={`status-badge ${job.state}`}>{STATE_LABELS[job.state]}</span></div><Lifecycle observedStates={observedStates} result={result} /><dl className="job-details"><div className="job-id-row"><dt>Job ID</dt><dd>{job.job_id}</dd></div><div><dt>Создано</dt><dd>{formatTimestamp(job.created_at)}</dd></div><div><dt>Запущено</dt><dd>{formatTimestamp(job.started_at)}</dd></div><div><dt>Завершено</dt><dd>{formatTimestamp(job.finished_at)}</dd></div></dl>{isPolling && <div className="polling-indicator"><span className="pulse" /> Backend выполняет задачу, статус обновляется автоматически</div>}</section>}
       {result && <ResultPanel result={result} />}
       <footer>Интерфейс отображает авторитетный ответ backend. Импорт KML не является проверкой геометрии, безопасности или выполнимости полёта.</footer>
     </main>

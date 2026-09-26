@@ -72,10 +72,11 @@ _optimizer: tuple[Any, Any, Any] | None = None
 def solve(problem: Problem, deadline: float) -> Solution | Infeasible | TimedOut:
     """Build one ``InputData`` and call ``run``.
 
-    An envelope with ``pads`` and ``required_spectrum`` enumerates admitted
-    catalog triples and returns the single best successful call. An envelope
-    that still has ``uav_types`` is rejected. A scenario that still has one
-    ``takeoff`` and one ``uav`` stays on that one-call path.
+    An envelope with ``aerodromes`` and ``boards`` enumerates one core call
+    per runnable board card and returns the single best successful call.
+    An envelope that still has ``pads`` or ``uav_types`` is rejected. A
+    scenario that still has one ``takeoff`` and one ``uav`` stays on that
+    one-call path.
 
     ``deadline`` is ``time.monotonic()`` plus the problem time limit.
     Missing fields and pydantic or import failures raise ``ValueError``.
@@ -87,6 +88,8 @@ def solve(problem: Problem, deadline: float) -> Solution | Infeasible | TimedOut
     """
     if isinstance(problem.scenario, dict) and "uav_types" in problem.scenario:
         raise ValueError("uav_types is not accepted")
+    if isinstance(problem.scenario, dict) and "pads" in problem.scenario:
+        raise ValueError("pads is not accepted")
     if is_outer_scenario(problem.scenario):
         return _solve_outer(problem, deadline)
     payload = _scenario_payload(problem.scenario)
@@ -102,7 +105,7 @@ def solve(problem: Problem, deadline: float) -> Solution | Infeasible | TimedOut
 
 
 def _solve_outer(problem: Problem, deadline: float) -> Solution | Infeasible | TimedOut:
-    """Enumerate admitted triples and return the single best successful call."""
+    """Enumerate admitted board cards and return the single best successful call."""
     if time.monotonic() >= deadline:
         return TimedOut((_TIME_LIMIT,))
     outcome = run_candidates(
@@ -126,7 +129,8 @@ def _solve_outer(problem: Problem, deadline: float) -> Solution | Infeasible | T
             objective_value=mapped.objective_value,
             limitations=(
                 *mapped.limitations,
-                f"winning pad id: {winner.pad_id}",
+                f"winning aerodrome id: {winner.aerodrome_id}",
+                f"winning board id: {winner.board_id}",
                 f"winning model id: {winner.model_id}",
                 f"winning camera id: {winner.camera_id}",
                 *noted,
@@ -138,7 +142,7 @@ def _solve_outer(problem: Problem, deadline: float) -> Solution | Infeasible | T
         return TimedOut((_TIME_LIMIT, *noted))
     reasons: list[str] = []
     if not outcome.attempts:
-        reasons.append(outcome.reason or "no runnable uav and camera for spectrum")
+        reasons.append(outcome.reason or "no runnable board")
     for item in outcome.attempts:
         reason = item.result.get("reason")
         if isinstance(reason, str) and reason and reason not in reasons:

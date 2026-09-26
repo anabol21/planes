@@ -1,4 +1,9 @@
-"""Filter a scenario envelope and build one core ``InputData`` per candidate."""
+"""Build one core ``InputData`` per board card.
+
+A card names a catalog model, a compatible camera, an aerodrome, and a count.
+The survey spectrum does not filter cameras. Calls are not merged. This
+module does not read zone or terrain KML.
+"""
 
 from __future__ import annotations
 
@@ -9,7 +14,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
 
-MAX_PADS = 4
+MAX_AERODROMES = 4
 MAX_CALLS = 16
 
 _SHARED = (
@@ -45,7 +50,7 @@ _OTHER_FLIGHT = (
     ("max_wind_m_s", "max_wind_ms"),
 )
 _OK = frozenset({"optimal", "feasible", "heuristic"})
-_NO_RUNNABLE = "no runnable uav and camera for spectrum"
+_NO_RUNNABLE = "no runnable board"
 _CATALOG_PATH = Path(__file__).resolve().parents[1] / "catalog" / "fleet_catalog.json"
 _GIBRID_ROOT = (
     Path(__file__).resolve().parents[2] / "model" / "basic_model" / "gibrid-optimizer"
@@ -57,7 +62,8 @@ _input_api: tuple[Any, Any] | None = None
 
 @dataclass(frozen=True)
 class Candidate:
-    pad_id: str
+    aerodrome_id: str
+    board_id: str
     model_id: str
     camera_id: str
     data: Any
@@ -65,7 +71,8 @@ class Candidate:
 
 @dataclass(frozen=True)
 class Attempt:
-    pad_id: str
+    aerodrome_id: str
+    board_id: str
     model_id: str
     camera_id: str
     data: Any
@@ -89,7 +96,8 @@ class EnumerationResult:
 
 @dataclass(frozen=True)
 class Winner:
-    pad_id: str
+    aerodrome_id: str
+    board_id: str
     model_id: str
     camera_id: str
     result: dict[str, Any]
@@ -97,11 +105,12 @@ class Winner:
 
 
 def is_outer_scenario(scenario: dict[str, Any]) -> bool:
-    """An outer envelope has pads and a spectrum, and no ``uav_types``."""
+    """An outer envelope has aerodromes and boards, and neither pads nor ``uav_types``."""
     return (
         isinstance(scenario, dict)
-        and "pads" in scenario
-        and "required_spectrum" in scenario
+        and "aerodromes" in scenario
+        and "boards" in scenario
+        and "pads" not in scenario
         and "uav_types" not in scenario
     )
 
@@ -125,10 +134,11 @@ def load_catalog() -> dict[str, Any]:
 
 
 def candidates(scenario: dict[str, Any], *, time_limit_s: int | float = 60) -> list[Candidate]:
-    """Admit runnable (pad, model, camera) triples and build one ``InputData`` each.
+    """Admit runnable board cards and build one ``InputData`` each.
 
-    Order is pads as given, then catalog compatibility edges. A spectrum match
-    that lacks optics or flight numbers is skipped, not filled with nulls.
+    Order is the card order. A compatible pair that lacks optics or flight
+    numbers is skipped. A camera with no compatibility edge to the model is
+    rejected. Survey spectrum does not filter the list.
     """
     admitted, _skips = _prepare(scenario, time_limit_s=time_limit_s)
     return admitted
@@ -142,10 +152,10 @@ def run_candidates(
     core: CoreFn | None = None,
     deadline: float | None = None,
 ) -> EnumerationResult:
-    """Call ``core`` once per admitted triple. The default core is ``run``.
+    """Call ``core`` once per admitted board card. The default core is ``run``.
 
-    Incomplete spectrum matches are recorded and are not calls. No runnable
-    pair means no core call.
+    Incomplete cards are recorded and are not calls. No runnable card means
+    no core call.
     """
     admitted, skips = _prepare(scenario, time_limit_s=time_limit_s)
     recorded = tuple(skips)
@@ -174,7 +184,8 @@ def run_candidates(
             raise ValueError("missing fields: solver result")
         attempts.append(
             Attempt(
-                pad_id=item.pad_id,
+                aerodrome_id=item.aerodrome_id,
+                board_id=item.board_id,
                 model_id=item.model_id,
                 camera_id=item.camera_id,
                 data=data,
@@ -208,7 +219,8 @@ def select_winner(attempts: tuple[Attempt, ...] | list[Attempt], criterion: str)
     if best is None or best_value is None:
         return None
     return Winner(
-        pad_id=best.pad_id,
+        aerodrome_id=best.aerodrome_id,
+        board_id=best.board_id,
         model_id=best.model_id,
         camera_id=best.camera_id,
         result=best.result,
@@ -225,27 +237,58 @@ def _prepare(
         raise ValueError("missing fields: scenario")
     if "uav_types" in scenario:
         raise ValueError("uav_types is not accepted")
-    missing = [name for name in ("required_spectrum", *_SHARED, "pads") if name not in scenario]
+    if "pads" in scenario:
+        raise ValueError("pads is not accepted")
+    missing = [
+        name
+        for name in ("required_spectrum", *_SHARED, "aerodromes", "boards")
+        if name not in scenario
+    ]
     if missing:
         raise ValueError("missing fields: " + ", ".join(missing))
-    required_spectrum = _text(scenario["required_spectrum"], "required_spectrum")
+    # The survey type stays on the task. It does not choose or hide cameras.
+    _text(scenario["required_spectrum"], "required_spectrum")
     if scenario["criterion"] not in ("min_time", "min_flight_hours"):
         raise ValueError("missing fields: criterion")
-    pads = _pads(scenario["pads"])
-    runnable, skips = _pool(load_catalog(), required_spectrum)
-    planned = [(pad, pair) for pad in pads for pair in runnable]
-    if len(planned) > MAX_CALLS:
+    aerodromes = _aerodromes(scenario["aerodromes"])
+    boards = _boards(scenario["boards"], aerodromes)
+    catalog = load_catalog()
+    models = _index(catalog.get("uav_models"), "uav_models")
+    cameras = _index(catalog.get("cameras"), "cameras")
+    edges = _compatibility(catalog, models, cameras)
+    by_aerodrome = {item["id"]: item for item in aerodromes}
+    runnable: list[tuple[dict[str, Any], dict[str, Any], dict[str, Any], dict[str, Any]]] = []
+    skips: list[Skip] = []
+    for board in boards:
+        model_id = board["model_id"]
+        camera_id = board["camera_id"]
+        if model_id not in models:
+            raise ValueError(f"unknown uav model: {model_id}")
+        if camera_id not in cameras:
+            raise ValueError(f"unknown camera: {camera_id}")
+        if (model_id, camera_id) not in edges:
+            raise ValueError(f"camera {camera_id} is not compatible with model {model_id}")
+        model = models[model_id]
+        camera = cameras[camera_id]
+        missing_fields = _missing_fields(model, camera)
+        if missing_fields:
+            skips.append(Skip(model_id=model_id, camera_id=camera_id, missing=tuple(missing_fields)))
+            continue
+        runnable.append((board, by_aerodrome[board["aerodrome_id"]], model, camera))
+    if not runnable:
+        return [], skips
+    if len(runnable) > MAX_CALLS:
         raise ValueError("at most 16 calls")
     limit = _positive_int(time_limit_s, "time_limit_s")
     input_data_cls, validation_error = _input_api_types()
     shared = {name: scenario[name] for name in _SHARED}
     built: list[Candidate] = []
-    for pad, pair in planned:
+    for board, aerodrome, model, camera in runnable:
         payload = {
             **shared,
-            "takeoff": {"lat": pad["lat"], "lon": pad["lon"]},
-            "uav": _flight(pair["model"], pad["count"]),
-            "camera": _optics(pair["camera"]),
+            "takeoff": {"lat": aerodrome["lat"], "lon": aerodrome["lon"]},
+            "uav": _flight(model, board["count"]),
+            "camera": _optics(camera),
             "solver": _solver_cfg(limit, scenario.get("solver")),
         }
         try:
@@ -254,23 +297,25 @@ def _prepare(
             raise ValueError(_invalid_fields(exc)) from exc
         built.append(
             Candidate(
-                pad_id=pad["id"],
-                model_id=pair["model_id"],
-                camera_id=pair["camera_id"],
+                aerodrome_id=aerodrome["id"],
+                board_id=board["id"],
+                model_id=board["model_id"],
+                camera_id=board["camera_id"],
                 data=data,
             )
         )
     return built, skips
 
 
-def _pool(catalog: dict[str, Any], required_spectrum: str) -> tuple[list[dict[str, Any]], list[Skip]]:
-    models = _index(catalog.get("uav_models"), "uav_models")
-    cameras = _index(catalog.get("cameras"), "cameras")
+def _compatibility(
+    catalog: dict[str, Any],
+    models: dict[str, dict[str, Any]],
+    cameras: dict[str, dict[str, Any]],
+) -> set[tuple[str, str]]:
     edges = catalog.get("compatibility")
     if not isinstance(edges, list):
         raise ValueError("missing fields: compatibility")
-    runnable: list[dict[str, Any]] = []
-    skips: list[Skip] = []
+    found: set[tuple[str, str]] = set()
     for index, edge in enumerate(edges):
         if not isinstance(edge, dict):
             raise ValueError(f"missing fields: compatibility[{index}]")
@@ -280,22 +325,8 @@ def _pool(catalog: dict[str, Any], required_spectrum: str) -> tuple[list[dict[st
             raise ValueError(f"unknown uav model in catalog: {model_id}")
         if camera_id not in cameras:
             raise ValueError(f"unknown camera in catalog: {camera_id}")
-        camera = cameras[camera_id]
-        if required_spectrum not in _spectra(camera):
-            continue
-        missing = _missing_fields(models[model_id], camera)
-        if missing:
-            skips.append(Skip(model_id=model_id, camera_id=camera_id, missing=tuple(missing)))
-            continue
-        runnable.append(
-            {
-                "model_id": model_id,
-                "camera_id": camera_id,
-                "model": models[model_id],
-                "camera": camera,
-            }
-        )
-    return runnable, skips
+        found.add((model_id, camera_id))
+    return found
 
 
 def _index(raw: Any, label: str) -> dict[str, dict[str, Any]]:
@@ -310,13 +341,6 @@ def _index(raw: Any, label: str) -> dict[str, dict[str, Any]]:
             raise ValueError(f"duplicate catalog id: {row_id}")
         indexed[row_id] = item
     return indexed
-
-
-def _spectra(camera: dict[str, Any]) -> list[str]:
-    raw = camera.get("spectra")
-    if not isinstance(raw, list):
-        return []
-    return [item for item in raw if isinstance(item, str)]
 
 
 def _missing_fields(model: dict[str, Any], camera: dict[str, Any]) -> list[str]:
@@ -369,27 +393,57 @@ def _flight(model: dict[str, Any], count: int) -> dict[str, Any]:
     return flight
 
 
-def _pads(raw: Any) -> list[dict[str, Any]]:
-    if not isinstance(raw, list):
-        raise ValueError("missing fields: pads")
-    if len(raw) > MAX_PADS:
-        raise ValueError("at most 4 pads")
-    pads: list[dict[str, Any]] = []
+def _aerodromes(raw: Any) -> list[dict[str, Any]]:
+    if not isinstance(raw, list) or not raw:
+        raise ValueError("missing fields: aerodromes")
+    if len(raw) > MAX_AERODROMES:
+        raise ValueError("at most 4 aerodromes")
+    aerodromes: list[dict[str, Any]] = []
     seen: set[str] = set()
     for index, item in enumerate(raw):
         if not isinstance(item, dict):
-            raise ValueError(f"missing fields: pads[{index}]")
-        pad_id = _text(item.get("id"), f"pads[{index}].id")
-        if pad_id in seen:
-            raise ValueError(f"duplicate pad: {pad_id}")
-        seen.add(pad_id)
-        lat = _coord(item.get("lat"), f"pads[{index}].lat")
-        lon = _coord(item.get("lon"), f"pads[{index}].lon")
+            raise ValueError(f"missing fields: aerodromes[{index}]")
+        aerodrome_id = _text(item.get("id"), f"aerodromes[{index}].id")
+        if aerodrome_id in seen:
+            raise ValueError(f"duplicate aerodrome: {aerodrome_id}")
+        seen.add(aerodrome_id)
+        lat = _coord(item.get("lat"), f"aerodromes[{index}].lat")
+        lon = _coord(item.get("lon"), f"aerodromes[{index}].lon")
+        aerodromes.append({"id": aerodrome_id, "lat": lat, "lon": lon})
+    return aerodromes
+
+
+def _boards(raw: Any, aerodromes: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    if not isinstance(raw, list):
+        raise ValueError("missing fields: boards")
+    known = {item["id"] for item in aerodromes}
+    boards: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for index, item in enumerate(raw):
+        if not isinstance(item, dict):
+            raise ValueError(f"missing fields: boards[{index}]")
+        board_id = _text(item.get("id"), f"boards[{index}].id")
+        if board_id in seen:
+            raise ValueError(f"duplicate board: {board_id}")
+        seen.add(board_id)
+        model_id = _text(item.get("model_id"), f"boards[{index}].model_id")
+        camera_id = _text(item.get("camera_id"), f"boards[{index}].camera_id")
+        aerodrome_id = _text(item.get("aerodrome_id"), f"boards[{index}].aerodrome_id")
+        if aerodrome_id not in known:
+            raise ValueError(f"unknown aerodrome: {aerodrome_id}")
         count = item.get("count")
         if isinstance(count, bool) or not isinstance(count, int) or count < 1:
-            raise ValueError(f"missing fields: pads[{index}].count")
-        pads.append({"id": pad_id, "lat": lat, "lon": lon, "count": count})
-    return pads
+            raise ValueError(f"missing fields: boards[{index}].count")
+        boards.append(
+            {
+                "id": board_id,
+                "model_id": model_id,
+                "camera_id": camera_id,
+                "aerodrome_id": aerodrome_id,
+                "count": count,
+            }
+        )
+    return boards
 
 
 def _text(value: Any, label: str) -> str:
