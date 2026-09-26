@@ -1,15 +1,29 @@
 ---
 workstream: integration
 owner: Team
-task: INT-002
-status: done
-updated: 2026-09-25
-checkpoint: 2026-09-25
-branch: integration/INT-002-dev-sync
+task: INT-003
+status: in_progress
+updated: 2026-09-26
+checkpoint: 2026-09-26
+branch: integration/TER-GRI-001
 contract_version: v0
 ---
 
 # Integration status
+
+## INT-003 current boundary
+
+- [x] Refreshed remote refs and fixed the source SHAs in `docs/workstreams/integration/INT-003.md`.
+- [x] Created `integration/TER-GRI-001` from `origin/dev` at `f3225c9a06dd2743be2d86cc6970b0edd2c913e0`.
+- [ ] Import the exact Grisha optimizer snapshot without merging divergent history.
+- [ ] Integrate one fail-closed terrain provider/profile implementation and offline OpenTopography acquisition.
+- [ ] Run offline, mocked, regression, CLI, and one explicit live COP30 smoke verification.
+
+Next action: commit this governance boundary, then import the declared Grisha snapshot and record the pre-change test baseline.
+
+Current interface impact: none. Contract remains `v0`; public backend/runtime/frontend payloads are out of scope.
+
+Current blockers: none. Managed open decisions are listed in the INT-003 brief and remain limitations rather than invented policy.
 
 ## Completed
 
