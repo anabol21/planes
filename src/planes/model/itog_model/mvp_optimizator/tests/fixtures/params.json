@@ -11,5 +11,9 @@
   "decomposition": "trapezoid",
   "output_dir": "./out",
   "dem_file": "dem.kml",
+  "dem_crs": "EPSG:4326",
+  "dem_horizontal_unit": "degree",
+  "dem_elevation_unit": "metre",
+  "terrain_sample_step_m": 25.0,
   "safety_margin_m": 30.0
 }

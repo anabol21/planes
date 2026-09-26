@@ -1,5 +1,16 @@
 from planner.io.catalog import Catalog, get_default_catalog
-from planner.io.dem import BaseDEM, FlatDEM, KMLDem, load_dem
+from planner.io.dem import (
+    BaseDEM,
+    FlatDEM,
+    GeoTiffDEM,
+    InMemoryDEM,
+    KMLDem,
+    TerrainDataError,
+    TerrainProfile,
+    TerrainSample,
+    build_terrain_profile,
+    load_dem,
+)
 from planner.io.geo import read_areas_geojson
 from planner.io.json_out import write_report_json
 from planner.io.kml_in import read_obstacles_kml
@@ -11,7 +22,13 @@ __all__ = [
     "get_default_catalog",
     "BaseDEM",
     "FlatDEM",
+    "InMemoryDEM",
     "KMLDem",
+    "GeoTiffDEM",
+    "TerrainDataError",
+    "TerrainSample",
+    "TerrainProfile",
+    "build_terrain_profile",
     "load_dem",
     "read_areas_geojson",
     "read_obstacles_kml",

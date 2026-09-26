@@ -78,6 +78,7 @@ def _generate_all_swaths(
             v_survey_mps=pp.v_survey_mps,
             mass_kg=pp.mass_kg,
             P_nominal_w=P_nominal,
+            terrain_sample_step_m=mission.params.terrain_sample_step_m,
         )
         swaths_by_area[area.id] = swaths
         h_agl_by_area[area.id] = h_agl

@@ -5,7 +5,7 @@ from __future__ import annotations
 from enum import Enum
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 class SurveyType(str, Enum):
@@ -87,6 +87,10 @@ class Params(BaseModel):
 
     # DEM и безопасность
     dem_file: str | None = None
+    dem_crs: str | None = None
+    dem_horizontal_unit: Literal["degree", "metre"] | None = None
+    dem_elevation_unit: Literal["metre"] | None = None
+    terrain_sample_step_m: float = Field(25.0, gt=0.0)
     safety_margin_m: float = Field(30.0, ge=0.0)
 
     @field_validator("angles_deg")
@@ -98,6 +102,19 @@ class Params(BaseModel):
             if not (0.0 <= a < 360.0):
                 raise ValueError(f"angle {a} out of range [0, 360)")
         return v
+
+    @model_validator(mode="after")
+    def _terrain_declaration_is_explicit(self) -> "Params":
+        if self.dem_file and not (
+            self.dem_crs
+            and self.dem_horizontal_unit
+            and self.dem_elevation_unit
+        ):
+            raise ValueError(
+                "dem_file requires dem_crs, dem_horizontal_unit, and "
+                "dem_elevation_unit"
+            )
+        return self
 
 
 class MissionInput(BaseModel):

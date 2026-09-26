@@ -12,7 +12,7 @@ class Point(BaseModel):
 
 
 class SwathSegment(BaseModel):
-    """Сегмент полосы с шагом ~30 м — для профиля высоты."""
+    """Sample of one canonical constant-AGL terrain profile."""
 
     lat: float
     lon: float
@@ -44,6 +44,9 @@ class Swath(BaseModel):
     h_agl_min_m: float = 0.0
     dem_min_m: float = 0.0
     dem_max_m: float = 0.0
+    terrain_distance_3d_m: float = 0.0
+    total_climb_m: float = 0.0
+    total_descent_m: float = 0.0
 
     # Время/энергия с учётом рельефа
     t_survey_actual_s: float = 0.0

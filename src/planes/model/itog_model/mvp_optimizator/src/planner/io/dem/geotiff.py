@@ -1,4 +1,4 @@
-"""DEM из GeoTIFF: растровая модель рельефа (Copernicus, SRTM, LiDAR)."""
+"""Fail-closed local GeoTIFF surface provider with bilinear interpolation."""
 
 from __future__ import annotations
 
@@ -7,120 +7,131 @@ from pathlib import Path
 
 import numpy as np
 
-from planner.io.dem.base import BaseDEM
+from planner.io.dem.base import BaseDEM, TerrainDataError, validate_elevation
 
 
 class GeoTiffDEM(BaseDEM):
-    """DEM из GeoTIFF с билинейной интерполяцией."""
+    """Read a finite, georeferenced raster and query it using WGS84 points."""
 
-    def __init__(self, path: str | Path):
+    def __init__(self, path: str | Path, *, expected_crs: str | None = None):
         self.path = Path(path)
+        self.expected_crs = expected_crs
         self._arr: np.ndarray | None = None
         self._transform = None
         self._crs = None
         self._nodata: float | None = None
         self._bounds = None
-        self._loaded = False
-        self._error: str | None = None
+        self._load()
 
-    # --------------------------------------------------
-    # Ленивая загрузка
-    # --------------------------------------------------
-
-    def _ensure_loaded(self) -> None:
-        if self._loaded:
-            return
-        self._loaded = True
-
-        if not self.path.exists():
-            self._error = f"GeoTIFF not found: {self.path}"
-            return
-
+    def _load(self) -> None:
+        if not self.path.is_file():
+            raise TerrainDataError(f"GeoTIFF terrain file not found: {self.path}")
         try:
-            import rasterio  # ленивый импорт
-        except ImportError:
-            self._error = "rasterio not installed"
-            return
+            import rasterio
+            from rasterio.crs import CRS
+        except ImportError as exc:
+            raise TerrainDataError(
+                "GeoTIFF terrain requires the declared rasterio dependency"
+            ) from exc
 
         try:
             with rasterio.open(self.path) as src:
-                self._arr = src.read(1).astype(np.float32)
+                if src.count < 1 or src.width <= 0 or src.height <= 0:
+                    raise TerrainDataError("GeoTIFF has invalid dimensions")
+                if src.crs is None:
+                    raise TerrainDataError("GeoTIFF has no declared CRS")
+                if self.expected_crs and src.crs != CRS.from_user_input(
+                    self.expected_crs
+                ):
+                    raise TerrainDataError(
+                        f"GeoTIFF CRS {src.crs} does not match declared "
+                        f"{self.expected_crs}"
+                    )
+                transform_values = tuple(src.transform)[:6]
+                if not all(math.isfinite(value) for value in transform_values):
+                    raise TerrainDataError("GeoTIFF has a non-finite transform")
+                if abs(src.transform.a * src.transform.e) < 1e-18:
+                    raise TerrainDataError("GeoTIFF has a degenerate transform")
+
+                self._arr = src.read(1).astype(np.float64)
                 self._transform = src.transform
                 self._crs = src.crs
                 self._nodata = src.nodata
                 self._bounds = src.bounds
-        except Exception as e:
-            self._error = f"Failed to read GeoTIFF: {e}"
+        except TerrainDataError:
+            raise
+        except Exception as exc:
+            raise TerrainDataError(f"Failed to read GeoTIFF: {self.path}") from exc
 
-    # --------------------------------------------------
-    # h(lat, lon)
-    # --------------------------------------------------
+        valid = self._valid_mask(self._arr)
+        if not np.any(valid):
+            raise TerrainDataError("GeoTIFF contains no finite elevation samples")
+
+    def _valid_mask(self, values: np.ndarray) -> np.ndarray:
+        mask = np.isfinite(values)
+        if self._nodata is not None and math.isfinite(float(self._nodata)):
+            mask &= ~np.isclose(values, float(self._nodata))
+        return mask
+
+    def _query_xy(self, lat: float, lon: float) -> tuple[float, float]:
+        from rasterio.warp import transform
+
+        try:
+            xs, ys = transform("EPSG:4326", self._crs, [lon], [lat])
+        except Exception as exc:
+            raise TerrainDataError("Could not transform WGS84 terrain query") from exc
+        return float(xs[0]), float(ys[0])
 
     def h(self, lat: float, lon: float) -> float:
-        self._ensure_loaded()
+        lat = validate_elevation(lat, source="query latitude")
+        lon = validate_elevation(lon, source="query longitude")
+        x, y = self._query_xy(lat, lon)
+        left, bottom, right, top = self._bounds
+        if not (left <= x <= right and bottom <= y <= top):
+            raise TerrainDataError("Terrain query is outside GeoTIFF coverage")
 
-        if self._arr is None or self._transform is None:
-            return 0.0
-
-        # Пиксельные координаты (float)
-        col_f, row_f = ~self._transform * (lon, lat)
-
-        # Clamp в границы растра
+        col_corner, row_corner = ~self._transform * (x, y)
+        col_f = float(col_corner) - 0.5
+        row_f = float(row_corner) - 0.5
         rows, cols = self._arr.shape
-        if not (0 <= col_f < cols and 0 <= row_f < rows):
-            # Точка вне растра — берём ближайший крайний пиксель
-            col_f = min(max(col_f, 0), cols - 1.001)
-            row_f = min(max(row_f, 0), rows - 1.001)
+        col_f = min(max(col_f, 0.0), cols - 1.0)
+        row_f = min(max(row_f, 0.0), rows - 1.0)
 
-        col = int(math.floor(col_f))
-        row = int(math.floor(row_f))
-        fx = col_f - col
-        fy = row_f - row
-
-        # Билинейная интерполяция по 4 пикселям
-        c1 = min(col + 1, cols - 1)
-        r1 = min(row + 1, rows - 1)
-
-        h00 = self._get_pixel(row, col)
-        h10 = self._get_pixel(row, c1)
-        h01 = self._get_pixel(r1, col)
-        h11 = self._get_pixel(r1, c1)
-
-        return (
+        col0 = int(math.floor(col_f))
+        row0 = int(math.floor(row_f))
+        col1 = min(col0 + 1, cols - 1)
+        row1 = min(row0 + 1, rows - 1)
+        fx = col_f - col0
+        fy = row_f - row0
+        values = np.array(
+            [
+                self._arr[row0, col0],
+                self._arr[row0, col1],
+                self._arr[row1, col0],
+                self._arr[row1, col1],
+            ],
+            dtype=float,
+        )
+        if not np.all(self._valid_mask(values)):
+            raise TerrainDataError("GeoTIFF query intersects nodata")
+        h00, h10, h01, h11 = values
+        result = (
             h00 * (1 - fx) * (1 - fy)
             + h10 * fx * (1 - fy)
             + h01 * (1 - fx) * fy
             + h11 * fx * fy
         )
-
-    def _get_pixel(self, row: int, col: int) -> float:
-        val = float(self._arr[row, col])
-        # nodata → 0
-        if self._nodata is not None and abs(val - self._nodata) < 1e-3:
-            return 0.0
-        return val
-
-    # --------------------------------------------------
-    # Утилиты
-    # --------------------------------------------------
+        return validate_elevation(result, source="GeoTIFF interpolation")
 
     def is_empty(self) -> bool:
-        self._ensure_loaded()
-        return self._arr is None
+        return False
 
     def h_max(self) -> float:
-        self._ensure_loaded()
-        if self._arr is None:
-            return 0.0
-        return float(np.nanmax(self._arr))
+        return float(np.max(self._arr[self._valid_mask(self._arr)]))
 
     def h_min(self) -> float:
-        self._ensure_loaded()
-        if self._arr is None:
-            return 0.0
-        return float(np.nanmin(self._arr))
+        return float(np.min(self._arr[self._valid_mask(self._arr)]))
 
     @property
-    def error(self) -> str | None:
-        self._ensure_loaded()
-        return self._error
+    def crs(self) -> str:
+        return str(self._crs)

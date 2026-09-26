@@ -1,4 +1,4 @@
-"""DEM из KML: точки высот + гладкая интерполяция (LinearND)."""
+"""Strict local KML surface provider with deterministic interpolation."""
 
 from __future__ import annotations
 
@@ -7,108 +7,117 @@ from pathlib import Path
 import numpy as np
 from lxml import etree
 
-from planner.io.dem.base import BaseDEM
+from planner.io.dem.base import BaseDEM, TerrainDataError, validate_elevation
 
 try:
     from scipy.interpolate import LinearNDInterpolator
-    _HAS_SCIPY = True
-except ImportError:
-    _HAS_SCIPY = False
+except ImportError:  # pragma: no cover
+    LinearNDInterpolator = None
 
 
 KML_NS = {"kml": "http://www.opengis.net/kml/2.2"}
 
 
 class KMLDem(BaseDEM):
-    """DEM из точек KML. Гладкая линейная интерполяция."""
+    """Finite WGS84 KML point elevations with linear/nearest interpolation."""
 
-    def __init__(self, points: list[tuple[float, float, float]] | None = None):
-        self.points = points or []
+    def __init__(self, points: list[tuple[float, float, float]]):
+        if not points:
+            raise TerrainDataError("KML terrain contains no elevation points")
+        self.points = [
+            (
+                validate_elevation(lat, source="KML latitude"),
+                validate_elevation(lon, source="KML longitude"),
+                validate_elevation(alt, source="KML elevation"),
+            )
+            for lat, lon, alt in points
+        ]
         self._interp = None
-        self._fallback = 0.0
         self._build()
 
     @classmethod
-    def from_file(cls, path: str | Path) -> "KMLDem":
-        path = Path(path)
-        if not path.exists():
-            return cls([])
+    def from_file(
+        cls,
+        path: str | Path,
+        *,
+        crs: str,
+        horizontal_unit: str,
+        elevation_unit: str,
+    ) -> "KMLDem":
+        """Parse point elevations after validating explicit CRS and units."""
+        if crs.strip().upper() != "EPSG:4326":
+            raise TerrainDataError("KML terrain CRS must be EPSG:4326")
+        if horizontal_unit != "degree":
+            raise TerrainDataError("KML terrain horizontal_unit must be degree")
+        if elevation_unit != "metre":
+            raise TerrainDataError("KML terrain elevation_unit must be metre")
 
+        source = Path(path)
+        if not source.is_file():
+            raise TerrainDataError(f"KML terrain file not found: {source}")
         try:
-            tree = etree.parse(str(path))
-        except etree.XMLSyntaxError:
-            return cls([])
+            tree = etree.parse(str(source))
+        except (etree.XMLSyntaxError, OSError) as exc:
+            raise TerrainDataError(f"Invalid KML terrain file: {source}") from exc
 
-        root = tree.getroot()
         points: list[tuple[float, float, float]] = []
-
-        for placemark in root.findall(".//kml:Placemark", KML_NS):
-            coords_el = placemark.find(".//kml:Point//kml:coordinates", KML_NS)
-            if coords_el is None or coords_el.text is None:
+        for coords_el in tree.getroot().findall(
+            ".//kml:Point//kml:coordinates", KML_NS
+        ):
+            if not coords_el.text:
                 continue
             for chunk in coords_el.text.split():
                 parts = chunk.split(",")
-                if len(parts) < 3:
-                    continue
+                if len(parts) < 3 or not parts[2].strip():
+                    raise TerrainDataError(
+                        "KML terrain point is missing an elevation"
+                    )
                 try:
-                    lon = float(parts[0])
-                    lat = float(parts[1])
-                    alt = float(parts[2])
-                except ValueError:
-                    continue
-                points.append((lat, lon, alt))
-
+                    lon, lat, altitude = map(float, parts[:3])
+                except ValueError as exc:
+                    raise TerrainDataError(
+                        "KML terrain point contains invalid coordinates"
+                    ) from exc
+                points.append((lat, lon, altitude))
         return cls(points)
 
     def _build(self) -> None:
-        if len(self.points) < 3 or not _HAS_SCIPY:
-            self._interp = None
-            self._fallback = (
-                float(np.mean([p[2] for p in self.points]))
-                if self.points else 0.0
-            )
+        if len(self.points) < 3 or LinearNDInterpolator is None:
             return
-
-        lats = np.array([p[0] for p in self.points], dtype=float)
-        lons = np.array([p[1] for p in self.points], dtype=float)
-        alts = np.array([p[2] for p in self.points], dtype=float)
-
+        coordinates = np.array(
+            [(point[0], point[1]) for point in self.points], dtype=float
+        )
+        elevations = np.array([point[2] for point in self.points], dtype=float)
         try:
             self._interp = LinearNDInterpolator(
-                np.column_stack([lats, lons]),
-                alts,
-                fill_value=np.nan,
+                coordinates, elevations, fill_value=np.nan
             )
-            self._fallback = float(np.mean(alts))
         except Exception:
             self._interp = None
-            self._fallback = float(np.mean(alts))
 
     def h(self, lat: float, lon: float) -> float:
-        if not self.points:
-            return 0.0
-        if self._interp is None:
-            return self._nearest(lat, lon)
-        try:
-            val = float(self._interp(lat, lon))
-        except Exception:
-            return self._nearest(lat, lon)
-        if np.isnan(val):
-            return self._nearest(lat, lon)
-        return val
+        lat = validate_elevation(lat, source="query latitude")
+        lon = validate_elevation(lon, source="query longitude")
+        if self._interp is not None:
+            try:
+                value = float(self._interp(lat, lon))
+            except Exception:
+                value = float("nan")
+            if np.isfinite(value):
+                return value
+        return self._nearest(lat, lon)
 
     def _nearest(self, lat: float, lon: float) -> float:
-        best = min(
+        return min(
             self.points,
-            key=lambda p: (p[0] - lat) ** 2 + (p[1] - lon) ** 2,
-        )
-        return best[2]
+            key=lambda point: (point[0] - lat) ** 2 + (point[1] - lon) ** 2,
+        )[2]
 
     def is_empty(self) -> bool:
-        return len(self.points) == 0
+        return False
 
     def h_max(self) -> float:
-        return max((p[2] for p in self.points), default=0.0)
+        return max(point[2] for point in self.points)
 
     def h_min(self) -> float:
-        return min((p[2] for p in self.points), default=0.0)
+        return min(point[2] for point in self.points)

@@ -57,9 +57,12 @@ def load_mission(fixtures_dir: str | Path) -> MissionInput:
         dem_path = Path(params.dem_file)
         if not dem_path.is_absolute():
             dem_path = fixtures / dem_path
-        dem_obj = load_dem(dem_path)
-        if not dem_obj.is_empty():
-            dem = dem_obj
+        dem = load_dem(
+            dem_path,
+            crs=params.dem_crs,
+            horizontal_unit=params.dem_horizontal_unit,
+            elevation_unit=params.dem_elevation_unit,
+        )
 
     # Проверка каталога
     catalog = get_default_catalog()

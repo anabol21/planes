@@ -11,12 +11,16 @@ from shapely.geometry import Polygon, shape
 from planner.geometry.swath import swaths_in_piece
 from planner.geometry.trapezoid import trapezoid_decomposition
 from planner.geometry.triangulation import triangulation_decomposition
-from planner.io.dem import BaseDEM
+from planner.io.dem import (
+    BaseDEM,
+    FlatDEM,
+    TerrainProfile,
+    build_terrain_profile,
+)
 from planner.models import Area, Obstacle, Point, Swath, SwathSegment
 from planner.utils.geo import make_local_transformer
 
 
-SEGMENT_LEN_M = 30.0
 G = 9.81
 
 
@@ -96,31 +100,34 @@ def _make_segments(
     end_xy: tuple[float, float],
     length_m: float,
     h_agl_target: float,
-    dem: DEM | None,
+    dem: BaseDEM | None,
     inv,
-) -> list[SwathSegment]:
-    """Разбивает полосу на сегменты по SEGMENT_LEN_M."""
-    n_seg = max(1, int(np.ceil(length_m / SEGMENT_LEN_M)))
-    segments: list[SwathSegment] = []
-
-    for k in range(n_seg + 1):
-        t = k / n_seg
-        x = start_xy[0] + t * (end_xy[0] - start_xy[0])
-        y = start_xy[1] + t * (end_xy[1] - start_xy[1])
-        lon, lat = inv.transform(x, y)
-
-        dem_h = dem.h(lat, lon) if dem is not None else 0.0
-        h_asl = dem_h + h_agl_target
-
-        segments.append(SwathSegment(
-            lat=lat, lon=lon,
-            h_agl_m=h_agl_target,
-            h_asl_m=h_asl,
-            dem_m=dem_h,
-            dist_from_start_m=t * length_m,
-        ))
-
-    return segments
+    sample_step_m: float,
+) -> tuple[list[SwathSegment], TerrainProfile]:
+    """Build the one canonical terrain profile used by every swath field."""
+    start_lon, start_lat = inv.transform(*start_xy)
+    end_lon, end_lat = inv.transform(*end_xy)
+    profile = build_terrain_profile(
+        start_lat=start_lat,
+        start_lon=start_lon,
+        end_lat=end_lat,
+        end_lon=end_lon,
+        dem=dem if dem is not None else FlatDEM(),
+        h_agl_m=h_agl_target,
+        sample_step_m=sample_step_m,
+    )
+    segments = [
+        SwathSegment(
+            lat=sample.lat,
+            lon=sample.lon,
+            h_agl_m=sample.h_agl_m,
+            h_asl_m=sample.h_asl_m,
+            dem_m=sample.surface_elevation_m,
+            dist_from_start_m=sample.distance_from_start_m,
+        )
+        for sample in profile.samples
+    ]
+    return segments, profile
 
 
 # ============================================================
@@ -159,6 +166,9 @@ def _reverse_swath(s: Swath) -> Swath:
         h_agl_min_m=s.h_agl_min_m,
         dem_min_m=s.dem_min_m,
         dem_max_m=s.dem_max_m,
+        terrain_distance_3d_m=s.terrain_distance_3d_m,
+        total_climb_m=s.total_climb_m,
+        total_descent_m=s.total_descent_m,
         t_survey_actual_s=s.t_survey_actual_s,
         e_survey_actual_wh=s.e_survey_actual_wh,
         v_survey_min_mps=s.v_survey_min_mps,
@@ -238,6 +248,15 @@ def _make_sub_swath(parent: Swath, segments: list[SwathSegment], sub_index: int)
 
     h_asl_vals = [s.h_asl_m for s in segments]
     dem_vals = [s.dem_m for s in segments]
+    distance_3d_m = 0.0
+    total_climb_m = 0.0
+    total_descent_m = 0.0
+    for left, right in zip(segments, segments[1:]):
+        horizontal_m = right.dist_from_start_m - left.dist_from_start_m
+        delta_z_m = right.h_asl_m - left.h_asl_m
+        distance_3d_m += float(np.hypot(horizontal_m, delta_z_m))
+        total_climb_m += max(delta_z_m, 0.0)
+        total_descent_m += max(-delta_z_m, 0.0)
 
     return Swath(
         id=f"{parent.id}-p{sub_index}",
@@ -254,6 +273,9 @@ def _make_sub_swath(parent: Swath, segments: list[SwathSegment], sub_index: int)
         h_agl_min_m=min(s.h_agl_m for s in segments),
         dem_min_m=float(min(dem_vals)),
         dem_max_m=float(max(dem_vals)),
+        terrain_distance_3d_m=distance_3d_m,
+        total_climb_m=total_climb_m,
+        total_descent_m=total_descent_m,
         parent_swath_id=parent.id,
         sub_swath_index=sub_index,
     )
@@ -379,6 +401,7 @@ def generate_swaths_for_area(
     v_survey_mps: float = 12.0,
     mass_kg: float = 2.0,
     P_nominal_w: float = 300.0,
+    terrain_sample_step_m: float = 25.0,
 ) -> tuple[list[Swath], float]:
     """Возвращает (swaths, h_agl_target)."""
     cam = _camera_params_from_catalog(camera)
@@ -423,13 +446,14 @@ def generate_swaths_for_area(
             if length_m < 5.0:
                 continue
 
-            segments = _make_segments(
+            segments, terrain_profile = _make_segments(
                 start_xy=start_xy,
                 end_xy=end_xy,
                 length_m=length_m,
                 h_agl_target=h_agl_target,
                 dem=dem,
                 inv=inv,
+                sample_step_m=terrain_sample_step_m,
             )
 
             h_vals = [s.h_asl_m for s in segments]
@@ -451,6 +475,9 @@ def generate_swaths_for_area(
                 h_agl_min_m=min(s.h_agl_m for s in segments),
                 dem_min_m=float(min(dem_vals)),
                 dem_max_m=float(max(dem_vals)),
+                terrain_distance_3d_m=terrain_profile.distance_3d_m,
+                total_climb_m=terrain_profile.total_climb_m,
+                total_descent_m=terrain_profile.total_descent_m,
             ))
             sid += 1
 
