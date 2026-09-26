@@ -3,6 +3,7 @@ from __future__ import annotations
 import io
 import json
 import os
+import signal
 import subprocess
 import sys
 import threading
@@ -10,6 +11,7 @@ import unittest
 import uuid
 from pathlib import Path
 from typing import Any
+from unittest.mock import patch
 from urllib.request import Request, urlopen
 from wsgiref.simple_server import WSGIRequestHandler, make_server
 
@@ -19,7 +21,7 @@ from planes.backend.api import BackendAPI
 from planes.backend.fake_engine import FakeOptimizationEngine
 from planes.backend.service import BackendService, ResultNotReadyError
 from planes.backend.store import SQLiteJobStore
-from planes.backend.worker import Worker
+from planes.backend.worker import Worker, main
 
 
 class BackendPipelineTests(unittest.TestCase):
@@ -309,6 +311,71 @@ class BackendPipelineTests(unittest.TestCase):
         )
 
         self.assertEqual(0, completed.returncode, completed.stderr)
+        self.assertEqual("completed", self.service.get_job(job_id)["state"])
+        self.assertEqual("feasible", self.service.get_result(job_id)["outcome"])
+
+    def test_loop_claims_one_job_at_a_time_and_polls_when_empty(self) -> None:
+        first = self.submit()["job_id"]
+        second = self.submit()["job_id"]
+        seen: list[str] = []
+        sleeps: list[float] = []
+        late: dict[str, str] = {}
+
+        class RecordingEngine(FakeOptimizationEngine):
+            def solve(inner_self, request):  # type: ignore[no-untyped-def]
+                seen.append(request.job_id)
+                tracked = [first, second, late.get("id")]
+                running = [
+                    job_id
+                    for job_id in tracked
+                    if job_id and self.service.get_job(job_id)["state"] == "running"
+                ]
+                self.assertEqual([request.job_id], running)
+                return super().solve(request)
+
+        def sleep(seconds: float) -> None:
+            self.assertEqual(0.5, seconds)
+            sleeps.append(seconds)
+            if len(sleeps) == 1:
+                late["id"] = self.submit()["job_id"]
+
+        def should_stop() -> bool:
+            return len(sleeps) >= 2
+
+        Worker(self.store, RecordingEngine()).run_loop(sleep=sleep, should_stop=should_stop)
+
+        self.assertEqual([first, second, late["id"]], seen)
+        self.assertEqual([0.5, 0.5], sleeps)
+        for job_id in (first, second, late["id"]):
+            self.assertEqual("completed", self.service.get_job(job_id)["state"])
+
+    def test_loop_flag_runs_queued_job_then_stops_on_sigterm(self) -> None:
+        job_id = self.submit()["job_id"]
+        sleeps: list[float] = []
+        previous = {
+            signal.SIGINT: signal.getsignal(signal.SIGINT),
+            signal.SIGTERM: signal.getsignal(signal.SIGTERM),
+        }
+
+        def sleep(seconds: float) -> None:
+            sleeps.append(seconds)
+            signal.raise_signal(signal.SIGTERM)
+
+        try:
+            with (
+                patch.object(
+                    sys,
+                    "argv",
+                    ["worker", "--database", self.database, "--loop"],
+                ),
+                patch("planes.backend.worker.time.sleep", sleep),
+            ):
+                self.assertEqual(0, main())
+        finally:
+            for signum, handler in previous.items():
+                signal.signal(signum, handler)
+
+        self.assertEqual([0.5], sleeps)
         self.assertEqual("completed", self.service.get_job(job_id)["state"])
         self.assertEqual("feasible", self.service.get_result(job_id)["outcome"])
 
