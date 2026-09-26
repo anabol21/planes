@@ -2,7 +2,7 @@
 workstream: integration
 owner: Team
 task: INT-003
-status: in_progress
+status: review
 updated: 2026-09-26
 checkpoint: 2026-09-26
 branch: integration/TER-GRI-001
@@ -15,15 +15,35 @@ contract_version: v0
 
 - [x] Refreshed remote refs and fixed the source SHAs in `docs/workstreams/integration/INT-003.md`.
 - [x] Created `integration/TER-GRI-001` from `origin/dev` at `f3225c9a06dd2743be2d86cc6970b0edd2c913e0`.
-- [ ] Import the exact Grisha optimizer snapshot without merging divergent history.
-- [ ] Integrate one fail-closed terrain provider/profile implementation and offline OpenTopography acquisition.
-- [ ] Run offline, mocked, regression, CLI, and one explicit live COP30 smoke verification.
+- [x] Imported the exact Grisha optimizer snapshot from `716ad9e3bf9c8678c17496d6680a1a653bb7f10c` without merging divergent history (`41028a3e0a292b7d6431ee43737f5be742bb4f68`).
+- [x] Integrated one fail-closed terrain provider/profile implementation and offline OpenTopography acquisition (`cb4ab918f3c4996f554ca3be4255fc9bcb9e154c`).
+- [x] Removed the conflicting `planner/io/dem.py`; canonical import resolves to `planner/io/dem/__init__.py`.
+- [x] Preserved Grisha assignment, clustering, routing, multi-flight, LNS, wind, rotor/fixed-wing physics, catalog, and objective semantics byte-for-byte against the declared source SHA.
+- [x] Completed offline, mocked, regression, CLI, and one explicit live COP30 smoke verification.
 
-Next action: commit this governance boundary, then import the declared Grisha snapshot and record the pre-change test baseline.
+Next action: independent optimization-core review, then a separate approved runtime/contract integration task may map public survey input to `acquire_terrain_for_area` and invoke the optimizer.
 
-Current interface impact: none. Contract remains `v0`; public backend/runtime/frontend payloads are out of scope.
+Current interface impact: contract remains `v0`; public backend/runtime/frontend payloads are unchanged. The new integration callable returns a validated local COP30 GeoTIFF path, and the model keeps using local `params.dem_file` with explicit CRS/units.
 
-Current blockers: none. Managed open decisions are listed in the INT-003 brief and remain limitations rather than invented policy.
+Current blockers: none for code review. Remaining limitations are COP30 DSM semantics, nominal 30 m source resolution, unresolved VPP vertical datum, no new intermediate transfer-clearance policy, unresolved DSM/explicit-obstacle overlap, no certified safety claim, and unchanged wind semantics.
+
+## INT-003 evidence
+
+- Governance commit: `b7b301cdcb42c7d7de6f9f5c192072027351c31f`.
+- Snapshot import commit: `41028a3e0a292b7d6431ee43737f5be742bb4f68`.
+- Implementation commit: `cb4ab918f3c4996f554ca3be4255fc9bcb9e154c`.
+- Imported Grisha baseline before terrain changes: `10 passed`.
+- Final Grisha/model suite: `36 passed` (existing regression plus terrain profile, KML, GeoTIFF, and offline local-raster E2E).
+- Integration acquisition suite: `11 passed` (bbox union, mocked COP30 request, cache hit, errors, partial cleanup, secret hygiene, and mocked acquisition-to-optimizer E2E).
+- CLI: passed with 3 swaths, 3 candidates, one used UAV, report JSON, and routes KML.
+- `python -m compileall -q src`: passed.
+- `python scripts/validate_workspace.py`: `Workspace validation: PASS`.
+- `git diff --check`: passed.
+- Non-terrain diff guard against `716ad9e...`: passed for assignment, clustering, routing, multi-flight, LNS, wind, rotor/fixed-wing physics, and catalog.
+- Secret scan: zero matches for the environment credential value; no production `.tif`, `.tiff`, or `.part` in the diff.
+- Live preflight: `OPENTOPOGRAPHY_API_KEY` visible (value not printed).
+- One live COP30 Global Datasets API acquisition: valid GeoTIFF, 12 finite profile samples, surface sample range `134.938..148.555 m`.
+- The exact unpadded survey bbox correctly failed closed for a projection-edge swath outside raster coverage; the already-downloaded raster was then reused without another HTTP request for an interior geometry and completed the full optimizer with 4 swaths and both output artifacts. This demonstrates why production callers may select the documented configurable metre padding.
 
 ## Completed
 
