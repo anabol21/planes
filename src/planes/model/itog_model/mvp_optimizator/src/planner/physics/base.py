@@ -22,6 +22,9 @@ class PhysicsParams:
 
     # --- опциональные ---
     v_stall_mps: float = 0.0
+    v_climb_mps: float = 3.0       # набор высоты при перелёте
+    v_descent_mps: float = 3.0     # сброс высоты
+    v_min_mps: float = 1.0         # минимальная горизонтальная (управляемость)
     k_h: float = 90.0
     k_v: float = 0.02
     k_w: float = 0.008
@@ -30,8 +33,6 @@ class PhysicsParams:
     T_catapult_s: float = 0.0
     T_parachute_s: float = 0.0
     P_const_w: float = 0.0
-
-    # NEW: время зарядки АКБ (сек)
     T_charge_s: float = 0.0
 
 
@@ -39,12 +40,10 @@ class PhysicsModel(ABC):
     """Абстрактная модель полёта."""
 
     @abstractmethod
-    def power_w(self, v_air_mps: float, wind_mps: float) -> float:
-        """Мощность в ваттах."""
+    def power_w(self, v_air_mps: float, wind_mps: float) -> float: ...
 
     @abstractmethod
-    def ground_speed_mps(self, v_air_mps: float, wind_mps: float) -> float:
-        """Модуль путевой скорости."""
+    def ground_speed_mps(self, v_air_mps: float, wind_mps: float) -> float: ...
 
     @abstractmethod
     def takeoff_time_s(self, h_agl_m: float) -> float: ...

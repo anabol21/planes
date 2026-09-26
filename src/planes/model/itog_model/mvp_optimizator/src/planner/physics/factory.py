@@ -27,14 +27,22 @@ def build_physics_params(
     v_vert = float(mvp.get("v_vert_mps", 5.0))
     v_survey = float(mvp.get("v_survey_mps", v_air))
 
+    # Скорости набора/сброса высоты (fallback — вертикальная)
+    v_climb = float(mvp.get("v_climb_mps", v_vert))
+    v_descent = float(mvp.get("v_descent_mps", v_vert))
+
+    # Минимальная горизонтальная (управляемость)
+    # Для мультиротора ~1 м/с; для fixed-wing — скорость сваливания
+    v_min = float(
+        mvp.get("v_min_mps", mvp.get("v_stall_mps", 1.0))
+    )
+
     if battery:
         E_batt = _parse_energy(battery)
     else:
         E_batt = float(mvp.get("battery_energy_wh", 144.7))
 
     T_max_s = _parse_time_s(perf.get("max_flight_time", "40 min"))
-
-    # Время зарядки из каталога (charger)
     T_charge_s = _parse_charge_time_s(uav, catalog)
 
     return PhysicsParams(
@@ -45,6 +53,9 @@ def build_physics_params(
         v_vert_mps=v_vert,
         v_survey_mps=v_survey,
         v_stall_mps=float(mvp.get("v_stall_mps", 0.0)),
+        v_climb_mps=v_climb,
+        v_descent_mps=v_descent,
+        v_min_mps=v_min,
         E_batt_wh=E_batt,
         T_max_s=T_max_s,
         k_h=float(mvp.get("k_h", 90.0)),
@@ -104,7 +115,6 @@ def _parse_time_s(raw: str) -> float:
     """
     Парсит строку времени в секунды.
     Поддерживает: '40 min', '~105 min', '2 h', '2400 s', '180 мин'.
-    Убирает '~', другие не-числовые символы перед первым числом.
     """
     if not raw:
         return 2400.0
@@ -114,16 +124,13 @@ def _parse_time_s(raw: str) -> float:
     if not parts:
         return 2400.0
 
-    # Очищаем первый токен: оставляем цифры, точку, минус
     cleaned = "".join(c for c in parts[0] if c.isdigit() or c in ".-")
     try:
         val = float(cleaned) if cleaned else 0.0
     except ValueError:
         return 2400.0
 
-    # Определяем единицу
     unit = parts[1].lower() if len(parts) > 1 else "min"
-    # Убираем возможные точки/запятые в конце
     unit = unit.rstrip(".,")
 
     if unit.startswith("min") or unit.startswith("мин"):
@@ -132,15 +139,10 @@ def _parse_time_s(raw: str) -> float:
         return val * 3600.0
     if unit.startswith("s") or unit.startswith("с"):
         return val
-    # По умолчанию — минуты
     return val * 60.0
 
 
 def _parse_charge_time_s(uav: UAVConfig, catalog: Catalog) -> float:
-    """
-    Ищет charger для модели борта и берёт charging_time.
-    Fallback: 105 мин для Gemini.
-    """
     try:
         aircraft = catalog.get_aircraft(uav.model)
     except KeyError:
@@ -160,7 +162,6 @@ def _parse_charge_time_s(uav: UAVConfig, catalog: Catalog) -> float:
         if ct:
             return _parse_time_s(ct)
 
-    # Fallback для Gemini
     if uav.model == "gemini":
         return 105.0 * 60.0
     return 0.0

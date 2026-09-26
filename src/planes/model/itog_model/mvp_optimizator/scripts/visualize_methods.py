@@ -1,11 +1,11 @@
 """Сравнение trapezoid vs triangulation на 5 фигурах × N углов.
 
 Генерирует:
-    out/compare_methods/plot_methods_a{angle}.png      — 5×2 сетка на каждый угол
-    out/compare_methods/map_trapezoid_a{angle}.html
-    out/compare_methods/map_triangulation_a{angle}.html
-    out/compare_methods/compare_a{angle}.html
-    out/compare_methods/comparison.csv                 — метрики (с колонкой angle)
+    out/compare/plot_methods_a{angle}.png
+    out/compare/map_trapezoid_a{angle}.html
+    out/compare/map_triangulation_a{angle}.html
+    out/compare/compare_a{angle}.html
+    out/compare/comparison.csv
 
 Запуск:
     python3 scripts/visualize_methods.py
@@ -14,7 +14,7 @@
 from __future__ import annotations
 
 import csv
-import shutil
+from io import BytesIO
 from pathlib import Path
 
 import numpy as np
@@ -39,19 +39,17 @@ from planner.physics import build_physics_model, build_physics_params
 from planner.solver.multi_flight import solve_multi_flight
 
 
-OUT_DIR = Path("out/compare_methods")
+OUT_DIR = Path("out/compare")
 
 
 # ============================================================
-# НАСТРОЙКИ ТЕСТА
+# НАСТРОЙКИ
 # ============================================================
 
-ANGLES_DEG = [0.0, 45.0, 90.0, 135.0]   # цикл по углам
-SPACING_M = 20.0                         # шаг полос в PNG-тесте
-MIN_SWATH_LEN_M = 3.0                    # минимальная длина полосы
-MERGE_THIN = True                        # слияние тонких кусков
-
-# Генерировать ли folium-карты для всех углов (или только для первого)
+ANGLES_DEG = [0.0, 45.0, 90.0, 135.0]
+SPACING_M = 20.0
+MIN_SWATH_LEN_M = 3.0
+MERGE_THIN = True
 MAPS_FOR_ALL_ANGLES = False
 
 
@@ -106,7 +104,7 @@ def _shape_specs():
 
 
 # ============================================================
-# Декомпозиция + merge + полосы
+# Декомпозиция
 # ============================================================
 
 def decompose_shape(polygon_m: Polygon, method: str) -> list:
@@ -147,15 +145,22 @@ def swaths_for_shape(
 
 
 # ============================================================
-# Matplotlib — одна сетка 5×2 для одного угла
+# Matplotlib
 # ============================================================
 
-def make_plot_for_angle(
-    results: dict,
-    angle_deg: float,
-    out_path: Path,
-):
-    """results[(shape_name, method)] → данные для данного угла."""
+def _save_fig_safe(fig, out_path: Path, dpi: int = 100) -> None:
+    buf = BytesIO()
+    try:
+        fig.savefig(buf, format="png", dpi=dpi, bbox_inches="tight")
+    except Exception as e:
+        print(f"  [warn] bbox_inches failed: {e}. Retry without.")
+        buf = BytesIO()
+        fig.savefig(buf, format="png", dpi=dpi)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_bytes(buf.getvalue())
+
+
+def make_plot_for_angle(results: dict, angle_deg: float, out_path: Path):
     shape_names = ["circle", "square", "star", "triangle", "L-shape"]
     methods = ["trapezoid", "triangulation"]
 
@@ -205,29 +210,14 @@ def make_plot_for_angle(
             title = f"{shape_name} / {method}\n{n_pc} pieces, {n_sw} swaths"
             ax.set_title(title, fontsize=11, fontweight="bold")
 
-    # Заголовок всей сетки
     fig.suptitle(
         f"Угол полос: {angle_deg:.0f}°",
         fontsize=18, fontweight="bold", y=0.995,
     )
 
     plt.tight_layout(rect=[0, 0, 1, 0.98])
-
-    tmp_path = Path(f"/tmp/_plot_a{int(angle_deg)}.png")
-    try:
-        fig.savefig(str(tmp_path), dpi=100, bbox_inches="tight")
-    except Exception as e:
-        print(f"  [warn] bbox_inches failed: {e}. Retry without.")
-        fig.savefig(str(tmp_path), dpi=100)
+    _save_fig_safe(fig, out_path, dpi=100)
     plt.close(fig)
-
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copyfile(str(tmp_path), str(out_path))
-    try:
-        tmp_path.unlink()
-    except OSError:
-        pass
-
     print(f"  plot (angle={angle_deg}°) → {out_path}")
 
 
@@ -284,6 +274,10 @@ def run_one_shape_pipeline(
     from planner.geometry.generate import generate_swaths_for_area
     cam = catalog.get_camera(uav.camera_id)
 
+    pp = build_physics_params(uav, catalog, reserve_fraction=params.reserve_fraction)
+    model = build_physics_model(pp)
+    P_nominal = model.power_w(pp.v_air_mps, params.wind.speed_mps)
+
     swaths, h_agl = generate_swaths_for_area(
         area=area,
         obstacles=obstacles,
@@ -291,15 +285,23 @@ def run_one_shape_pipeline(
         gsd_cm_per_px=params.gsd_cm_per_px,
         camera=cam,
         decomposition=method,
+        v_climb_mps=pp.v_climb_mps,
+        v_descent_mps=pp.v_descent_mps,
+        v_min_mps=pp.v_min_mps,
+        v_survey_mps=pp.v_survey_mps,
+        mass_kg=pp.mass_kg,
+        P_nominal_w=P_nominal,
     )
 
     if not swaths:
-        return None, [], None
+        return None, [], None, []
 
-    pp = build_physics_params(uav, catalog, reserve_fraction=params.reserve_fraction)
-    model = build_physics_model(pp)
+    fwd, inv = make_local_transformer(vpp.lon, vpp.lat)
 
-    fwd, _ = make_local_transformer(vpp.lon, vpp.lat)
+    # Оbstacles в ENU
+    from planner.solver.obstacles import prepare_obstacles_m
+    obs_geojsons = [o.polygon for o in obstacles]
+    obstacles_m = prepare_obstacles_m(obs_geojsons, fwd)
 
     results = solve_multi_flight(
         uav_id=uav.id,
@@ -312,17 +314,31 @@ def run_one_shape_pipeline(
         wind_direction_deg=params.wind.direction_deg,
         h_agl_m=h_agl,
         R_max=params.R_max,
+        obstacles_m=obstacles_m,
     )
+
+    # Waypoints
+    from planner.solver.pipeline import _compute_route_waypoints
+    swaths_by_id = {s.id: s for s in swaths}
 
     routes = []
     for i, r in enumerate(results):
+        wps = _compute_route_waypoints(
+            swath_ids=r.swath_ids,
+            swaths_by_id=swaths_by_id,
+            vpp=vpp,
+            fwd=fwd,
+            inv=inv,
+            obstacles_m=obstacles_m,
+        )
         routes.append(Route(
             uav_id=uav.id, flight_index=i, vpp_id=r.vpp_id,
             swath_ids=r.swath_ids, T_air_s=r.T_air_s,
             T_total_s=r.T_total_s, E_wh=r.E_wh, mass_kg=pp.mass_kg,
+            waypoints=wps,
         ))
 
-    return routes, swaths, h_agl
+    return routes, swaths, h_agl, obstacles_m
 
 
 def make_folium_map(
@@ -380,14 +396,18 @@ def make_folium_map(
             ).add_to(m)
 
         for r in data["routes"]:
-            points = [(vpp.lat, vpp.lon)]
-            for sid in r.swath_ids:
-                sw = data["swaths_by_id"].get(sid)
-                if not sw:
-                    continue
-                points.append((sw.start.lat, sw.start.lon))
-                points.append((sw.end.lat, sw.end.lon))
-            points.append((vpp.lat, vpp.lon))
+            # NEW: waypoints если есть
+            if getattr(r, "waypoints", None):
+                points = [(p.lat, p.lon) for p in r.waypoints]
+            else:
+                points = [(vpp.lat, vpp.lon)]
+                for sid in r.swath_ids:
+                    sw = data["swaths_by_id"].get(sid)
+                    if not sw:
+                        continue
+                    points.append((sw.start.lat, sw.start.lon))
+                    points.append((sw.end.lat, sw.end.lon))
+                points.append((vpp.lat, vpp.lon))
 
             folium.PolyLine(
                 locations=points, color="blue",
@@ -407,7 +427,6 @@ def make_folium_map(
 
     folium.LayerControl(collapsed=False).add_to(m)
 
-    # Заголовок с углом
     title_html = f"""
     <div style="position: fixed; top: 10px; left: 50%; transform: translateX(-50%);
                 background: white; padding: 8px 20px; border-radius: 6px;
@@ -417,16 +436,12 @@ def make_folium_map(
     </div>"""
     m.get_root().html.add_child(folium.Element(title_html))
 
+    out_path.parent.mkdir(parents=True, exist_ok=True)
     m.save(str(out_path))
     print(f"  map ({method}, angle={angle_deg}°) → {out_path}")
 
 
-def make_compare_html(
-    trap_path: Path,
-    tri_path: Path,
-    out_path: Path,
-    angle_deg: float,
-):
+def make_compare_html(trap_path: Path, tri_path: Path, out_path: Path, angle_deg: float):
     html = f"""<!DOCTYPE html>
 <html>
 <head>
@@ -455,6 +470,7 @@ def make_compare_html(
   </div>
 </body>
 </html>"""
+    out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(html, encoding="utf-8")
     print(f"  compare (angle={angle_deg}°) → {out_path}")
 
@@ -484,14 +500,12 @@ def main():
     )
     catalog = get_default_catalog()
 
-    # --- ЦИКЛ ПО УГЛАМ ---
     csv_rows = []
     generated_maps_for = None
 
     for angle in ANGLES_DEG:
         print(f"=== Angle {angle}° ===")
 
-        # --- Part 1: plot data ---
         plot_results = {}
 
         for shape_name, poly_m, obs_m in shapes:
@@ -522,11 +536,9 @@ def main():
                     "total_length_m": round(total_len, 1),
                 })
 
-        # --- Part 2: plot PNG для угла ---
         png_name = f"plot_methods_a{int(angle)}.png"
         make_plot_for_angle(plot_results, angle, OUT_DIR / png_name)
 
-        # --- Part 3: folium maps (опционально) ---
         do_maps = MAPS_FOR_ALL_ANGLES or generated_maps_for is None
         if do_maps:
             print(f"  Running pipelines for folium maps (angle={angle})...")
@@ -542,7 +554,7 @@ def main():
                 obs_geojson = _polygon_to_geojson(obs_wgs) if obs_wgs else None
 
                 for method in ["trapezoid", "triangulation"]:
-                    routes, swaths, h_agl = run_one_shape_pipeline(
+                    routes, swaths, h_agl, _ = run_one_shape_pipeline(
                         shape_name=shape_name,
                         polygon_wgs=poly_wgs,
                         obstacle_wgs=obs_wgs,
@@ -575,7 +587,6 @@ def main():
 
         print()
 
-    # --- CSV (все углы) ---
     csv_path = OUT_DIR / "comparison.csv"
     with csv_path.open("w", newline="", encoding="utf-8") as f:
         writer = csv.DictWriter(
@@ -591,9 +602,6 @@ def main():
 
     print()
     print(f"Done. Файлы в {OUT_DIR.resolve()}")
-    print(f"  PNG:  plot_methods_a*.png")
-    if generated_maps_for is not None:
-        print(f"  Maps: compare_a*.html (сгенерированы для angle={generated_maps_for}°)")
 
 
 if __name__ == "__main__":

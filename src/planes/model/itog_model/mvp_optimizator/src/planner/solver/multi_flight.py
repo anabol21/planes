@@ -1,4 +1,4 @@
-"""Разбиение полос борта на несколько вылетов (с учётом зарядки)."""
+"""Разбиение полос борта на несколько вылетов."""
 
 from __future__ import annotations
 
@@ -19,14 +19,13 @@ def solve_multi_flight(
     wind_direction_deg: float,
     h_agl_m: float,
     R_max: int,
+    obstacles_m: list | None = None,
 ) -> list[RoutingResult]:
-    """
-    Пытается уложить полосы в один вылет. Если не влезают — режет на несколько.
-    """
     results: list[RoutingResult] = []
     remaining = list(swaths)
+    obstacles_m = obstacles_m or []
 
-    for flight_idx in range(R_max):
+    for _ in range(R_max):
         if not remaining:
             break
 
@@ -34,6 +33,7 @@ def solve_multi_flight(
             swaths=remaining,
             vpp=vpp,
             fwd=fwd,
+            obstacles_m=obstacles_m,
             physics=physics,
             params=params,
             wind_speed_mps=wind_speed_mps,

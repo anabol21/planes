@@ -17,6 +17,7 @@ from planner.models.internal import (
     Route,
     RouteLeg,
     Swath,
+    SwathSegment,
 )
 from planner.models.output import (
     Metrics,
@@ -43,6 +44,7 @@ __all__ = [
     "Route",
     "RouteLeg",
     "Swath",
+    "SwathSegment",
     # output
     "Metrics",
     "Report",

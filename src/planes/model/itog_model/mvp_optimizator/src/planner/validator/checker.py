@@ -90,6 +90,7 @@ def check_mass(
     params_by_uav: dict[str, PhysicsParams],
     max_takeoff_mass_kg: float | None = None,
 ) -> list[str]:
+    """Масса с нагрузкой ≤ max_takeoff (если задано)."""
     errors: list[str] = []
     if max_takeoff_mass_kg is None:
         return errors
@@ -106,7 +107,7 @@ def check_mass(
 
 
 # ============================================================
-# Рельеф (DEM) — NEW
+# Рельеф — проверка безопасности (AGL ≥ margin)
 # ============================================================
 
 def check_terrain_safety(
@@ -115,8 +116,8 @@ def check_terrain_safety(
     safety_margin_m: float,
 ) -> list[str]:
     """
-    Для каждой полосы проверяет h_agl_m ≥ safety_margin_m.
-    Если DEM не задан, h_agl_m = h_agl_target (по GSD) — проверка пройдёт.
+    Проверяет min(h_agl) по всем сегментам каждой полосы.
+    Если сегментов нет — берётся общий h_agl_m.
     """
     errors: list[str] = []
 
@@ -128,12 +129,39 @@ def check_terrain_safety(
             s = swaths_by_id.get(sid)
             if s is None:
                 continue
-            if s.h_agl_m < safety_margin_m - 1e-3:
+            h_min = s.h_agl_min_m if s.h_agl_min_m > 0 else s.h_agl_m
+            if h_min < safety_margin_m - 1e-3:
                 errors.append(
-                    f"Swath {sid}: h_agl={s.h_agl_m:.1f}m < "
+                    f"Swath {sid}: min h_agl={h_min:.1f}m < "
                     f"safety_margin={safety_margin_m:.1f}m"
                 )
 
+    return errors
+
+
+# ============================================================
+# Рельеф — проверка физической выполнимости
+# ============================================================
+
+def check_terrain_feasibility(
+    routes: list[Route],
+    swaths_by_id: dict[str, Swath],
+) -> list[str]:
+    """
+    Проверяет, что все полосы физически выполнимы:
+    перепад высот на сегменте не превышает возможностей борта
+    (v_climb · Δt ≥ Δh).
+    """
+    errors: list[str] = []
+    for r in routes:
+        for sid in r.swath_ids:
+            s = swaths_by_id.get(sid)
+            if s is None:
+                continue
+            if not s.feasible:
+                errors.append(
+                    f"Swath {sid} infeasible: {s.infeasible_reason}"
+                )
     return errors
 
 
@@ -183,11 +211,16 @@ def validate(
     """Полная проверка решения."""
     errors: list[str] = []
 
+    # 1. Покрытие
     errors.extend(check_coverage(all_swaths, routes))
+
+    # 2. Время и энергия
     errors.extend(check_time_energy(routes, params_by_uav))
+
+    # 3. Масса
     errors.extend(check_mass(routes, params_by_uav, max_takeoff_mass_kg))
 
-    # NEW: проверка рельефа
+    # 4. Рельеф — безопасность (AGL)
     swaths_by_id = {s.id: s for s in all_swaths}
     if mission.params.safety_margin_m > 0:
         errors.extend(
@@ -196,7 +229,10 @@ def validate(
             )
         )
 
-    # Препятствия
+    # 5. Рельеф — физическая выполнимость
+    errors.extend(check_terrain_feasibility(routes, swaths_by_id))
+
+    # 6. Препятствия
     obstacles_polys = [o.polygon for o in mission.obstacles]
     if obstacles_polys:
         errors.extend(check_obstacles(routes, swaths_by_id, obstacles_polys))

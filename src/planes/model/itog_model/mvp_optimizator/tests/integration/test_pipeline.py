@@ -21,5 +21,5 @@ def test_full_pipeline(out_dir):
     assert report.metrics.n_swaths_total > 0
     assert report.metrics.n_uavs_used >= 1
     assert report.theta_best_deg in (0.0, 45.0, 90.0)
-    assert (out_dir / "report.json").exists()
-    assert (out_dir / "routes.kml").exists()
+    assert (out_dir / "mission" / "report.json").exists()
+    assert (out_dir / "mission" / "routes.kml").exists()
