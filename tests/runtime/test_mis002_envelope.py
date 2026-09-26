@@ -8,7 +8,7 @@ import unittest
 from pathlib import Path
 
 from planes.runtime.enumeration import candidates, is_outer_scenario, run_candidates
-from planes.runtime.solver import Problem, solve
+from planes.runtime.solver import Infeasible, Problem, solve
 
 _INPUT = (
     Path(__file__).resolve().parents[2]
@@ -146,28 +146,72 @@ class EnvelopeFilterTest(unittest.TestCase):
         self.assertIn("sony-a6000", str(caught.exception))
         self.assertEqual(called, [])
 
-    def test_multispectral_does_not_hide_the_model_rgb_camera(self) -> None:
+    def test_lidar_gemini_pf1b_does_not_call_the_core(self) -> None:
         profile = _profile()
         boards = [_board("БВС 1", "geoscan-gemini", "geoscan-pf1b", "аэродром 1", 3)]
-        called: list[str] = []
+        called: list[object] = []
 
         def fake(data, seed: int = 0):
             del seed
-            called.append(data.uav.model)
+            called.append(data)
             return {"status": "infeasible"}
 
-        outcome = run_candidates(
-            _envelope(profile, "multispectral", _one_aerodrome(), boards),
+        scenario = _envelope(profile, "LiDAR", _one_aerodrome(), boards)
+        outcome = run_candidates(scenario, seed=7, time_limit_s=30, core=fake)
+        self.assertEqual(called, [])
+        self.assertEqual(outcome.attempts, ())
+        self.assertEqual(outcome.skips, ())
+        self.assertEqual(outcome.reason, "no camera covers required spectrum")
+        self.assertEqual(len(outcome.mismatches), 1)
+        mismatch = outcome.mismatches[0]
+        self.assertEqual(mismatch.model_id, "geoscan-gemini")
+        self.assertEqual(mismatch.camera_id, "geoscan-pf1b")
+        self.assertEqual(mismatch.required_spectrum, "LiDAR")
+        self.assertEqual(mismatch.camera_spectra, ("RGB",))
+
+        problem = Problem(
+            job_id="job_lidar",
+            scenario=scenario,
+            objective="min_time",
+            seed=7,
+            time_limit_seconds=30,
+        )
+        result = solve(problem, time.monotonic() + 5)
+        self.assertIsInstance(result, Infeasible)
+        self.assertIn("no camera covers required spectrum", result.limitations)
+        self.assertTrue(any("geoscan-gemini" in line and "geoscan-pf1b" in line for line in result.limitations))
+
+        rgb = run_candidates(
+            _envelope(profile, "RGB", _one_aerodrome(), boards),
             seed=7,
             time_limit_s=30,
             core=fake,
         )
-        self.assertEqual(called, ["Геоскан Gemini"])
-        self.assertEqual(len(outcome.attempts), 1)
-        self.assertEqual(outcome.attempts[0].model_id, "geoscan-gemini")
-        self.assertEqual(outcome.attempts[0].camera_id, "geoscan-pf1b")
-        self.assertEqual(outcome.attempts[0].data.uav.count, 3)
+        self.assertEqual(len(called), 1)
+        self.assertEqual(rgb.attempts[0].model_id, "geoscan-gemini")
+        self.assertEqual(rgb.attempts[0].camera_id, "geoscan-pf1b")
+        self.assertEqual(rgb.mismatches, ())
+
+    def test_spectrum_miss_outranks_missing_numbers(self) -> None:
+        profile = _profile()
+        boards = [_board("БВС 1", "geoscan-gemini", "geoscan-pollux", "аэродром 1", 1)]
+        called: list[object] = []
+
+        def fake(data, seed: int = 0):
+            del seed
+            called.append(data)
+            return {"status": "infeasible"}
+
+        outcome = run_candidates(
+            _envelope(profile, "LiDAR", _one_aerodrome(), boards),
+            seed=7,
+            time_limit_s=30,
+            core=fake,
+        )
+        self.assertEqual(called, [])
         self.assertEqual(outcome.skips, ())
+        self.assertEqual(outcome.reason, "no camera covers required spectrum")
+        self.assertEqual(outcome.mismatches[0].camera_spectra, ("multispectral", "RGB"))
 
     def test_incomplete_pair_does_not_call_the_core(self) -> None:
         profile = _profile()
@@ -188,6 +232,7 @@ class EnvelopeFilterTest(unittest.TestCase):
         self.assertEqual(called, [])
         self.assertEqual(outcome.attempts, ())
         self.assertEqual(outcome.reason, "no runnable board")
+        self.assertEqual(outcome.mismatches, ())
         self.assertEqual(len(outcome.skips), 1)
         skip = outcome.skips[0]
         self.assertEqual(skip.model_id, "geoscan-gemini")

@@ -1,8 +1,9 @@
 """Build one core ``InputData`` per board card.
 
 A card names a catalog model, a compatible camera, an aerodrome, and a count.
-The survey spectrum does not filter cameras. Calls are not merged. This
-module does not read zone or terrain KML.
+A card is a flight candidate only when ``required_spectrum`` is one of that
+camera's catalog spectra. Calls are not merged. This module does not read
+zone or terrain KML.
 """
 
 from __future__ import annotations
@@ -51,6 +52,7 @@ _OTHER_FLIGHT = (
 )
 _OK = frozenset({"optimal", "feasible", "heuristic"})
 _NO_RUNNABLE = "no runnable board"
+_NO_SPECTRUM = "no camera covers required spectrum"
 _CATALOG_PATH = Path(__file__).resolve().parents[1] / "catalog" / "fleet_catalog.json"
 _GIBRID_ROOT = (
     Path(__file__).resolve().parents[2] / "model" / "basic_model" / "gibrid-optimizer"
@@ -87,10 +89,19 @@ class Skip:
 
 
 @dataclass(frozen=True)
+class SpectrumMismatch:
+    model_id: str
+    camera_id: str
+    required_spectrum: str
+    camera_spectra: tuple[str, ...]
+
+
+@dataclass(frozen=True)
 class EnumerationResult:
     attempts: tuple[Attempt, ...]
     stopped_for_deadline: bool
     skips: tuple[Skip, ...] = ()
+    mismatches: tuple[SpectrumMismatch, ...] = ()
     reason: str | None = None
 
 
@@ -122,6 +133,14 @@ def skip_limitation(skip: Skip) -> str:
     )
 
 
+def spectrum_mismatch_limitation(mismatch: SpectrumMismatch) -> str:
+    spectra = ", ".join(mismatch.camera_spectra)
+    return (
+        f"spectrum mismatch model {mismatch.model_id} camera {mismatch.camera_id}: "
+        f"required {mismatch.required_spectrum}, camera spectra {spectra}"
+    )
+
+
 def load_catalog() -> dict[str, Any]:
     """Read ``fleet_catalog.json``. Callers do not invent values for empty cells."""
     try:
@@ -136,11 +155,13 @@ def load_catalog() -> dict[str, Any]:
 def candidates(scenario: dict[str, Any], *, time_limit_s: int | float = 60) -> list[Candidate]:
     """Admit runnable board cards and build one ``InputData`` each.
 
-    Order is the card order. A compatible pair that lacks optics or flight
+    Order is the card order. A board is admitted only when
+    ``required_spectrum`` is one of that camera's catalog spectra. A
+    compatible pair that matches the spectrum but lacks optics or flight
     numbers is skipped. A camera with no compatibility edge to the model is
-    rejected. Survey spectrum does not filter the list.
+    rejected.
     """
-    admitted, _skips = _prepare(scenario, time_limit_s=time_limit_s)
+    admitted, _skips, _mismatches = _prepare(scenario, time_limit_s=time_limit_s)
     return admitted
 
 
@@ -154,17 +175,20 @@ def run_candidates(
 ) -> EnumerationResult:
     """Call ``core`` once per admitted board card. The default core is ``run``.
 
-    Incomplete cards are recorded and are not calls. No runnable card means
+    Incomplete cards that match the spectrum are recorded and are not calls.
+    A spectrum mismatch is recorded and is not a call. No runnable card means
     no core call.
     """
-    admitted, skips = _prepare(scenario, time_limit_s=time_limit_s)
+    admitted, skips, mismatches = _prepare(scenario, time_limit_s=time_limit_s)
     recorded = tuple(skips)
+    recorded_mismatches = tuple(mismatches)
     if not admitted:
         return EnumerationResult(
             attempts=(),
             stopped_for_deadline=False,
             skips=recorded,
-            reason=_NO_RUNNABLE,
+            mismatches=recorded_mismatches,
+            reason=_empty_reason(recorded, recorded_mismatches),
         )
     call = core if core is not None else _default_core
     attempts: list[Attempt] = []
@@ -196,6 +220,7 @@ def run_candidates(
         attempts=tuple(attempts),
         stopped_for_deadline=stopped,
         skips=recorded,
+        mismatches=recorded_mismatches,
     )
 
 
@@ -232,7 +257,7 @@ def _prepare(
     scenario: dict[str, Any],
     *,
     time_limit_s: int | float,
-) -> tuple[list[Candidate], list[Skip]]:
+) -> tuple[list[Candidate], list[Skip], list[SpectrumMismatch]]:
     if not isinstance(scenario, dict):
         raise ValueError("missing fields: scenario")
     if "uav_types" in scenario:
@@ -246,8 +271,7 @@ def _prepare(
     ]
     if missing:
         raise ValueError("missing fields: " + ", ".join(missing))
-    # The survey type stays on the task. It does not choose or hide cameras.
-    _text(scenario["required_spectrum"], "required_spectrum")
+    required_spectrum = _text(scenario["required_spectrum"], "required_spectrum")
     if scenario["criterion"] not in ("min_time", "min_flight_hours"):
         raise ValueError("missing fields: criterion")
     aerodromes = _aerodromes(scenario["aerodromes"])
@@ -259,6 +283,7 @@ def _prepare(
     by_aerodrome = {item["id"]: item for item in aerodromes}
     runnable: list[tuple[dict[str, Any], dict[str, Any], dict[str, Any], dict[str, Any]]] = []
     skips: list[Skip] = []
+    mismatches: list[SpectrumMismatch] = []
     for board in boards:
         model_id = board["model_id"]
         camera_id = board["camera_id"]
@@ -270,13 +295,24 @@ def _prepare(
             raise ValueError(f"camera {camera_id} is not compatible with model {model_id}")
         model = models[model_id]
         camera = cameras[camera_id]
+        camera_spectra = _spectra(camera)
+        if required_spectrum not in camera_spectra:
+            mismatches.append(
+                SpectrumMismatch(
+                    model_id=model_id,
+                    camera_id=camera_id,
+                    required_spectrum=required_spectrum,
+                    camera_spectra=camera_spectra,
+                )
+            )
+            continue
         missing_fields = _missing_fields(model, camera)
         if missing_fields:
             skips.append(Skip(model_id=model_id, camera_id=camera_id, missing=tuple(missing_fields)))
             continue
         runnable.append((board, by_aerodrome[board["aerodrome_id"]], model, camera))
     if not runnable:
-        return [], skips
+        return [], skips, mismatches
     if len(runnable) > MAX_CALLS:
         raise ValueError("at most 16 calls")
     limit = _positive_int(time_limit_s, "time_limit_s")
@@ -304,7 +340,24 @@ def _prepare(
                 data=data,
             )
         )
-    return built, skips
+    return built, skips, mismatches
+
+
+def _empty_reason(
+    skips: tuple[Skip, ...],
+    mismatches: tuple[SpectrumMismatch, ...],
+) -> str:
+    """No admitted card. A total spectrum miss outranks missing numbers."""
+    if mismatches and not skips:
+        return _NO_SPECTRUM
+    return _NO_RUNNABLE
+
+
+def _spectra(camera: dict[str, Any]) -> tuple[str, ...]:
+    raw = camera.get("spectra")
+    if not isinstance(raw, list):
+        return ()
+    return tuple(item for item in raw if isinstance(item, str))
 
 
 def _compatibility(

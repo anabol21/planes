@@ -16,6 +16,7 @@ from planes.runtime.enumeration import (
     run_candidates,
     select_winner,
     skip_limitation,
+    spectrum_mismatch_limitation,
 )
 
 
@@ -117,7 +118,10 @@ def _solve_outer(problem: Problem, deadline: float) -> Solution | Infeasible | T
     criterion = problem.scenario.get("criterion")
     if not isinstance(criterion, str):
         raise ValueError("missing fields: criterion")
-    noted = tuple(skip_limitation(skip) for skip in outcome.skips)
+    noted = (
+        *tuple(skip_limitation(skip) for skip in outcome.skips),
+        *tuple(spectrum_mismatch_limitation(item) for item in outcome.mismatches),
+    )
     winner = select_winner(outcome.attempts, criterion)
     if winner is not None:
         mapped = _map_result(winner.result)

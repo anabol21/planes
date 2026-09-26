@@ -9,12 +9,14 @@ from planes.runtime.enumeration.outer import (
     Candidate,
     EnumerationResult,
     Skip,
+    SpectrumMismatch,
     Winner,
     candidates,
     is_outer_scenario,
     run_candidates,
     select_winner,
     skip_limitation,
+    spectrum_mismatch_limitation,
 )
 
 __all__ = [
@@ -22,10 +24,12 @@ __all__ = [
     "Candidate",
     "EnumerationResult",
     "Skip",
+    "SpectrumMismatch",
     "Winner",
     "candidates",
     "is_outer_scenario",
     "run_candidates",
     "select_winner",
     "skip_limitation",
+    "spectrum_mismatch_limitation",
 ]
