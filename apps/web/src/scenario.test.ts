@@ -10,6 +10,7 @@ import {
   DEFAULT_TIME_LIMIT,
   MAX_TIME_LIMIT_SECONDS,
   addBoard,
+  cameraOptionLabel,
   camerasForModel,
   clearMissingAerodromes,
   removeBoard,
@@ -181,6 +182,11 @@ describe("aerodromes and boards", () => {
       "geoscan-pf1b",
       "sony-umc-r10c",
       "geoscan-pollux",
+    ]);
+    expect(camerasForModel("geoscan-gemini").map(cameraOptionLabel)).toEqual([
+      "Geoscan PF1B (RGB)",
+      "Sony UMC-R10C (RGB)",
+      "Geoscan Pollux (multispectral, RGB)",
     ]);
     expect(camerasForModel("")).toEqual([]);
     expect(camerasForModel("geoscan-gemini").some((camera) => camera.id === "sony-a6000")).toBe(false);

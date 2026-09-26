@@ -32,6 +32,7 @@ import {
   aerodromeId,
   buildOptimization,
   buildPrototypeScenario,
+  cameraOptionLabel,
   camerasForModel,
   catalogModels,
   clearMissingAerodromes,
@@ -337,7 +338,7 @@ function BoardCard({
             onChange={(event) => onChange({ ...board, cameraId: event.target.value })}
           >
             <option value="">Выберите камеру</option>
-            {cameras.map((camera) => <option key={camera.id} value={camera.id}>{camera.name}</option>)}
+            {cameras.map((camera) => <option key={camera.id} value={camera.id}>{cameraOptionLabel(camera)}</option>)}
           </select>
         </label>
         <label>

@@ -17,6 +17,10 @@ export interface CatalogOption {
   name: string;
 }
 
+export interface CameraOption extends CatalogOption {
+  spectra: readonly string[];
+}
+
 export interface AerodromeInput {
   lon: number;
   lat: number;
@@ -64,17 +68,21 @@ export function catalogModels(): CatalogOption[] {
   return fleetCatalog.uav_models.map((model) => ({ id: model.id, name: model.name }));
 }
 
-export function camerasForModel(modelId: string): CatalogOption[] {
+export function cameraOptionLabel(camera: Pick<CameraOption, "name" | "spectra">): string {
+  return `${camera.name} (${camera.spectra.join(", ")})`;
+}
+
+export function camerasForModel(modelId: string): CameraOption[] {
   if (!modelId) return [];
-  const names = new Map(fleetCatalog.cameras.map((camera) => [camera.id, camera.name]));
+  const byId = new Map(fleetCatalog.cameras.map((camera) => [camera.id, camera]));
   const seen = new Set<string>();
-  const options: CatalogOption[] = [];
+  const options: CameraOption[] = [];
   for (const edge of fleetCatalog.compatibility) {
     if (edge.uav_model_id !== modelId || seen.has(edge.camera_id)) continue;
-    const name = names.get(edge.camera_id);
-    if (!name) continue;
+    const camera = byId.get(edge.camera_id);
+    if (!camera?.name) continue;
     seen.add(edge.camera_id);
-    options.push({ id: edge.camera_id, name });
+    options.push({ id: camera.id, name: camera.name, spectra: camera.spectra });
   }
   return options;
 }
