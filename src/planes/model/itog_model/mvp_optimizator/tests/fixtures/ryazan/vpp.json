@@ -1,0 +1,13 @@
+{
+  "vpps": [
+    {
+      "id": "vpp-1",
+      "name": "Ryazan VPP",
+      "lat": 54.9115,
+      "lon": 39.7500,
+      "alt_m": 120,
+      "uavs": ["gemini-1"],
+      "cameras": ["pf1b"]
+    }
+  ]
+}

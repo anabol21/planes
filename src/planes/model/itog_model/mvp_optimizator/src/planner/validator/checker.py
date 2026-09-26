@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from planner.models import MissionInput, Route, Swath
+from planner.models import MissionInput, Obstacle, Route, Swath
 from planner.physics.base import PhysicsParams
 
 
@@ -23,7 +23,6 @@ def check_coverage(
     all_swaths: list[Swath],
     routes: list[Route],
 ) -> list[str]:
-    """Все полосы сняты ровно один раз."""
     errors: list[str] = []
 
     covered: list[str] = []
@@ -55,7 +54,6 @@ def check_time_energy(
     routes: list[Route],
     params_by_uav: dict[str, PhysicsParams],
 ) -> list[str]:
-    """T_total ≤ T_max·(1−reserve) и E ≤ E_batt·(1−reserve) на каждый вылет."""
     errors: list[str] = []
 
     for r in routes:
@@ -90,7 +88,6 @@ def check_mass(
     params_by_uav: dict[str, PhysicsParams],
     max_takeoff_mass_kg: float | None = None,
 ) -> list[str]:
-    """Масса с нагрузкой ≤ max_takeoff (если задано)."""
     errors: list[str] = []
     if max_takeoff_mass_kg is None:
         return errors
@@ -107,7 +104,7 @@ def check_mass(
 
 
 # ============================================================
-# Рельеф — проверка безопасности (AGL ≥ margin)
+# Рельеф — безопасность полос
 # ============================================================
 
 def check_terrain_safety(
@@ -115,10 +112,6 @@ def check_terrain_safety(
     swaths_by_id: dict[str, Swath],
     safety_margin_m: float,
 ) -> list[str]:
-    """
-    Проверяет min(h_agl) по всем сегментам каждой полосы.
-    Если сегментов нет — берётся общий h_agl_m.
-    """
     errors: list[str] = []
 
     if safety_margin_m <= 0:
@@ -140,18 +133,13 @@ def check_terrain_safety(
 
 
 # ============================================================
-# Рельеф — проверка физической выполнимости
+# Рельеф — физическая выполнимость
 # ============================================================
 
 def check_terrain_feasibility(
     routes: list[Route],
     swaths_by_id: dict[str, Swath],
 ) -> list[str]:
-    """
-    Проверяет, что все полосы физически выполнимы:
-    перепад высот на сегменте не превышает возможностей борта
-    (v_climb · Δt ≥ Δh).
-    """
     errors: list[str] = []
     for r in routes:
         for sid in r.swath_ids:
@@ -166,7 +154,123 @@ def check_terrain_feasibility(
 
 
 # ============================================================
-# Препятствия
+# Рельеф — безопасность на перелётах
+# ============================================================
+
+def check_route_terrain_safety(
+    routes: list[Route],
+    dem,
+    safety_margin_m: float,
+) -> list[str]:
+    errors: list[str] = []
+    if dem is None or safety_margin_m <= 0:
+        return errors
+
+    try:
+        if dem.is_empty():
+            return errors
+    except AttributeError:
+        return errors
+
+    for r in routes:
+        if not getattr(r, "waypoints", None):
+            continue
+        for i, wp in enumerate(r.waypoints):
+            dem_h = dem.h(wp.lat, wp.lon)
+            h_agl = wp.alt_m - dem_h
+            if h_agl < safety_margin_m - 1e-3:
+                errors.append(
+                    f"UAV {r.uav_id} flight {r.flight_index} "
+                    f"waypoint {i}: h_agl={h_agl:.1f}m < "
+                    f"safety={safety_margin_m:.1f}m"
+                )
+    return errors
+
+
+# ============================================================
+# Препятствия — вертикальный зазор над ними
+# ============================================================
+
+def check_obstacle_clearance(
+    routes: list[Route],
+    swaths_by_id: dict[str, Swath],
+    obstacles: list[Obstacle],
+    dem,
+    safety_margin_obstacle_m: float,
+) -> list[str]:
+    """
+    Проверяет вертикальный зазор над препятствиями:
+    h_asl - (DEM + obstacle.height) >= safety_margin_obstacle_m
+    для всех точек маршрута, лежащих над footprint препятствия.
+    """
+    errors: list[str] = []
+    if safety_margin_obstacle_m <= 0 or not obstacles:
+        return errors
+
+    from shapely.geometry import Point as ShPoint, shape
+
+    obs_geoms = []
+    for obs in obstacles:
+        try:
+            geom = shape(obs.polygon)
+        except Exception:
+            continue
+        obs_geoms.append((obs.id, obs.height_m, geom))
+
+    if not obs_geoms:
+        return errors
+
+    def dem_h(lat: float, lon: float) -> float:
+        if dem is None:
+            return 0.0
+        try:
+            if dem.is_empty():
+                return 0.0
+        except AttributeError:
+            return 0.0
+        return dem.h(lat, lon)
+
+    for r in routes:
+        # 1. Сегменты полос
+        for sid in r.swath_ids:
+            s = swaths_by_id.get(sid)
+            if s is None:
+                continue
+            for seg in s.segments:
+                pt = ShPoint(seg.lon, seg.lat)
+                for obs_id, obs_h, obs_geom in obs_geoms:
+                    if obs_geom.covers(pt):
+                        top = dem_h(seg.lat, seg.lon) + obs_h
+                        h_above = seg.h_asl_m - top
+                        if h_above < safety_margin_obstacle_m - 1e-3:
+                            errors.append(
+                                f"Swath {sid} over {obs_id}: "
+                                f"clearance={h_above:.1f}m < "
+                                f"{safety_margin_obstacle_m:.1f}m"
+                            )
+                        break
+
+        # 2. Waypoints на перелётах
+        for i, wp in enumerate(getattr(r, "waypoints", []) or []):
+            pt = ShPoint(wp.lon, wp.lat)
+            for obs_id, obs_h, obs_geom in obs_geoms:
+                if obs_geom.covers(pt):
+                    top = dem_h(wp.lat, wp.lon) + obs_h
+                    h_above = wp.alt_m - top
+                    if h_above < safety_margin_obstacle_m - 1e-3:
+                        errors.append(
+                            f"UAV {r.uav_id} flight {r.flight_index} "
+                            f"wp {i} over {obs_id}: "
+                            f"clearance={h_above:.1f}m < "
+                            f"{safety_margin_obstacle_m:.1f}m"
+                        )
+                    break
+
+    return errors
+
+
+# ============================================================
+# Препятствия — 2D пересечение полос
 # ============================================================
 
 def check_obstacles(
@@ -174,7 +278,6 @@ def check_obstacles(
     swaths_by_id: dict[str, Swath],
     obstacles_polygons: list,
 ) -> list[str]:
-    """Простая проверка: полоса не пересекает footprint препятствия."""
     from shapely.geometry import LineString, shape
 
     errors: list[str] = []
@@ -208,7 +311,6 @@ def validate(
     params_by_uav: dict[str, PhysicsParams],
     max_takeoff_mass_kg: float | None = None,
 ) -> CheckResult:
-    """Полная проверка решения."""
     errors: list[str] = []
 
     # 1. Покрытие
@@ -220,8 +322,9 @@ def validate(
     # 3. Масса
     errors.extend(check_mass(routes, params_by_uav, max_takeoff_mass_kg))
 
-    # 4. Рельеф — безопасность (AGL)
     swaths_by_id = {s.id: s for s in all_swaths}
+
+    # 4. Рельеф — безопасность полос
     if mission.params.safety_margin_m > 0:
         errors.extend(
             check_terrain_safety(
@@ -232,7 +335,27 @@ def validate(
     # 5. Рельеф — физическая выполнимость
     errors.extend(check_terrain_feasibility(routes, swaths_by_id))
 
-    # 6. Препятствия
+    # 6. Рельеф — безопасность на перелётах
+    if mission.dem is not None:
+        errors.extend(
+            check_route_terrain_safety(
+                routes, mission.dem, mission.params.safety_margin_m
+            )
+        )
+
+    # 7. NEW: Препятствия — вертикальный зазор над ними
+    if mission.obstacles and mission.params.safety_margin_obstacle_m > 0:
+        errors.extend(
+            check_obstacle_clearance(
+                routes=routes,
+                swaths_by_id=swaths_by_id,
+                obstacles=mission.obstacles,
+                dem=mission.dem,
+                safety_margin_obstacle_m=mission.params.safety_margin_obstacle_m,
+            )
+        )
+
+    # 8. Препятствия — 2D пересечение
     obstacles_polys = [o.polygon for o in mission.obstacles]
     if obstacles_polys:
         errors.extend(check_obstacles(routes, swaths_by_id, obstacles_polys))

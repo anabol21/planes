@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from enum import Enum
-from typing import Any, Literal
+from typing import Any
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -63,7 +63,7 @@ class VPP(BaseModel):
 
 class UAVConfig(BaseModel):
     id: str
-    model: str = Field(..., description="ID из data.json (gemini, geoscan201, geoscan801)")
+    model: str = Field(..., description="ID из data.json")
     camera_id: str
     gnss_id: str | None = None
     radio_id: str | None = None
@@ -85,9 +85,29 @@ class Params(BaseModel):
     decomposition: DecompositionMethod = DecompositionMethod.TRAPEZOID
     output_dir: str = "./out"
 
+    # NEW: перебор углов — ранняя остановка
+    # 0 = отключить, N = выход после N углов без улучшения
+    angles_early_stop_patience: int = Field(3, ge=0)
+
+    # Перекрытия
+    overlap_x: float = Field(0.3, ge=0.0, lt=1.0)
+    overlap_long: float = Field(0.7, ge=0.0, lt=1.0)
+
     # DEM и безопасность
     dem_file: str | None = None
     safety_margin_m: float = Field(30.0, ge=0.0)
+
+    # Препятствия
+    obstacle_buffer_m: float = Field(20.0, ge=0.0)
+    safety_margin_obstacle_m: float = Field(30.0, ge=0.0)
+
+    # B-spline сглаживание waypoints
+    smooth_waypoints: bool = True
+    spline_samples: int = Field(300, ge=10, le=2000)
+
+    # Terrain following по коридору
+    terrain_corridor: bool = True
+    terrain_smooth_window: int = Field(5, ge=0, le=51)
 
     @field_validator("angles_deg")
     @classmethod
@@ -101,14 +121,12 @@ class Params(BaseModel):
 
 
 class MissionInput(BaseModel):
-    """Полный входной пакет для одной миссии."""
-
     areas: list[Area]
     obstacles: list[Obstacle] = Field(default_factory=list)
     vpps: list[VPP]
     uavs: list[UAVConfig]
     params: Params
-    dem: Any | None = None   # DEM или None (см. planner.io.dem)
+    dem: Any | None = None
 
     def uav_by_id(self, uav_id: str) -> UAVConfig:
         for u in self.uavs:

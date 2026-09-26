@@ -69,8 +69,8 @@ def _add_route(
     swaths_by_id: dict[str, Swath],
 ) -> None:
     """
-    Каждый борт — папка с линиями маршрута.
-    Если у Route есть waypoints — используем их (с обходом препятствий).
+    Каждый борт — папка с маршрутом.
+    Если есть waypoints — используем их (с обходом и поднятием высоты).
     """
     by_uav: dict[str, list] = {}
     for r in candidate.routes:
@@ -81,11 +81,9 @@ def _add_route(
         folder = kml.newfolder(name=f"UAV: {uav_id}")
 
         for r in sorted(routes, key=lambda x: x.flight_index):
-            # NEW: если есть waypoints — рисуем их
             if getattr(r, "waypoints", None):
                 coords = [(p.lon, p.lat, p.alt_m) for p in r.waypoints]
             else:
-                # fallback: старое поведение
                 coords = [(vpp.lon, vpp.lat, vpp.alt_m)]
                 for sid in r.swath_ids:
                     s = swaths_by_id.get(sid)
@@ -120,7 +118,8 @@ def _add_route(
                 f"m = {r.mass_kg:.2f} kg<br>"
                 f"climb = {r.total_climb_m:.0f} m, "
                 f"descent = {r.total_descent_m:.0f} m<br>"
-                f"ASL: {r.h_asl_min_m:.0f}..{r.h_asl_max_m:.0f} m"
+                f"ASL: {r.h_asl_min_m:.0f}..{r.h_asl_max_m:.0f} m<br>"
+                f"waypoints: {len(getattr(r, 'waypoints', []) or [])}"
             )
 
 
@@ -133,8 +132,8 @@ def write_routes_kml(
     """
     Пишет KML:
       - ВПП,
-      - полосы (папка Swaths) — с профилем высоты,
-      - маршруты по бортам — с обходом препятствий (по waypoints).
+      - полосы (папка Swaths),
+      - маршруты по бортам (с обходом + поднятием высоты).
     """
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)

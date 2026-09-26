@@ -47,6 +47,7 @@ def main(fixtures: str, out: str) -> None:
     click.echo(f"  energy          : {report.metrics.energy_total_wh:.2f} Wh")
     click.echo(f"  UAVs used       : {report.metrics.n_uavs_used}")
     click.echo(f"  swaths total    : {report.metrics.n_swaths_total}")
+    click.echo(f"  photos total    : {report.metrics.n_photos_total}")   # NEW
     click.echo(f"  candidates      : {report.n_candidates}")
     click.echo()
 

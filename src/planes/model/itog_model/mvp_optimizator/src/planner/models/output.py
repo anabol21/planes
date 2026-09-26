@@ -12,8 +12,8 @@ class UAVSummary(BaseModel):
     T_total_s: float = Field(..., ge=0.0)
     E_wh: float = Field(..., ge=0.0)
     mass_kg: float = Field(..., ge=0.0)
-    T_charge_s: float = Field(0.0, ge=0.0)         # NEW
-    T_mission_s: float = Field(0.0, ge=0.0)        # NEW: полное время борта вкл. зарядки
+    T_charge_s: float = Field(0.0, ge=0.0)
+    T_mission_s: float = Field(0.0, ge=0.0)
 
 
 class Metrics(BaseModel):
@@ -22,6 +22,9 @@ class Metrics(BaseModel):
     energy_total_wh: float = Field(..., ge=0.0)
     n_uavs_used: int = Field(..., ge=0)
     n_swaths_total: int = Field(..., ge=0)
+
+    # NEW: продольное перекрытие
+    n_photos_total: int = Field(0, ge=0)
 
 
 class Report(BaseModel):

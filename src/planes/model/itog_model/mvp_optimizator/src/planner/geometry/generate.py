@@ -1,11 +1,17 @@
-"""Генерация полос с разбиением при крутых перепадах рельефа
-и boustrophedon-порядком (reverse нечётных)."""
+"""Генерация полос с разбиением, boustrophedon, продольным перекрытием
+и горизонтальным буфером вокруг препятствий.
+
+Декомпозиция работает вдоль направления полос:
+перед декомпозицией полигон поворачивается на -angle,
+полосы генерируются при angle=0, потом поворачиваются обратно.
+"""
 
 from __future__ import annotations
 
 from typing import Any
 
 import numpy as np
+from shapely.affinity import rotate
 from shapely.geometry import Polygon, shape
 
 from planner.geometry.swath import swaths_in_piece
@@ -71,19 +77,25 @@ def _camera_params_from_catalog(camera: dict[str, Any]) -> dict[str, float]:
 def compute_flight_and_swath(
     gsd_cm_per_px: float,
     camera_params: dict[str, float],
-    overlap: float = 0.3,
+    overlap_x: float = 0.3,
+    overlap_long: float = 0.7,
 ) -> dict[str, float]:
     gsd_m_per_px = gsd_cm_per_px / 100.0
     pixel_size_mm = camera_params["sensor_w_mm"] / camera_params["res_w_px"]
 
     h_agl_m = gsd_m_per_px * camera_params["focal_mm"] / pixel_size_mm
     swath_width_m = gsd_m_per_px * camera_params["res_w_px"]
-    spacing_m = swath_width_m * (1.0 - overlap)
+    spacing_m = swath_width_m * (1.0 - overlap_x)
+
+    frame_length_m = gsd_m_per_px * camera_params["res_h_px"]
+    photo_interval_m = frame_length_m * (1.0 - overlap_long)
 
     return {
         "h_agl_m": h_agl_m,
         "swath_width_m": swath_width_m,
         "spacing_m": spacing_m,
+        "frame_length_m": frame_length_m,
+        "photo_interval_m": photo_interval_m,
     }
 
 
@@ -96,10 +108,9 @@ def _make_segments(
     end_xy: tuple[float, float],
     length_m: float,
     h_agl_target: float,
-    dem: DEM | None,
+    dem: BaseDEM | None,
     inv,
 ) -> list[SwathSegment]:
-    """Разбивает полосу на сегменты по SEGMENT_LEN_M."""
     n_seg = max(1, int(np.ceil(length_m / SEGMENT_LEN_M)))
     segments: list[SwathSegment] = []
 
@@ -124,11 +135,10 @@ def _make_segments(
 
 
 # ============================================================
-# Boustrophedon: сортировка + reverse нечётных
+# Boustrophedon
 # ============================================================
 
 def _reverse_swath(s: Swath) -> Swath:
-    """Меняет направление полосы: start ↔ end, segments reverse."""
     new_start = Point(lat=s.end.lat, lon=s.end.lon, alt_m=s.end.alt_m)
     new_end = Point(lat=s.start.lat, lon=s.start.lon, alt_m=s.start.alt_m)
 
@@ -164,16 +174,15 @@ def _reverse_swath(s: Swath) -> Swath:
         v_survey_min_mps=s.v_survey_min_mps,
         feasible=s.feasible,
         infeasible_reason=s.infeasible_reason,
+        n_photos=s.n_photos,
+        frame_length_m=s.frame_length_m,
+        photo_interval_m=s.photo_interval_m,
         parent_swath_id=s.parent_swath_id,
         sub_swath_index=s.sub_swath_index,
     )
 
 
 def _apply_boustrophedon(swaths: list[Swath], fwd) -> list[Swath]:
-    """
-    1. Сортирует полосы по проекции центра на перпендикуляр к направлению полос.
-    2. Чередует направление (чётные — как есть, нечётные — reverse).
-    """
     if len(swaths) < 2:
         return swaths
 
@@ -202,7 +211,6 @@ def _apply_boustrophedon(swaths: list[Swath], fwd) -> list[Swath]:
             result.append(_reverse_swath(s))
         else:
             result.append(s)
-
     return result
 
 
@@ -239,6 +247,9 @@ def _make_sub_swath(parent: Swath, segments: list[SwathSegment], sub_index: int)
     h_asl_vals = [s.h_asl_m for s in segments]
     dem_vals = [s.dem_m for s in segments]
 
+    interval = max(parent.photo_interval_m, 1.0)
+    n_photos = int(np.ceil(length_m / interval)) + 1
+
     return Swath(
         id=f"{parent.id}-p{sub_index}",
         area_id=parent.area_id,
@@ -254,6 +265,9 @@ def _make_sub_swath(parent: Swath, segments: list[SwathSegment], sub_index: int)
         h_agl_min_m=min(s.h_agl_m for s in segments),
         dem_min_m=float(min(dem_vals)),
         dem_max_m=float(max(dem_vals)),
+        n_photos=n_photos,
+        frame_length_m=parent.frame_length_m,
+        photo_interval_m=parent.photo_interval_m,
         parent_swath_id=parent.id,
         sub_swath_index=sub_index,
     )
@@ -297,6 +311,9 @@ def split_swath_if_needed(
                 - last.segments[0].dist_from_start_m
             )
             last.h_asl_exit_m = tail[-1].h_asl_m
+            last.n_photos = (
+                int(np.ceil(last.length_m / max(last.photo_interval_m, 1.0))) + 1
+            )
 
     return sub_swaths if sub_swaths else [swath]
 
@@ -371,7 +388,8 @@ def generate_swaths_for_area(
     gsd_cm_per_px: float,
     camera: dict[str, Any],
     decomposition: str = "trapezoid",
-    overlap: float = 0.3,
+    overlap_x: float = 0.3,
+    overlap_long: float = 0.7,
     dem: BaseDEM | None = None,
     v_climb_mps: float = 3.0,
     v_descent_mps: float = 3.0,
@@ -379,12 +397,17 @@ def generate_swaths_for_area(
     v_survey_mps: float = 12.0,
     mass_kg: float = 2.0,
     P_nominal_w: float = 300.0,
+    obstacle_buffer_m: float = 20.0,
 ) -> tuple[list[Swath], float]:
     """Возвращает (swaths, h_agl_target)."""
     cam = _camera_params_from_catalog(camera)
-    geom_calc = compute_flight_and_swath(gsd_cm_per_px, cam, overlap)
+    geom_calc = compute_flight_and_swath(
+        gsd_cm_per_px, cam, overlap_x, overlap_long,
+    )
     h_agl_target = geom_calc["h_agl_m"]
     spacing_m = geom_calc["spacing_m"]
+    frame_length_m = geom_calc["frame_length_m"]
+    photo_interval_m = geom_calc["photo_interval_m"]
 
     poly_wgs = shape(area.polygon)
     c = poly_wgs.centroid
@@ -401,25 +424,39 @@ def generate_swaths_for_area(
     for obs in obstacles:
         obs_poly = shape(obs.polygon)
         obs_m = Polygon([fwd.transform(x, y) for x, y in obs_poly.exterior.coords])
+        if obstacle_buffer_m > 0:
+            obs_m = obs_m.buffer(obstacle_buffer_m)
         poly_m = poly_m.difference(obs_m)
 
-    if decomposition == "triangulation":
-        pieces = triangulation_decomposition(poly_m)
-    else:
-        pieces = trapezoid_decomposition(poly_m)
+    # NEW: поворот для декомпозиции вдоль направления полос
+    cx, cy = poly_m.centroid.x, poly_m.centroid.y
+    poly_m_rot = rotate(poly_m, -angle_deg, origin=(cx, cy))
 
-    # 1. Базовые полосы (без split)
+    if decomposition == "triangulation":
+        pieces_rot = triangulation_decomposition(poly_m_rot)
+    else:
+        pieces_rot = trapezoid_decomposition(poly_m_rot)
+
+    # 1. Базовые полосы
     base_swaths: list[Swath] = []
     sid = 0
 
-    for piece in pieces:
-        for line in swaths_in_piece(piece, angle_deg=angle_deg, spacing_m=spacing_m):
+    for piece in pieces_rot:
+        # В повёрнутой системе полосы идут при angle_deg=0
+        for line in swaths_in_piece(piece, angle_deg=0.0, spacing_m=spacing_m):
             coords = list(line.coords)
             if len(coords) < 2:
                 continue
-            start_xy = coords[0]
-            end_xy = coords[-1]
-            length_m = float(line.length)
+
+            # Поворот полосы обратно на +angle
+            line_back = rotate(line, angle_deg, origin=(cx, cy))
+            coords_back = list(line_back.coords)
+            if len(coords_back) < 2:
+                continue
+
+            start_xy = coords_back[0]
+            end_xy = coords_back[-1]
+            length_m = float(line_back.length)
             if length_m < 5.0:
                 continue
 
@@ -434,6 +471,8 @@ def generate_swaths_for_area(
 
             h_vals = [s.h_asl_m for s in segments]
             dem_vals = [s.dem_m for s in segments]
+
+            n_photos = int(np.ceil(length_m / max(photo_interval_m, 1.0))) + 1
 
             base_swaths.append(Swath(
                 id=f"{area.id}-s{sid}",
@@ -451,13 +490,16 @@ def generate_swaths_for_area(
                 h_agl_min_m=min(s.h_agl_m for s in segments),
                 dem_min_m=float(min(dem_vals)),
                 dem_max_m=float(max(dem_vals)),
+                n_photos=n_photos,
+                frame_length_m=frame_length_m,
+                photo_interval_m=photo_interval_m,
             ))
             sid += 1
 
-    # 2. Boustrophedon: сортировка + reverse нечётных
+    # 2. Boustrophedon
     base_swaths = _apply_boustrophedon(base_swaths, fwd)
 
-    # 3. Split + расчёт времени/энергии
+    # 3. Split + время/энергия
     final_swaths: list[Swath] = []
     for base in base_swaths:
         parts = split_swath_if_needed(

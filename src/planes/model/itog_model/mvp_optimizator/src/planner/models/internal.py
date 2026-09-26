@@ -1,4 +1,4 @@
-"""Внутренние модели: полосы, сегменты, кластеры, маршруты, кандидаты."""
+"""Внутренние модели: полосы, сегменты, кластеры, маршруты."""
 
 from __future__ import annotations
 
@@ -52,6 +52,11 @@ class Swath(BaseModel):
     feasible: bool = True
     infeasible_reason: str = ""
 
+    # NEW: продольное перекрытие кадров
+    n_photos: int = 0
+    frame_length_m: float = 0.0
+    photo_interval_m: float = 0.0
+
     # Разбиение на подполосы
     parent_swath_id: str | None = None
     sub_swath_index: int = 0
@@ -92,7 +97,7 @@ class Route(BaseModel):
     h_asl_min_m: float = 0.0
     h_asl_max_m: float = 0.0
 
-    # NEW: полный полётный путь (WGS84) — с обходом препятствий
+    # Полный полётный путь в WGS84 (с обходом + поднятой высотой)
     waypoints: list[Point] = Field(default_factory=list)
 
 
