@@ -4,15 +4,30 @@
 Декомпозиция работает вдоль направления полос:
 перед декомпозицией полигон поворачивается на -angle,
 полосы генерируются при angle=0, потом поворачиваются обратно.
+
+ИСКЛЮЧЕНИЕ — fields2cover: F2C сам оптимизирует направление полос,
+поэтому ему передаётся НЕповёрнутый полигон, и обратный поворот не
+применяется. Угол angle_deg для F2C игнорируется.
+
+Если F2C падает на конкретном компоненте (например, после difference
+от obstacles получился слишком сложный полигон) — для этого компонента
+делается fallback на trapezoid. Остальные компоненты идут через F2C.
+
+Методы декомпозиции:
+  - trapezoid      — вертикальные резы через вершины;
+  - triangulation  — Delaunay + merge выпуклых;
+  - fields2cover   — Boustrophedon из C++ библиотеки F2C (опционально);
+  - auto           — F2C если доступен, иначе trapezoid.
 """
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 import numpy as np
 from shapely.affinity import rotate
-from shapely.geometry import Polygon, shape
+from shapely.geometry import LineString, Polygon, shape
 
 from planner.geometry.swath import swaths_in_piece
 from planner.geometry.trapezoid import trapezoid_decomposition
@@ -20,50 +35,119 @@ from planner.geometry.triangulation import triangulation_decomposition
 from planner.io.dem import BaseDEM
 from planner.models import Area, Obstacle, Point, Swath, SwathSegment
 from planner.utils.geo import make_local_transformer
+from planner.utils.logging import log_warn
 
 
 SEGMENT_LEN_M = 30.0
+MIN_SWATH_LEN_M = 5.0
+ENTRY_EXIT_AVG_N = 3
+
+# Максимальный суммарный штраф за infeasible сегменты.
+# Итоговый множитель = 1 + min(total_excess, MAX_PENALTY_FACTOR).
+MAX_PENALTY_FACTOR = 5.0
+
 G = 9.81
+
+
+_INCH_SENSOR_MM: dict[str, tuple[float, float]] = {
+    "1/1.7": (7.60, 5.70),
+    "1/2.3": (6.17, 4.55),
+    "1/2.5": (5.76, 4.29),
+    "1/2.8": (5.27, 3.95),
+    "1/3":   (4.80, 3.60),
+    "1/4":   (3.60, 2.70),
+}
 
 
 # ============================================================
 # Камера / GSD
 # ============================================================
 
+def _parse_resolution(raw: Any) -> tuple[int, int]:
+    if not raw:
+        return 6000, 4000
+    s = str(raw).lower().replace(",", ".")
+    for sep in ("×", "x"):
+        if sep in s:
+            parts = s.split(sep)
+            if len(parts) >= 2:
+                nums_w = re.findall(r"\d+", parts[0])
+                nums_h = re.findall(r"\d+", parts[1])
+                if nums_w and nums_h:
+                    try:
+                        return int(nums_w[-1]), int(nums_h[0])
+                    except ValueError:
+                        pass
+    nums = re.findall(r"\d+", s)
+    if len(nums) >= 2:
+        try:
+            return int(nums[0]), int(nums[1])
+        except ValueError:
+            pass
+    return 6000, 4000
+
+
+def _parse_sensor_mm(raw: Any) -> tuple[float, float]:
+    if not raw:
+        return 23.5, 15.6
+    s = str(raw).lower().replace(",", ".").replace("×", "x")
+    nums = re.findall(r"(\d+(?:\.\d+)?)", s)
+    if len(nums) >= 2:
+        try:
+            w = float(nums[0])
+            h = float(nums[1])
+            if w > 2.0 and h > 2.0:
+                return w, h
+        except ValueError:
+            pass
+    m = re.search(r"1\s*/\s*(\d+(?:\.\d+)?)", s)
+    if m:
+        try:
+            denom = float(m.group(1))
+        except ValueError:
+            return 23.5, 15.6
+        for k in (f"1/{denom}", f"1/{denom:g}",
+                  f"1/{int(denom)}" if denom.is_integer() else None):
+            if k and k in _INCH_SENSOR_MM:
+                return _INCH_SENSOR_MM[k]
+        diag_mm = 25.4 / denom * 0.65
+        return diag_mm * 4 / 5, diag_mm * 3 / 5
+    return 23.5, 15.6
+
+
+def _parse_focal_mm(raw: Any) -> float:
+    if not raw:
+        return 20.0
+    s = str(raw).replace(",", ".").replace("=", " ")
+    m = re.search(r"(\d+(?:\.\d+)?)", s)
+    if m:
+        try:
+            return float(m.group(1))
+        except ValueError:
+            pass
+    return 20.0
+
+
 def _camera_params_from_catalog(camera: dict[str, Any]) -> dict[str, float]:
     specs = camera.get("specs", {})
     general = specs.get("general", {})
     perf = specs.get("performance", {})
 
-    res_raw = general.get("max_resolution") or general.get("resolution") or "6000x4000"
-    res_w, res_h = 6000, 4000
-    if "x" in str(res_raw).lower():
-        parts = str(res_raw).lower().split("x")
-        try:
-            res_w = int(parts[0].strip())
-            res_h = int(parts[1].strip().split()[0])
-        except (ValueError, IndexError):
-            pass
+    res_raw = (
+        general.get("max_resolution")
+        or general.get("resolution")
+        or "6000x4000"
+    )
+    res_w, res_h = _parse_resolution(res_raw)
 
-    sensor_raw = general.get("sensor_size") or general.get("sensor") or "23.5x15.6"
-    sensor_w_mm, sensor_h_mm = 23.5, 15.6
-    for sep in ("×", "x"):
-        if sep in str(sensor_raw):
-            parts = str(sensor_raw).split(sep)
-            try:
-                sensor_w_mm = float(parts[0].strip().split()[-1])
-                sensor_h_mm = float(parts[1].strip().split()[0])
-                break
-            except (ValueError, IndexError):
-                continue
+    sensor_raw = (
+        general.get("sensor_size")
+        or general.get("sensor")
+        or "23.5x15.6"
+    )
+    sensor_w_mm, sensor_h_mm = _parse_sensor_mm(sensor_raw)
 
-    focal_raw = perf.get("focal_length", "20")
-    focal_mm = 20.0
-    if focal_raw:
-        try:
-            focal_mm = float(str(focal_raw).split()[0])
-        except (ValueError, IndexError):
-            pass
+    focal_mm = _parse_focal_mm(perf.get("focal_length", "20"))
 
     return {
         "sensor_w_mm": sensor_w_mm,
@@ -103,6 +187,12 @@ def compute_flight_and_swath(
 # Сегменты
 # ============================================================
 
+def _segment_length_for(length_m: float) -> float:
+    if length_m <= 100.0:
+        return max(10.0, length_m / 5.0)
+    return SEGMENT_LEN_M
+
+
 def _make_segments(
     start_xy: tuple[float, float],
     end_xy: tuple[float, float],
@@ -111,7 +201,8 @@ def _make_segments(
     dem: BaseDEM | None,
     inv,
 ) -> list[SwathSegment]:
-    n_seg = max(1, int(np.ceil(length_m / SEGMENT_LEN_M)))
+    seg_len = _segment_length_for(length_m)
+    n_seg = max(1, int(np.ceil(length_m / seg_len)))
     segments: list[SwathSegment] = []
 
     for k in range(n_seg + 1):
@@ -132,6 +223,19 @@ def _make_segments(
         ))
 
     return segments
+
+
+def _agl_min_over_segments(segments: list[SwathSegment]) -> float | None:
+    if not segments:
+        return None
+    return float(min(s.h_asl_m - s.dem_m for s in segments))
+
+
+def _avg_asl(segments: list[SwathSegment], n: int, from_start: bool) -> float:
+    if not segments:
+        return 0.0
+    window = segments[:n] if from_start else segments[-n:]
+    return float(np.mean([s.h_asl_m for s in window]))
 
 
 # ============================================================
@@ -183,6 +287,11 @@ def _reverse_swath(s: Swath) -> Swath:
 
 
 def _apply_boustrophedon(swaths: list[Swath], fwd) -> list[Swath]:
+    """Сортирует полосы по нормали и разворачивает чётные — змейка.
+
+    Применяется ко ВСЕМ методам, включая F2C.
+    F2C даёт геометрию без порядка — порядок делаем сами.
+    """
     if len(swaths) < 2:
         return swaths
 
@@ -239,13 +348,26 @@ def _find_break_indices(
     return breaks
 
 
-def _make_sub_swath(parent: Swath, segments: list[SwathSegment], sub_index: int) -> Swath:
+def _make_sub_swath(
+    parent: Swath,
+    segments: list[SwathSegment],
+    sub_index: int,
+) -> Swath | None:
+    if len(segments) < 2:
+        return None
+
     first = segments[0]
     last = segments[-1]
     length_m = last.dist_from_start_m - first.dist_from_start_m
+    if length_m <= 1e-6:
+        return None
 
     h_asl_vals = [s.h_asl_m for s in segments]
     dem_vals = [s.dem_m for s in segments]
+
+    n_avg = min(ENTRY_EXIT_AVG_N, len(segments))
+    h_entry = _avg_asl(segments, n_avg, from_start=True)
+    h_exit = _avg_asl(segments, n_avg, from_start=False)
 
     interval = max(parent.photo_interval_m, 1.0)
     n_photos = int(np.ceil(length_m / interval)) + 1
@@ -253,16 +375,16 @@ def _make_sub_swath(parent: Swath, segments: list[SwathSegment], sub_index: int)
     return Swath(
         id=f"{parent.id}-p{sub_index}",
         area_id=parent.area_id,
-        start=Point(lat=first.lat, lon=first.lon, alt_m=first.h_asl_m),
-        end=Point(lat=last.lat, lon=last.lon, alt_m=last.h_asl_m),
+        start=Point(lat=first.lat, lon=first.lon, alt_m=h_entry),
+        end=Point(lat=last.lat, lon=last.lon, alt_m=h_exit),
         length_m=length_m,
         segment_id=parent.segment_id,
         h_agl_m=parent.h_agl_m,
         h_asl_m=float(np.mean(h_asl_vals)),
         segments=segments,
-        h_asl_entry_m=first.h_asl_m,
-        h_asl_exit_m=last.h_asl_m,
-        h_agl_min_m=min(s.h_agl_m for s in segments),
+        h_asl_entry_m=h_entry,
+        h_asl_exit_m=h_exit,
+        h_agl_min_m=_agl_min_over_segments(segments),
         dem_min_m=float(min(dem_vals)),
         dem_max_m=float(max(dem_vals)),
         n_photos=n_photos,
@@ -293,27 +415,19 @@ def split_swath_if_needed(
 
     for br in breaks:
         chunk = swath.segments[start_idx:br + 1]
-        if len(chunk) >= 2:
-            sub_swaths.append(_make_sub_swath(swath, chunk, len(sub_swaths)))
+        s = _make_sub_swath(swath, chunk, len(sub_swaths))
+        if s is not None:
+            sub_swaths.append(s)
         start_idx = br + 1
 
     if start_idx < len(swath.segments):
         tail = swath.segments[start_idx:]
         if len(tail) >= 2:
-            sub_swaths.append(_make_sub_swath(swath, tail, len(sub_swaths)))
-        elif sub_swaths and tail:
-            last = sub_swaths[-1]
-            last.segments.extend(tail)
-            last.end = Point(lat=tail[-1].lat, lon=tail[-1].lon,
-                             alt_m=tail[-1].h_asl_m)
-            last.length_m = (
-                last.segments[-1].dist_from_start_m
-                - last.segments[0].dist_from_start_m
-            )
-            last.h_asl_exit_m = tail[-1].h_asl_m
-            last.n_photos = (
-                int(np.ceil(last.length_m / max(last.photo_interval_m, 1.0))) + 1
-            )
+            s = _make_sub_swath(swath, tail, len(sub_swaths))
+            if s is not None:
+                sub_swaths.append(s)
+        elif not sub_swaths:
+            return [swath]
 
     return sub_swaths if sub_swaths else [swath]
 
@@ -330,12 +444,24 @@ def _compute_survey_time_energy(
     v_min: float,
     mass_kg: float,
     P_nominal_w: float,
-) -> tuple[float, float, float, bool, str]:
+) -> tuple[float, float, float, bool, str, int, float]:
+    """Считает t_survey и e_survey для полосы.
+
+    Штраф за infeasible сегменты — пропорционально превышению:
+        excess_ratio = max(0, v_min / v_needed − 1)
+        penalty = 1 + min(Σ excess_ratio, MAX_PENALTY_FACTOR)
+
+    Returns:
+        (t_total_s, e_total_wh, v_survey_min_mps, feasible,
+         infeasible_reason, n_infeasible_segments, total_excess_ratio)
+    """
     t_total = 0.0
     e_total_wh = 0.0
     v_min_used = v_nominal
     feasible = True
-    reason = ""
+    reasons: list[str] = []
+    n_infeasible = 0
+    total_excess = 0.0
 
     for i in range(len(segments) - 1):
         seg_a = segments[i]
@@ -352,7 +478,12 @@ def _compute_survey_time_energy(
             v_needed = L * v_rate / abs(dh)
             if v_needed < v_min:
                 feasible = False
-                reason = (
+                n_infeasible += 1
+                if v_needed > 1e-6:
+                    total_excess += v_min / v_needed - 1.0
+                else:
+                    total_excess += MAX_PENALTY_FACTOR
+                reasons.append(
                     f"seg {i}->{i+1}: v_needed={v_needed:.2f} < "
                     f"v_min={v_min} (Δh={dh:+.1f}m, L={L:.0f}m)"
                 )
@@ -374,7 +505,77 @@ def _compute_survey_time_energy(
     if segments:
         segments[-1].v_ground_mps = v_nominal
 
-    return t_total, e_total_wh, v_min_used, feasible, reason
+    if total_excess > 0.0:
+        penalty = 1.0 + min(total_excess, MAX_PENALTY_FACTOR)
+        t_total *= penalty
+        e_total_wh *= penalty
+
+    reason = "; ".join(reasons)
+    return (t_total, e_total_wh, v_min_used, feasible, reason,
+            n_infeasible, total_excess)
+
+
+# ============================================================
+# Разбиение MultiPolygon
+# ============================================================
+
+def _polygon_components(geom) -> list[Polygon]:
+    if geom.is_empty:
+        return []
+    if geom.geom_type == "Polygon":
+        return [geom]
+    if geom.geom_type == "MultiPolygon":
+        return [g for g in geom.geoms if not g.is_empty]
+    if geom.geom_type == "GeometryCollection":
+        return [
+            g for g in geom.geoms
+            if g.geom_type == "Polygon" and not g.is_empty
+        ]
+    return []
+
+
+# ============================================================
+# Генерация линий — F2C vs legacy
+# ============================================================
+
+def _generate_lines_f2c(
+    comp_m: Polygon,
+    spacing_m: float,
+    headland_width_m: float,
+) -> list[LineString]:
+    """F2C: неповёрнутый компонент → полосы в исходной системе.
+
+    Внутри f2c_backend есть timeout и simplify — если F2C уйдёт
+    в долгий перебор, поднимется F2CTimeoutError, вылетит сюда,
+    поймается в generate_swaths_for_area и откатится на trapezoid.
+    """
+    from planner.geometry.f2c_backend import (
+        generate_swaths_f2c, is_available,
+    )
+    if not is_available():
+        raise RuntimeError("fields2cover not available")
+    return generate_swaths_f2c(
+        comp_m, spacing_m, headland_width_m,
+    )
+
+
+def _generate_lines_legacy(
+    comp_rot: Polygon,
+    decomposition: str,
+    spacing_m: float,
+) -> list[LineString]:
+    """trapezoid / triangulation на повёрнутом компоненте."""
+    if decomposition == "triangulation":
+        pieces = triangulation_decomposition(comp_rot)
+    else:
+        pieces = trapezoid_decomposition(comp_rot)
+
+    lines: list[LineString] = []
+    for piece in pieces:
+        lines.extend(
+            swaths_in_piece(piece, angle_deg=0.0, spacing_m=spacing_m)
+        )
+    return lines
 
 
 # ============================================================
@@ -398,8 +599,17 @@ def generate_swaths_for_area(
     mass_kg: float = 2.0,
     P_nominal_w: float = 300.0,
     obstacle_buffer_m: float = 20.0,
+    headland_width_m: float = 0.0,
 ) -> tuple[list[Swath], float]:
-    """Возвращает (swaths, h_agl_target)."""
+    """Возвращает (swaths, h_agl_target).
+
+    Для decomposition='fields2cover' (или 'auto' с доступным F2C)
+    полигон НЕ поворачивается на angle_deg — F2C сам выбирает
+    направление. angle_deg в этом случае игнорируется.
+
+    Если F2C падает / уходит в timeout / полигон слишком сложный —
+    fallback на trapezoid для этого компонента.
+    """
     cam = _camera_params_from_catalog(camera)
     geom_calc = compute_flight_and_swath(
         gsd_cm_per_px, cam, overlap_x, overlap_long,
@@ -423,41 +633,85 @@ def generate_swaths_for_area(
 
     for obs in obstacles:
         obs_poly = shape(obs.polygon)
-        obs_m = Polygon([fwd.transform(x, y) for x, y in obs_poly.exterior.coords])
+        obs_m = Polygon(
+            [fwd.transform(x, y) for x, y in obs_poly.exterior.coords]
+        )
         if obstacle_buffer_m > 0:
             obs_m = obs_m.buffer(obstacle_buffer_m)
         poly_m = poly_m.difference(obs_m)
 
-    # NEW: поворот для декомпозиции вдоль направления полос
-    cx, cy = poly_m.centroid.x, poly_m.centroid.y
-    poly_m_rot = rotate(poly_m, -angle_deg, origin=(cx, cy))
+    if poly_m.is_empty:
+        return [], h_agl_target
 
-    if decomposition == "triangulation":
-        pieces_rot = triangulation_decomposition(poly_m_rot)
+    components_m = _polygon_components(poly_m)
+    if not components_m:
+        return [], h_agl_target
+
+    # Общий origin для поворотов legacy-методов
+    if len(components_m) == 1:
+        cx, cy = components_m[0].centroid.x, components_m[0].centroid.y
     else:
-        pieces_rot = trapezoid_decomposition(poly_m_rot)
+        total_area = sum(p.area for p in components_m)
+        if total_area > 0:
+            cx = sum(p.centroid.x * p.area for p in components_m) / total_area
+            cy = sum(p.centroid.y * p.area for p in components_m) / total_area
+        else:
+            cx = sum(p.centroid.x for p in components_m) / len(components_m)
+            cy = sum(p.centroid.y for p in components_m) / len(components_m)
 
-    # 1. Базовые полосы
+    # Решаем, использовать ли F2C
+    use_f2c = False
+    if decomposition in ("fields2cover", "auto"):
+        from planner.geometry.f2c_backend import is_available
+        use_f2c = is_available()
+        if not use_f2c and decomposition == "fields2cover":
+            log_warn(
+                "geometry",
+                "fields2cover not available, falling back to trapezoid",
+            )
+
     base_swaths: list[Swath] = []
     sid = 0
 
-    for piece in pieces_rot:
-        # В повёрнутой системе полосы идут при angle_deg=0
-        for line in swaths_in_piece(piece, angle_deg=0.0, spacing_m=spacing_m):
+    for comp in components_m:
+        if use_f2c:
+            try:
+                lines_original = _generate_lines_f2c(
+                    comp, spacing_m, headland_width_m,
+                )
+            except Exception as e:
+                log_warn(
+                    "geometry",
+                    f"F2C failed on component (area={comp.area:.0f} m²): "
+                    f"{type(e).__name__}: {e} — fallback on trapezoid",
+                )
+                comp_rot = rotate(comp, -angle_deg, origin=(cx, cy))
+                lines_rot = _generate_lines_legacy(
+                    comp_rot, "trapezoid", spacing_m,
+                )
+                lines_original = [
+                    rotate(ln, angle_deg, origin=(cx, cy))
+                    for ln in lines_rot
+                ]
+        else:
+            comp_rot = rotate(comp, -angle_deg, origin=(cx, cy))
+            lines_rot = _generate_lines_legacy(
+                comp_rot, decomposition, spacing_m,
+            )
+            lines_original = [
+                rotate(ln, angle_deg, origin=(cx, cy))
+                for ln in lines_rot
+            ]
+
+        for line in lines_original:
             coords = list(line.coords)
             if len(coords) < 2:
                 continue
 
-            # Поворот полосы обратно на +angle
-            line_back = rotate(line, angle_deg, origin=(cx, cy))
-            coords_back = list(line_back.coords)
-            if len(coords_back) < 2:
-                continue
-
-            start_xy = coords_back[0]
-            end_xy = coords_back[-1]
-            length_m = float(line_back.length)
-            if length_m < 5.0:
+            start_xy = coords[0]
+            end_xy = coords[-1]
+            length_m = float(line.length)
+            if length_m < MIN_SWATH_LEN_M:
                 continue
 
             segments = _make_segments(
@@ -472,22 +726,26 @@ def generate_swaths_for_area(
             h_vals = [s.h_asl_m for s in segments]
             dem_vals = [s.dem_m for s in segments]
 
+            n_avg = min(ENTRY_EXIT_AVG_N, len(segments))
+            h_entry = _avg_asl(segments, n_avg, from_start=True)
+            h_exit = _avg_asl(segments, n_avg, from_start=False)
+
             n_photos = int(np.ceil(length_m / max(photo_interval_m, 1.0))) + 1
 
             base_swaths.append(Swath(
                 id=f"{area.id}-s{sid}",
                 area_id=area.id,
                 start=Point(lat=segments[0].lat, lon=segments[0].lon,
-                            alt_m=segments[0].h_asl_m),
+                            alt_m=h_entry),
                 end=Point(lat=segments[-1].lat, lon=segments[-1].lon,
-                          alt_m=segments[-1].h_asl_m),
+                          alt_m=h_exit),
                 length_m=length_m,
                 h_agl_m=h_agl_target,
                 h_asl_m=float(np.mean(h_vals)),
                 segments=segments,
-                h_asl_entry_m=segments[0].h_asl_m,
-                h_asl_exit_m=segments[-1].h_asl_m,
-                h_agl_min_m=min(s.h_agl_m for s in segments),
+                h_asl_entry_m=h_entry,
+                h_asl_exit_m=h_exit,
+                h_agl_min_m=_agl_min_over_segments(segments),
                 dem_min_m=float(min(dem_vals)),
                 dem_max_m=float(max(dem_vals)),
                 n_photos=n_photos,
@@ -496,10 +754,10 @@ def generate_swaths_for_area(
             ))
             sid += 1
 
-    # 2. Boustrophedon
+    # Boustrophedon — для ВСЕХ методов (включая F2C).
     base_swaths = _apply_boustrophedon(base_swaths, fwd)
 
-    # 3. Split + время/энергия
+    # Split + метрики
     final_swaths: list[Swath] = []
     for base in base_swaths:
         parts = split_swath_if_needed(
@@ -509,22 +767,29 @@ def generate_swaths_for_area(
             v_descent=v_descent_mps,
         )
         for part in parts:
-            t_s, e_wh, v_min_used, feasible, reason = (
-                _compute_survey_time_energy(
-                    segments=part.segments,
-                    v_nominal=v_survey_mps,
-                    v_climb=v_climb_mps,
-                    v_descent=v_descent_mps,
-                    v_min=v_min_mps,
-                    mass_kg=mass_kg,
-                    P_nominal_w=P_nominal_w,
-                )
+            (t_s, e_wh, v_min_used, feasible, reason,
+             n_infeasible, total_excess) = _compute_survey_time_energy(
+                segments=part.segments,
+                v_nominal=v_survey_mps,
+                v_climb=v_climb_mps,
+                v_descent=v_descent_mps,
+                v_min=v_min_mps,
+                mass_kg=mass_kg,
+                P_nominal_w=P_nominal_w,
             )
             part.t_survey_actual_s = t_s
             part.e_survey_actual_wh = e_wh
             part.v_survey_min_mps = v_min_used
             part.feasible = feasible
-            part.infeasible_reason = reason
+            if n_infeasible > 0:
+                penalty = 1.0 + min(total_excess, MAX_PENALTY_FACTOR)
+                part.infeasible_reason = (
+                    f"{reason} | penalty ×{penalty:.2f} "
+                    f"(n_infeasible={n_infeasible}, "
+                    f"excess={total_excess:.2f})"
+                )
+            else:
+                part.infeasible_reason = reason
             final_swaths.append(part)
 
     return final_swaths, h_agl_target

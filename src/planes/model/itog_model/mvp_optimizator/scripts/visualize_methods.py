@@ -1,9 +1,8 @@
-"""Сравнение trapezoid vs triangulation на 5 фигурах × N углов.
+"""Сравнение trapezoid vs triangulation vs fields2cover на 5 фигурах × N углов.
 
 Генерирует:
     out/compare/plot_methods_a{angle}.png
-    out/compare/map_trapezoid_a{angle}.html
-    out/compare/map_triangulation_a{angle}.html
+    out/compare/map_{method}_a{angle}.html
     out/compare/compare_a{angle}.html
     out/compare/comparison.csv
 
@@ -29,6 +28,10 @@ from planner.geometry.merge import merge_thin_pieces
 from planner.geometry.swath import swaths_in_piece
 from planner.geometry.trapezoid import trapezoid_decomposition
 from planner.geometry.triangulation import triangulation_decomposition
+from planner.geometry.f2c_backend import (
+    generate_swaths_f2c,
+    is_available as f2c_is_available,
+)
 from planner.models import (
     Area, Obstacle, Params, Wind, Criterion, DecompositionMethod,
     MissionInput, VPP, UAVConfig, SurveyType, Route,
@@ -51,6 +54,14 @@ SPACING_M = 20.0
 MIN_SWATH_LEN_M = 3.0
 MERGE_THIN = True
 MAPS_FOR_ALL_ANGLES = False
+
+
+# Список методов. F2C добавляется, только если доступен.
+def _methods() -> list[str]:
+    methods = ["trapezoid", "triangulation"]
+    if f2c_is_available():
+        methods.append("fields2cover")
+    return methods
 
 
 # ============================================================
@@ -108,6 +119,7 @@ def _shape_specs():
 # ============================================================
 
 def decompose_shape(polygon_m: Polygon, method: str) -> list:
+    """Legacy-методы: trapezoid / triangulation."""
     if method == "triangulation":
         return triangulation_decomposition(polygon_m)
     return trapezoid_decomposition(polygon_m)
@@ -126,8 +138,27 @@ def swaths_for_shape(
     merge_thin: bool = True,
     min_swath_len_m: float = 3.0,
 ):
+    """Генерирует полосы для фигуры заданным методом.
+
+    Для fields2cover — прямой вызов F2C. Для trapezoid/triangulation —
+    decompose + merge + swaths_in_piece.
+
+    Возвращает (pieces, swaths). Для F2C pieces = [] (нет промежуточных
+    кусков — F2C работает целиком).
+    """
     if obstacle_m is not None and not obstacle_m.is_empty:
         polygon_m = polygon_m.difference(obstacle_m)
+
+    # Для F2C поворот делает сам F2C — не надо поворачивать полигон вручную.
+    # Для trapezoid/triangulation — поворачиваем через swaths_in_piece.
+    if method == "fields2cover":
+        try:
+            lines = generate_swaths_f2c(polygon_m, spacing_m, 0.0)
+        except Exception as e:
+            print(f"    [F2C failed] {e}")
+            lines = []
+        swaths = _filter_swaths(lines, min_swath_len_m)
+        return [], swaths
 
     pieces = decompose_shape(polygon_m, method)
 
@@ -162,11 +193,14 @@ def _save_fig_safe(fig, out_path: Path, dpi: int = 100) -> None:
 
 def make_plot_for_angle(results: dict, angle_deg: float, out_path: Path):
     shape_names = ["circle", "square", "star", "triangle", "L-shape"]
-    methods = ["trapezoid", "triangulation"]
+    methods = _methods()
+
+    n_rows = len(shape_names)
+    n_cols = len(methods)
 
     fig, axes = plt.subplots(
-        len(shape_names), len(methods),
-        figsize=(14, 26),
+        n_rows, n_cols,
+        figsize=(4 * n_cols, 5 * n_rows),
         squeeze=False,
     )
 
@@ -175,9 +209,13 @@ def make_plot_for_angle(results: dict, angle_deg: float, out_path: Path):
     for i, shape_name in enumerate(shape_names):
         for j, method in enumerate(methods):
             ax = axes[i][j]
-            data = results[(shape_name, method)]
+            data = results.get((shape_name, method))
+            if data is None:
+                ax.set_axis_off()
+                ax.set_title(f"{shape_name} / {method}\n(n/a)", fontsize=10)
+                continue
 
-            for k, p in enumerate(data["pieces"]):
+            for k, p in enumerate(data.get("pieces", [])):
                 if p.is_empty:
                     continue
                 geoms = [p] if p.geom_type == "Polygon" else list(p.geoms)
@@ -193,7 +231,7 @@ def make_plot_for_angle(results: dict, angle_deg: float, out_path: Path):
                         ax.fill(hx, hy, color="white",
                                 edgecolor="black", linewidth=0.5)
 
-            if data["obstacle"] is not None:
+            if data.get("obstacle") is not None:
                 oxs, oys = data["obstacle"].exterior.xy
                 ax.fill(oxs, oys, color="red", alpha=0.55,
                         edgecolor="darkred", linewidth=1.0)
@@ -206,9 +244,9 @@ def make_plot_for_angle(results: dict, angle_deg: float, out_path: Path):
             ax.axis("off")
 
             n_sw = len(data["swaths"])
-            n_pc = len(data["pieces"])
+            n_pc = len(data.get("pieces", []))
             title = f"{shape_name} / {method}\n{n_pc} pieces, {n_sw} swaths"
-            ax.set_title(title, fontsize=11, fontweight="bold")
+            ax.set_title(title, fontsize=10, fontweight="bold")
 
     fig.suptitle(
         f"Угол полос: {angle_deg:.0f}°",
@@ -298,7 +336,6 @@ def run_one_shape_pipeline(
 
     fwd, inv = make_local_transformer(vpp.lon, vpp.lat)
 
-    # Оbstacles в ENU
     from planner.solver.obstacles import prepare_obstacles_m
     obs_geojsons = [o.polygon for o in obstacles]
     obstacles_m = prepare_obstacles_m(obs_geojsons, fwd)
@@ -317,7 +354,6 @@ def run_one_shape_pipeline(
         obstacles_m=obstacles_m,
     )
 
-    # Waypoints
     from planner.solver.pipeline import _compute_route_waypoints
     swaths_by_id = {s.id: s for s in swaths}
 
@@ -396,7 +432,6 @@ def make_folium_map(
             ).add_to(m)
 
         for r in data["routes"]:
-            # NEW: waypoints если есть
             if getattr(r, "waypoints", None):
                 points = [(p.lat, p.lon) for p in r.waypoints]
             else:
@@ -441,12 +476,25 @@ def make_folium_map(
     print(f"  map ({method}, angle={angle_deg}°) → {out_path}")
 
 
-def make_compare_html(trap_path: Path, tri_path: Path, out_path: Path, angle_deg: float):
+def make_compare_html(
+    method_paths: dict[str, Path],
+    out_path: Path,
+    angle_deg: float,
+) -> None:
+    """Side-by-side сравнение 2–3 методов в iframe."""
+    panes = "\n".join(
+        f'<div class="pane">'
+        f'<h2>{m.upper()}</h2>'
+        f'<iframe src="{p.name}"></iframe>'
+        f'</div>'
+        for m, p in method_paths.items()
+    )
+
     html = f"""<!DOCTYPE html>
 <html>
 <head>
   <meta charset="utf-8">
-  <title>Comparison: trapezoid vs triangulation (angle={angle_deg}°)</title>
+  <title>Сравнение декомпозиции (angle={angle_deg}°)</title>
   <style>
     body {{ margin: 0; font-family: sans-serif; background: #222; color: white; }}
     h1 {{ text-align: center; padding: 10px; margin: 0; font-size: 20px; }}
@@ -457,16 +505,9 @@ def make_compare_html(trap_path: Path, tri_path: Path, out_path: Path, angle_deg
   </style>
 </head>
 <body>
-  <h1>Сравнение декомпозиции: trapezoid vs triangulation — угол {angle_deg:.0f}°</h1>
+  <h1>Сравнение декомпозиции — угол {angle_deg:.0f}°</h1>
   <div class="container">
-    <div class="pane">
-      <h2>TRAPEZOID</h2>
-      <iframe src="{trap_path.name}"></iframe>
-    </div>
-    <div class="pane">
-      <h2>TRIANGULATION</h2>
-      <iframe src="{tri_path.name}"></iframe>
-    </div>
+    {panes}
   </div>
 </body>
 </html>"""
@@ -482,8 +523,10 @@ def make_compare_html(trap_path: Path, tri_path: Path, out_path: Path, angle_deg
 def main():
     OUT_DIR.mkdir(parents=True, exist_ok=True)
 
+    methods = _methods()
     print(f"Angles: {ANGLES_DEG}")
     print(f"Spacing: {SPACING_M} m, merge_thin: {MERGE_THIN}")
+    print(f"Methods: {methods}")
     print()
 
     shapes = _shape_specs()
@@ -509,7 +552,7 @@ def main():
         plot_results = {}
 
         for shape_name, poly_m, obs_m in shapes:
-            for method in ["trapezoid", "triangulation"]:
+            for method in methods:
                 pieces, swaths = swaths_for_shape(
                     poly_m, method,
                     spacing_m=SPACING_M,
@@ -542,7 +585,7 @@ def main():
         do_maps = MAPS_FOR_ALL_ANGLES or generated_maps_for is None
         if do_maps:
             print(f"  Running pipelines for folium maps (angle={angle})...")
-            map_results = {"trapezoid": {}, "triangulation": {}}
+            map_results: dict[str, dict] = {m: {} for m in methods}
 
             def _local_to_wgs(x, y):
                 lon, lat = inv.transform(x, y)
@@ -550,10 +593,16 @@ def main():
 
             for shape_name, poly_m, obs_m in shapes:
                 poly_wgs = transform(_local_to_wgs, poly_m)
-                obs_wgs = transform(_local_to_wgs, obs_m)
-                obs_geojson = _polygon_to_geojson(obs_wgs) if obs_wgs else None
+                obs_wgs = (
+                    transform(_local_to_wgs, obs_m)
+                    if obs_m is not None
+                    else None
+                )
+                obs_geojson = (
+                    _polygon_to_geojson(obs_wgs) if obs_wgs else None
+                )
 
-                for method in ["trapezoid", "triangulation"]:
+                for method in methods:
                     routes, swaths, h_agl, _ = run_one_shape_pipeline(
                         shape_name=shape_name,
                         polygon_wgs=poly_wgs,
@@ -575,13 +624,14 @@ def main():
                           f"{len(swaths or [])} swaths")
 
             suffix = f"_a{int(angle)}"
-            trap_html = OUT_DIR / f"map_trapezoid{suffix}.html"
-            tri_html = OUT_DIR / f"map_triangulation{suffix}.html"
-            cmp_html = OUT_DIR / f"compare{suffix}.html"
+            method_paths: dict[str, Path] = {}
+            for method in methods:
+                p = OUT_DIR / f"map_{method}{suffix}.html"
+                make_folium_map(map_results, method, vpp, p, angle)
+                method_paths[method] = p
 
-            make_folium_map(map_results, "trapezoid", vpp, trap_html, angle)
-            make_folium_map(map_results, "triangulation", vpp, tri_html, angle)
-            make_compare_html(trap_html, tri_html, cmp_html, angle)
+            cmp_html = OUT_DIR / f"compare{suffix}.html"
+            make_compare_html(method_paths, cmp_html, angle)
 
             generated_maps_for = angle
 

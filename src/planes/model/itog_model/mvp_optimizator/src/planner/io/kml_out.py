@@ -25,6 +25,13 @@ def _uav_color(index: int) -> str:
     return _UAV_COLORS[index % len(_UAV_COLORS)]
 
 
+def _fmt_height(v: float | None) -> str:
+    """Форматирует высоту. None → 'n/a' (0.0 — валидное значение)."""
+    if v is None:
+        return "n/a"
+    return f"{v:.1f}"
+
+
 def _add_vpp(kml: simplekml.Kml, vpp: VPP) -> None:
     p = kml.newpoint(
         name=f"VPP: {vpp.id}",
@@ -54,10 +61,10 @@ def _add_swath(kml: simplekml.Kml, swath: Swath, color: str) -> None:
     ls.description = (
         f"h_agl = {swath.h_agl_m:.1f} m<br>"
         f"h_asl avg = {swath.h_asl_m:.1f} m<br>"
-        f"h_asl entry = {swath.h_asl_entry_m:.1f} m<br>"
-        f"h_asl exit = {swath.h_asl_exit_m:.1f} m<br>"
+        f"h_asl entry = {_fmt_height(swath.h_asl_entry_m)} m<br>"
+        f"h_asl exit = {_fmt_height(swath.h_asl_exit_m)} m<br>"
         f"DEM: {swath.dem_min_m:.0f}..{swath.dem_max_m:.0f} m<br>"
-        f"h_agl min = {swath.h_agl_min_m:.1f} m<br>"
+        f"h_agl min = {_fmt_height(swath.h_agl_min_m)} m<br>"
         f"length = {swath.length_m:.0f} m"
     )
 
@@ -65,12 +72,15 @@ def _add_swath(kml: simplekml.Kml, swath: Swath, color: str) -> None:
 def _add_route(
     kml: simplekml.Kml,
     candidate: Candidate,
-    vpp: VPP,
+    mission: MissionInput,
     swaths_by_id: dict[str, Swath],
 ) -> None:
-    """
-    Каждый борт — папка с маршрутом.
+    """Каждый борт — папка с маршрутом.
+
     Если есть waypoints — используем их (с обходом и поднятием высоты).
+    Fallback на swath_ids — для старых данных без waypoints.
+
+    Для каждого маршрута берём его собственную ВПП через mission.vpp_by_id.
     """
     by_uav: dict[str, list] = {}
     for r in candidate.routes:
@@ -81,6 +91,8 @@ def _add_route(
         folder = kml.newfolder(name=f"UAV: {uav_id}")
 
         for r in sorted(routes, key=lambda x: x.flight_index):
+            vpp = mission.vpp_by_id(r.vpp_id)
+
             if getattr(r, "waypoints", None):
                 coords = [(p.lon, p.lat, p.alt_m) for p in r.waypoints]
             else:
@@ -111,6 +123,7 @@ def _add_route(
             ls.style.linestyle.width = 3
             ls.altitudemode = simplekml.AltitudeMode.absolute
             ls.description = (
+                f"VPP: {r.vpp_id}<br>"
                 f"Swaths: {len(r.swath_ids)}<br>"
                 f"T_air = {r.T_air_s:.1f} s<br>"
                 f"T_total = {r.T_total_s:.1f} s<br>"
@@ -129,12 +142,7 @@ def write_routes_kml(
     candidate: Candidate,
     swaths_by_id: dict[str, Swath] | None = None,
 ) -> None:
-    """
-    Пишет KML:
-      - ВПП,
-      - полосы (папка Swaths),
-      - маршруты по бортам (с обходом + поднятием высоты).
-    """
+    """Пишет KML: ВПП, полосы, маршруты по бортам."""
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -148,8 +156,6 @@ def write_routes_kml(
         for swath in swaths_by_id.values():
             _add_swath(folder, swath, color="ff888888")
 
-    if mission.vpps:
-        vpp = mission.vpps[0]
-        _add_route(kml, candidate, vpp, swaths_by_id or {})
+    _add_route(kml, candidate, mission, swaths_by_id or {})
 
     kml.save(str(path))

@@ -1,4 +1,7 @@
-"""DEM из GeoTIFF: растровая модель рельефа (Copernicus, SRTM, LiDAR)."""
+"""DEM из GeoTIFF: растровая модель рельефа (Copernicus, SRTM, LiDAR).
+
+Ленивая загрузка: растр читается при первом обращении к h() или is_empty().
+"""
 
 from __future__ import annotations
 
@@ -11,7 +14,16 @@ from planner.io.dem.base import BaseDEM
 
 
 class GeoTiffDEM(BaseDEM):
-    """DEM из GeoTIFF с билинейной интерполяцией."""
+    """DEM из GeoTIFF с билинейной интерполяцией.
+
+    Состояния:
+      - _attempted = False, _loaded = False — ещё не пытались загрузить
+      - _attempted = True,  _loaded = False — попытка была, но упала
+      - _attempted = True,  _loaded = True  — растр в памяти
+
+    Повторные вызовы h() после успешной загрузки не читают файл.
+    После неудачной попытки повторно не пытаются — состояние фиксируется.
+    """
 
     def __init__(self, path: str | Path):
         self.path = Path(path)
@@ -20,6 +32,7 @@ class GeoTiffDEM(BaseDEM):
         self._crs = None
         self._nodata: float | None = None
         self._bounds = None
+        self._attempted = False
         self._loaded = False
         self._error: str | None = None
 
@@ -28,9 +41,9 @@ class GeoTiffDEM(BaseDEM):
     # --------------------------------------------------
 
     def _ensure_loaded(self) -> None:
-        if self._loaded:
+        if self._attempted:
             return
-        self._loaded = True
+        self._attempted = True
 
         if not self.path.exists():
             self._error = f"GeoTIFF not found: {self.path}"
@@ -39,7 +52,10 @@ class GeoTiffDEM(BaseDEM):
         try:
             import rasterio  # ленивый импорт
         except ImportError:
-            self._error = "rasterio not installed"
+            self._error = (
+                "rasterio not installed. "
+                "Install with: pip install rasterio"
+            )
             return
 
         try:
@@ -49,8 +65,27 @@ class GeoTiffDEM(BaseDEM):
                 self._crs = src.crs
                 self._nodata = src.nodata
                 self._bounds = src.bounds
+            self._loaded = True
         except Exception as e:
             self._error = f"Failed to read GeoTIFF: {e}"
+
+    # --------------------------------------------------
+    # Быстрая проверка без загрузки
+    # --------------------------------------------------
+
+    def is_available(self) -> bool:
+        """True, если файл есть и rasterio установлен.
+
+        Не читает растр. Используется в loader.py для быстрого решения,
+        подменять ли DEM на FlatDEM.
+        """
+        if not self.path.exists():
+            return False
+        try:
+            import rasterio  # noqa: F401
+            return True
+        except ImportError:
+            return False
 
     # --------------------------------------------------
     # h(lat, lon)
@@ -65,7 +100,6 @@ class GeoTiffDEM(BaseDEM):
         # Пиксельные координаты (float)
         col_f, row_f = ~self._transform * (lon, lat)
 
-        # Clamp в границы растра
         rows, cols = self._arr.shape
         if not (0 <= col_f < cols and 0 <= row_f < rows):
             # Точка вне растра — берём ближайший крайний пиксель
@@ -77,7 +111,6 @@ class GeoTiffDEM(BaseDEM):
         fx = col_f - col
         fy = row_f - row
 
-        # Билинейная интерполяция по 4 пикселям
         c1 = min(col + 1, cols - 1)
         r1 = min(row + 1, rows - 1)
 
@@ -98,6 +131,9 @@ class GeoTiffDEM(BaseDEM):
         # nodata → 0
         if self._nodata is not None and abs(val - self._nodata) < 1e-3:
             return 0.0
+        # NaN → 0 (встречается в Copernicus DEM)
+        if np.isnan(val):
+            return 0.0
         return val
 
     # --------------------------------------------------
@@ -105,6 +141,7 @@ class GeoTiffDEM(BaseDEM):
     # --------------------------------------------------
 
     def is_empty(self) -> bool:
+        """True, если растр не загружен (файл отсутствует, ошибка или нет rasterio)."""
         self._ensure_loaded()
         return self._arr is None
 
@@ -122,5 +159,9 @@ class GeoTiffDEM(BaseDEM):
 
     @property
     def error(self) -> str | None:
-        self._ensure_loaded()
+        """Сообщение об ошибке загрузки, если она была.
+
+        Не запускает загрузку — возвращает то, что уже известно.
+        Для получения актуального состояния вызовите is_empty().
+        """
         return self._error

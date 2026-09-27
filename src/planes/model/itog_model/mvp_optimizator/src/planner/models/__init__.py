@@ -1,3 +1,5 @@
+"""Модели: входные (input), внутренние (internal), выходные (output)."""
+
 from planner.models.input import (
     Area,
     Criterion,
@@ -15,7 +17,6 @@ from planner.models.internal import (
     Cluster,
     Point,
     Route,
-    RouteLeg,
     Swath,
     SwathSegment,
 )
@@ -42,7 +43,6 @@ __all__ = [
     "Cluster",
     "Point",
     "Route",
-    "RouteLeg",
     "Swath",
     "SwathSegment",
     # output

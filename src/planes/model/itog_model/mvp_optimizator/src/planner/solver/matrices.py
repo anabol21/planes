@@ -4,7 +4,8 @@
   - ветер (векторный),
   - Δh между полосами (набор высоты),
   - обход препятствий на перелётах,
-  - реальное время съёмки полосы (t_survey_actual_s).
+  - реальное время съёмки полосы (t_survey_actual_s),
+  - ограничение по сваливанию для fixed-wing (v_ground >= v_stall).
 
 Узлы:
     0      — VPP
@@ -25,6 +26,12 @@ from planner.utils.wind import bearing_deg, ground_speed_mps
 
 
 G = 9.81
+
+# Штраф для непроходимых рёбер (fixed-wing против сильного ветра).
+# Достаточно большой, чтобы любая альтернатива была предпочтительнее,
+# и достаточно малый, чтобы OR-Tools не переполнил int64 после scale=1000.
+BIG_M_TIME_S = 1.0e6
+BIG_M_ENERGY_WH = 1.0e6
 
 
 # ============================================================
@@ -64,8 +71,17 @@ def _leg_time(
     v_air: float,
     wind_speed: float,
     wind_dir: float,
-) -> float:
-    """Сумма времени по всем legs с учётом ветра."""
+    v_stall: float = 0.0,
+) -> tuple[float, bool]:
+    """Сумма времени по всем legs с учётом ветра.
+
+    Возвращает (time_s, feasible).
+      - feasible = True  — все legs прошли проверку.
+      - feasible = False — хотя бы на одном leg v_ground < v_stall
+                            (fixed-wing не может лететь против ветра).
+
+    Для мультироторов (v_stall = 0.0) проверка отключена — всегда True.
+    """
     t = 0.0
     for k in range(len(wps) - 1):
         pa, pb = wps[k], wps[k + 1]
@@ -74,8 +90,10 @@ def _leg_time(
             continue
         br = bearing_deg(pa[0], pa[1], pb[0], pb[1])
         v_g = ground_speed_mps(v_air, br, wind_speed, wind_dir)
+        if v_stall > 0 and v_g < v_stall:
+            return float("inf"), False
         t += d / v_g
-    return t
+    return t, True
 
 
 # ============================================================
@@ -92,15 +110,20 @@ def build_time_energy_matrices(
     wind_direction_deg: float,
     obstacles_m: list | None = None,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """
-    Возвращает (t_ij, e_ij, t_survey).
+    """Возвращает (t_ij, e_ij, t_survey).
 
     Узлы: 0 = VPP, i>0 = swath[i-1].
     Перелёт i → j: exit_i → entry_j (obstacle-aware).
+
+    Непроходимые рёбра (fixed-wing против ветра) получают BIG_M_TIME_S
+    и BIG_M_ENERGY_WH — OR-Tools их не выберет, если есть альтернатива.
     """
     obstacles_m = obstacles_m or []
     m = len(swaths)
     n = m + 1
+
+    v_stall = params.v_stall_mps
+    is_fixed_wing = v_stall > 0
 
     # --- Координаты узлов ---
     # Из i выходим с конца (end), приходим в j на начало (start).
@@ -115,8 +138,12 @@ def build_time_energy_matrices(
     h_exit = np.zeros(n, dtype=float)
     h_entry[0] = h_exit[0] = vpp.alt_m
     for i, s in enumerate(swaths, start=1):
-        h_entry[i] = s.h_asl_entry_m or s.h_asl_m
-        h_exit[i] = s.h_asl_exit_m or s.h_asl_m
+        h_entry[i] = (
+            s.h_asl_entry_m if s.h_asl_entry_m is not None else s.h_asl_m
+        )
+        h_exit[i] = (
+            s.h_asl_exit_m if s.h_asl_exit_m is not None else s.h_asl_m
+        )
 
     t_ij = np.zeros((n, n), dtype=float)
     e_ij = np.zeros((n, n), dtype=float)
@@ -130,19 +157,26 @@ def build_time_energy_matrices(
             if i == j:
                 continue
 
-            # Из i выходим с конца, приходим в j на начало
             p_from = exits_xy[i]
             p_to = entries_xy[j]
 
-            # Obstacle-aware путь
             _, wps = shortest_path_avoiding(p_from, p_to, obstacles_m)
 
-            # Время полёта по waypoints (с ветром)
-            t_flight = _leg_time(
-                wps, params.v_air_mps, wind_speed_mps, wind_direction_deg,
+            t_flight, feasible = _leg_time(
+                wps,
+                params.v_air_mps,
+                wind_speed_mps,
+                wind_direction_deg,
+                v_stall=v_stall,
             )
 
-            # Δh: от высоты выхода i к высоте входа j
+            if not feasible:
+                # Ребро непроходимо для fixed-wing: ветер сильнее, чем
+                # позволяет скорость сваливания на этом направлении.
+                t_ij[i, j] = BIG_M_TIME_S
+                e_ij[i, j] = BIG_M_ENERGY_WH
+                continue
+
             dh = h_entry[j] - h_exit[i]
             t_climb = max(dh, 0.0) / v_climb
 
