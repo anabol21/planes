@@ -1,6 +1,6 @@
 # Протокол ядра оптимизации
 
-Агенты Миши, Гриши и Руслана читают этот файл первым, затем свой бриф. Контракт `v0`. Код солвера этим документом не меняется. `solver.solve` в runtime по-прежнему поднимает `NotImplementedError`. VPS на этот чекпоинт не перешивается.
+Агенты Миши, Гриши и Руслана читают этот файл первым, затем свой бриф. Контракт `v0`. Код солвера этим документом не меняется. Слушатель на ВМ — unit `planes-compute.service`, каталог `/opt/planes`, git `da3da562b3d38d92dcc3dfc2f3b46636331cb8fc` (`da3da56`), ветка `runtime/MIS-002-external-enumeration`. `GET /health` без токена отвечает `{"status": "live", "contract_version": "v0"}`. Живой вызов ядра идёт с `solver_choice` `meta`. Перебор снаружи читает `aerodromes` и `boards` и справочник `fleet_catalog.json`. Коммит документации `5761f17bfc96f75cdab7a9403a94f86167cf86de` слушатель не переводил.
 
 Ядро сейчас — пакет `src/planes/model/basic_model/gibrid-optimizer/`. Поток зафиксирован в `src/planes/model/basic_model/gibrid-optimizer/docs/architecture.md`: `geometry` → `precompute` → MILP или метаэвристика → общий `routes_raw` → `route_builder` → `validator`. CLI `optimizer/main.py` читает `input.json` и пишет `output.json`.
 
@@ -12,7 +12,7 @@
 run_core(data: InputData, solver_choice: Literal["auto", "milp", "meta"] = "auto") -> dict
 ```
 
-`InputData` — схема из `optimizer/models.py`. `solver_choice` — тот же выбор, который CLI уже принимает флагом `--solver`. Возвращаемый словарь — тот же объект, который CLI пишет в `output.json`. В аргументах функции нет путей к файлам.
+`InputData` — схема из `optimizer/models.py`. `solver_choice` — тот же выбор, который CLI уже принимает флагом `--solver`. На живом слушателе в вызов уходит `meta`. Возвращаемый словарь — тот же объект, который CLI пишет в `output.json`. В аргументах функции нет путей к файлам.
 
 При статусе `optimal`, `feasible` или `heuristic` словарь содержит:
 
@@ -44,7 +44,7 @@ routes_raw: [{uav_id, nodes}]
 |---|---|---|
 | `geometry`, поле зоны | Гриша, бриф `docs/workstreams/model/GRI-002.md` | Строит полосы с учётом непрямоугольной зоны и ограничений из своего KML |
 | `precompute` | Руслан, бриф `docs/workstreams/model/RUS-002.md` | Считает матрицы времени и энергии из рельефа своего KML |
-| Внешний перебор | Миша, бриф `docs/workstreams/runtime/MIS-002.md` | Перебирает кандидатов снаружи и на каждого зовёт ядро как есть |
+| Внешний перебор | Миша, бриф `docs/workstreams/runtime/MIS-002.md` | Перебирает `aerodromes` и `boards` снаружи по `fleet_catalog.json` и на каждого зовёт ядро как есть |
 
 MILP (`optimizer/milp_solver.py`), метаэвристика (`optimizer/metaheuristic.py`), формат `routes_raw`, `route_builder` и `validator` в этом чекпоинте не меняются. Чужой шов не редактировать.
 
@@ -85,7 +85,7 @@ terrain:
 - постоянный ветер `wind`;
 - один GSD `gsd_cm_per_px`.
 
-Прямоугольник снимает Гриша. Плоскость снимает Руслан. Один старт и один тип борта снаружи перебирает Миша. Прямоугольный фикстур `data/input.json` остаётся регрессией Гриши. Плоский фикстур без группы `terrain` остаётся регрессией Руслана.
+Прямоугольник снимает Гриша. Плоскость снимает Руслан. Снаружи Миша перебирает аэродромы и борты; в одном вызове ядра остаются один старт и один тип борта. Прямоугольный фикстур `data/input.json` остаётся регрессией Гриши. Плоский фикстур без группы `terrain` остаётся регрессией Руслана.
 
 ## Гипотеза независимых вызовов
 

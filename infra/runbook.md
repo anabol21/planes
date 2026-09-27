@@ -42,7 +42,7 @@ POST http://$COMPUTE_HOST:8080/v0/solve
 - `optimization.time_limit_seconds` — число секунд, больше либо равно 0
 - `seed` — целое число, не дробное
 
-Лишние поля в корне игнорируются.
+Лишние поля в корне игнорируются. Живой перебор на слушателе читает в `scenario` поля `aerodromes` и `boards` и справочник `fleet_catalog.json`. Контракт запроса остаётся `v0`.
 
 Пример тела, снимок gri001. Единицы названы в полях: градусы, метры, метры в секунду, секунды, ватт-часы.
 
@@ -88,7 +88,7 @@ POST http://$COMPUTE_HOST:8080/v0/solve
 | HTTP 200 и `outcome=infeasible` | Отказ солвера. Запрос не сломан |
 | HTTP 200 и `outcome=timed_out` | Дедлайн, не `infeasible` |
 
-В репозитории `solver.solve` уже вызывает солвер Гриши. Чужой `scenario` (форма веба `scenario_profile`) даёт `outcome=error`, не `infeasible`. Служба на ВМ этим изменением не переустанавливалась: пока на машине старый checkout, живой ответ может оставаться прежним `error`.
+В репозитории `solver.solve` вызывает солвер Гриши с `solver_choice` `meta`. Конверт с `aerodromes` и `boards` идёт во внешний перебор; числа модели и камеры читаются из `fleet_catalog.json`. Конверт с `pads` или `uav_types` даёт `outcome=error`, не `infeasible`. Слушатель на ВМ — unit `planes-compute.service`, каталог `/opt/planes`, git `da3da562b3d38d92dcc3dfc2f3b46636331cb8fc` (`da3da56`), ветка `runtime/MIS-002-external-enumeration`. `GET /health` без токена отвечает `{"status": "live", "contract_version": "v0"}`. Коммит документации `5761f17bfc96f75cdab7a9403a94f86167cf86de` слушатель не переводил.
 
 ## Для агента Гриши
 
@@ -120,9 +120,9 @@ python -m planes.runtime.cli solve --request - --timeout-seconds <N>
 
 CLI запускает ядро отдельным процессом: `python -m planes.runtime.core`. Stdout ядра — JSON, логи — stderr и `/var/log/planes/<job_id>.log`. По таймауту CLI посылает группе процесса SIGTERM, затем SIGKILL. Падение ядра не роняет слушатель: следующий запрос снова стартует CLI.
 
-Конвейер ядра: ingest, bind, compile, judge, emit. `compile` проверяет, что `scenario` — JSON-объект, и кладёт его в `Problem` без географии и без перебора параметров. `solver.solve` собирает `InputData` только из полей Гриши и вызывает `run` в памяти. `optimal` и `feasible` становятся `Solution` (`outcome=feasible`). `heuristic` тоже `Solution`, с limitation, что это не глобальный оптимум. `infeasible` солвера становится `Infeasible`. Обрыв по лимиту времени становится `TimedOut`. Исключение (чужие или недостающие поля, pydantic, импорт) становится `outcome=error`, процесс завершается с кодом 0. Битый JSON — тоже `error`, не `infeasible`. `Infeasible` приходит без `mission_plan`. `TimedOut` → `timed_out`.
+Конвейер ядра: ingest, bind, compile, judge, emit. `compile` проверяет, что `scenario` — JSON-объект, и кладёт его в `Problem` без переписывания. `solver.solve` для конверта с `aerodromes` и `boards` перебирает снаружи и читает `fleet_catalog.json`; ядро вызывается как `run` с `solver_choice` `meta`. Одиночные `takeoff` и `uav` остаются одним вызовом и `fleet_catalog.json` не читают. `optimal` и `feasible` становятся `Solution` (`outcome=feasible`). `heuristic` тоже `Solution`, с limitation, что это не глобальный оптимум. `infeasible` солвера становится `Infeasible`. Обрыв по лимиту времени становится `TimedOut`. Исключение (чужие или недостающие поля, pydantic, импорт) становится `outcome=error`, процесс завершается с кодом 0. Битый JSON — тоже `error`, не `infeasible`. `Infeasible` приходит без `mission_plan`. `TimedOut` → `timed_out`.
 
-`PLANES_SOLVER_ARGV` по-прежнему подменяет процесс ядра. Им пользуются проверки crash, битого stdout и sleep через модуль placeholder. Это не продуктовый путь и не поле запроса. ВМ этим коммитом не переустанавливалась.
+`PLANES_SOLVER_ARGV` по-прежнему подменяет процесс ядра. Им пользуются проверки crash, битого stdout и sleep через модуль placeholder. Это не продуктовый путь и не поле запроса. Коммит `5761f17` слушатель не переводил: unit остаётся на git `da3da56`.
 
 Lock одного job лежит в `/run/planes/planes-compute.lock`, если этот каталог доступен для записи, иначе в `/var/lock` или во временном каталоге.
 
@@ -146,7 +146,7 @@ sudo systemctl status planes-compute.service
 
 В файле только три переменные: `COMPUTE_HOST`, `COMPUTE_TOKEN`, `COMPUTE_TIMEOUT_SECONDS`. Слушатель читает токен. Хост и таймаут нужны процессу, который вызывает адаптер.
 
-Повторный запуск bootstrap обновляет checkout до `origin` выбранной ветки (`PLANES_BRANCH`, по умолчанию `runtime/MIS-001-vps-loop`). Правки внутри `/opt/planes` при этом сбрасываются. Уже созданный env-файл не перезаписывается.
+Повторный запуск bootstrap обновляет checkout до `origin` выбранной ветки (`PLANES_BRANCH`, по умолчанию `runtime/MIS-001-vps-loop`). Живой checkout сейчас — ветка `runtime/MIS-002-external-enumeration`, git `da3da56`. Коммит `5761f17` его не двигал. Повтор без `PLANES_BRANCH=runtime/MIS-002-external-enumeration` уведёт unit на ветку по умолчанию. Правки внутри `/opt/planes` при этом сбрасываются. Уже созданный env-файл не перезаписывается.
 
 ## Проверка
 
@@ -156,7 +156,7 @@ sudo systemctl status planes-compute.service
 curl -sS "http://$COMPUTE_HOST:8080/health"
 ```
 
-Ожидается JSON с `contract_version` равным `v0`, без тела job и без авторизации.
+Ожидается JSON `{"status": "live", "contract_version": "v0"}`, без тела job и без авторизации.
 
 Проверка ядра на ВМ тем же fixture, который уходит в слушатель:
 
