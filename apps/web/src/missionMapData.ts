@@ -1,5 +1,6 @@
 import type {
   MissionConstraintPolygon,
+  MissionObstacle,
   MissionPlan,
   MissionRoute,
   PolygonGeometry,
@@ -107,6 +108,33 @@ function constraintCoordinates(item: MissionConstraintPolygon): MapPosition[][] 
   return [item.ring.map((position) => [position[0], position[1]])];
 }
 
+function coordinatePairs(ring: unknown): MapPosition[] | null {
+  if (!Array.isArray(ring)) return null;
+  const pairs: MapPosition[] = [];
+  for (const point of ring) {
+    if (!isPosition(point)) return null;
+    pairs.push([point[0], point[1]]);
+  }
+  return pairs;
+}
+
+function ringsEqual(left: MapPosition[], right: MapPosition[]): boolean {
+  if (left.length !== right.length) return false;
+  return left.every(
+    (position, index) => position[0] === right[index][0] && position[1] === right[index][1],
+  );
+}
+
+function obstacleRepeatsConstraintRing(item: MissionObstacle, plan: MissionPlan): boolean {
+  if (item.polygon?.type !== "Polygon") return false;
+  const outer = coordinatePairs(item.polygon.coordinates?.[0]);
+  if (!outer) return false;
+  return (plan.constraint_polygons ?? []).some((constraint) => {
+    const ring = coordinatePairs(constraint.ring);
+    return ring !== null && ringsEqual(outer, ring);
+  });
+}
+
 export function colorsForRoutes(routes: MissionRoute[]): ReadonlyMap<string, string> {
   const ids = [...new Set(routes.map((route) => route.uav_id))].sort((a, b) =>
     a.localeCompare(b, "ru"),
@@ -150,7 +178,9 @@ function polygonFeatureCollection(
   plan: MissionPlan,
   kind: "area" | "obstacle",
 ): MapFeatureCollection<PolygonMapGeometry, PolygonFeatureProperties> {
-  const items = kind === "area" ? plan.areas ?? [] : plan.obstacles ?? [];
+  const items = kind === "area"
+    ? plan.areas ?? []
+    : (plan.obstacles ?? []).filter((item) => !obstacleRepeatsConstraintRing(item, plan));
   return {
     type: "FeatureCollection",
     features: items.flatMap((item) => {

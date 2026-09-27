@@ -33,6 +33,9 @@ the computed `mission_plan` and leaves the contract at `v0`.
 - [x] Preserved the existing summary, solver report, raw JSON, and all non-feasible result states.
 - [x] Added adapter and component regressions for exact coordinate order, multiple UAVs/flights,
   duplicates, empty routes, overlays, selection, and lifecycle-state gating.
+- [x] Omitted a stitch obstacle from the map layer when its outer ring pairwise equals a
+  `constraint_polygons` ring. The constraint layer stays, and an obstacle with a different ring
+  stays, including when `height_m` is 0.
 - [x] Verified typecheck, tests, production build, repository validation, and whitespace checks.
 - [x] Browser-smoked the submission-to-result flow against a deterministic local v0 result: the
   viewport fitted the mission, two UAV legend entries and two base markers rendered, and 26 Esri
@@ -69,6 +72,9 @@ limitation before deployment.
 - The frontend now reads optional `mission_plan.routes`, `areas`, `obstacles`, and confirmed
   `constraint_polygons` fields from an existing terminal result.
 - Missing optional overlay fields remain non-fatal. Backend/runtime values remain authoritative.
+- An obstacle whose outer ring pairwise equals a `constraint_polygons[].ring` is omitted from the
+  map obstacle layer. The constraint layer stays. `height_m` alone does not select that omission.
+  The result JSON still contains both copies.
 
 ## WEB-001 historical status
 
