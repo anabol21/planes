@@ -47,11 +47,14 @@ class InputToRuntimeTransportTest(unittest.TestCase):
     def test_golden_scenario_reaches_runtime_parser_without_field_loss(self) -> None:
         submission = json.loads(GOLDEN.read_text(encoding="utf-8"))
         captured: list[tuple[ComputeRequest, ScenarioV0, dict[str, Any]]] = []
+        runtime_states: list[str] = []
 
         def capture(
             request: ComputeRequest, scenario: ScenarioV0, body: bytes
         ) -> bytes:
             captured.append((request, scenario, json.loads(body.decode("utf-8"))))
+            current = store.get_job(request.job_id)
+            runtime_states.append(current.state if current is not None else "missing")
             response = make_response(
                 job_id=request.job_id,
                 outcome="feasible",
@@ -115,6 +118,7 @@ class InputToRuntimeTransportTest(unittest.TestCase):
                     )
 
                 self.assertEqual(1, len(captured))
+                self.assertEqual(["running"], runtime_states)
                 runtime_request, parsed_scenario, wire = captured[0]
                 self.assertIsInstance(parsed_scenario, ScenarioV0)
                 self.assertEqual(submission["scenario"], parsed_scenario.to_dict())
