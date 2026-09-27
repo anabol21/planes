@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2"><Document>
+<Placemark><name>North</name><Polygon><outerBoundaryIs><LinearRing><coordinates>
+37.601,55.748,0 37.609,55.748,0 37.609,55.7525,0 37.601,55.7525,0 37.601,55.748,0
+</coordinates></LinearRing></outerBoundaryIs></Polygon></Placemark>
+<Placemark><name>South</name><Polygon><outerBoundaryIs><LinearRing><coordinates>
+37.601,55.740,0 37.609,55.740,0 37.609,55.745,0 37.601,55.745,0 37.601,55.740,0
+</coordinates></LinearRing></outerBoundaryIs></Polygon></Placemark>
+</Document></kml>

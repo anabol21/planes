@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2">
+  <Document>
+    <name>crooked-constraints</name>
+    <Placemark>
+      <name>Излом запрета</name>
+      <ExtendedData>
+        <Data name="Name"><value>Излом запрета</value></Data>
+        <Data name="Type"><value>запрет</value></Data>
+        <Data name="Altitudes"><value>от 120 м AGL до 400 м AGL</value></Data>
+      </ExtendedData>
+      <Polygon>
+        <outerBoundaryIs>
+          <LinearRing>
+            <coordinates>
+              37.6034,55.7522,0
+              37.6046,55.7520,0
+              37.6052,55.7526,0
+              37.6044,55.7530,0
+              37.6034,55.7528,0
+              37.6034,55.7522,0
+            </coordinates>
+          </LinearRing>
+        </outerBoundaryIs>
+      </Polygon>
+    </Placemark>
+  </Document>
+</kml>
