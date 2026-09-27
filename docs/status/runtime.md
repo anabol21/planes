@@ -5,7 +5,7 @@ task: MIS-001
 status: review
 updated: 2026-09-27
 checkpoint: 2026-09-27
-branch: cursor/geo-core-kml-stitch
+branch: test_merge
 contract_version: v0
 ---
 
@@ -35,11 +35,11 @@ contract_version: v0
 
 ## In progress
 
-- None. The listener `planes-compute.service` at `/opt/planes` is git `da3da562b3d38d92dcc3dfc2f3b46636331cb8fc` (`da3da56`) on branch `runtime/MIS-002-external-enumeration`: health `live`, contract `v0`, `solver_choice` `meta`. Documentation commit `794fb2d71e8b9635798e59fba1d363e2988222eb` was not deployed to that unit. The form sends `aerodromes` and `boards`, not `pads` or `uav_types`. SQLite stores the scenario unchanged; catalog numbers are applied only on the listener. Detail is in `docs/architecture/agent-brief-runtime.md` and `docs/architecture/agent-brief-backend.md`.
+- None for the stitch code. Teammate picture: `docs/architecture/STITCH_PICTURE.md`. The listener `planes-compute.service` was fast-forwarded to `debcd9c` for the live stitch run (health `live`, contract `v0`). Commit `c04786a` adds tests only and was not deployed. Paragraphs that name git `da3da56` describe the listener before that move. The form sends `survey_kml` and `constraints_kml` with `aerodromes` and `boards`. SQLite stores the scenario unchanged.
 
 ## Next action
 
-The stitch is on `cursor/geo-core-kml-stitch` and is not deployed to `planes-compute.service`. The listener recorded below stays at git `da3da56`. Review the geo-core path before that move. The old enumeration still substitutes `90`/`0.02`/`0.008` for Geoscan 201; the geo core reads `power_const_w` 220 W from its own `data.json`. Constraint altitude text is copied and not interpreted. `src/planes/contracts/` was not edited.
+Read `docs/architecture/STITCH_PICTURE.md` before the `da3da56` briefs. On `test_merge`, `enumeration/outer.py` is not the live aerodromes-and-boards path. The geo core reads `power_const_w` 220 W. The old enumeration still substitutes `90`/`0.02`/`0.008` for Geoscan 201 on the one-card path. Constraint altitude text is copied and not interpreted. `src/planes/contracts/` was not edited. The listener for the live stitch run is `debcd9c`; `c04786a` was not deployed.
 
 ## Evidence
 

@@ -1,7 +1,9 @@
 
 # Бриф backend: живой путь v0
 
-Источник: commit `da3da562b3d38d92dcc3dfc2f3b46636331cb8fc`. Contract version `v0`. Этот коммит не менял Python в `src/planes/backend/`. Числа каталога подставляет только listener.
+На ветке `test_merge` живой конверт описан в `docs/architecture/STITCH_PICTURE.md`. Текст ниже — снимок `main` на `da3da56`. На `test_merge` форма кладёт сырые `survey_kml` и `constraints_kml` и не кладёт разобранные `area`, `zone_constraints`, `obstacles`. Python в `src/planes/backend/` от сшивки не менялся: снимок `scenario` по-прежнему пишется в SQLite как есть.
+
+Источник этого брифа: commit `da3da562b3d38d92dcc3dfc2f3b46636331cb8fc`. Contract version `v0`. Этот коммит не менял Python в `src/planes/backend/`. Числа каталога подставляет только listener.
 
 Роль backend: API, SQLite, жизненный цикл job и worker через порт `OptimizationEngine`. Оптимизатор и наполнение optics / power остаются на listener.
 
@@ -21,7 +23,7 @@
 
 7. Ответ возвращается как backend `ComputeResponse`. Store пишет его в `result_json` или `error_json`. Колонка `scenario_json` при этом остаётся прежней.
 
-## Поля, которые теперь шлёт форма
+## Поля формы на main da3da56
 
 В объекте `scenario`:
 
@@ -35,7 +37,7 @@
 
 Лимит времени лежит в `optimization.time_limit_seconds`, рядом с `optimization.objective`. Потолок, который принимает сама форма, — `MAX_TIME_LIMIT_SECONDS` (110). API этот потолок не проверяет.
 
-В том же объекте форма также пишет `scenario_id`, `crs` (`EPSG:4326`), `area`, `survey_type`, `zone_constraints`, `obstacles`, `prototype_limitations`. Ключей `pads` и `uav_types` форма не пишет.
+В том же объекте форма на `main` `da3da56` также писала `scenario_id`, `crs` (`EPSG:4326`), `area`, `survey_type`, `zone_constraints`, `obstacles`, `prototype_limitations`. На `test_merge` вместо `area`, `zone_constraints` и `obstacles` уходят тексты `survey_kml` и `constraints_kml`. Ключей `pads` и `uav_types` форма не пишет.
 
 ## Что отклоняет listener
 
