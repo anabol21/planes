@@ -2,12 +2,21 @@
 
 from __future__ import annotations
 
+import contextlib
+import io
 import json
 import time
 import unittest
 from pathlib import Path
 
-from planes.runtime.enumeration import Attempt, EnumerationResult, is_outer_scenario
+from planes.runtime.enumeration import (
+    Attempt,
+    EnumerationResult,
+    Skip,
+    SpectrumMismatch,
+    is_outer_scenario,
+)
+from planes.runtime.logs import log_directory
 from planes.runtime.solver import Infeasible, Problem, Solution, TimedOut, solve
 
 _INPUT = (
@@ -54,29 +63,45 @@ def _attempt(
     flight_time: float,
     status: str = "optimal",
     criterion: str = "min_time",
+    count: int = 1,
 ) -> Attempt:
     return Attempt(
         aerodrome_id=aerodrome_id,
         board_id=board_id,
         model_id=model_id,
         camera_id=camera_id,
+        count=count,
         data=None,
         result=_plan(mission_time, flight_time, status, criterion),
     )
 
 
 class WinnerSelectionTest(unittest.TestCase):
-    def _solve(self, attempts: list[Attempt], criterion: str, *, stopped: bool = False):
+    def _solve(
+        self,
+        attempts: list[Attempt],
+        criterion: str,
+        *,
+        stopped: bool = False,
+        skips: tuple[Skip, ...] = (),
+        mismatches: tuple[SpectrumMismatch, ...] = (),
+        job_id: str = "job_outer",
+    ):
         import planes.runtime.solver as solver_module
 
         def fake_run(scenario, *, seed, time_limit_s, core=None, deadline=None):
             del scenario, seed, time_limit_s, core, deadline
-            return EnumerationResult(attempts=tuple(attempts), stopped_for_deadline=stopped)
+            return EnumerationResult(
+                attempts=tuple(attempts),
+                stopped_for_deadline=stopped,
+                skips=skips,
+                mismatches=mismatches,
+            )
 
         original = solver_module.run_candidates
         solver_module.run_candidates = fake_run
         problem = Problem(
-            job_id="job_outer",
+            job_id=job_id,
             scenario={
                 "aerodromes": [{"id": "аэродром 1", "lat": 55.747, "lon": 37.6}],
                 "boards": [],
@@ -105,6 +130,126 @@ class WinnerSelectionTest(unittest.TestCase):
         self.assertIn("winning camera id: c-fast", result.limitations)
         for key in _ASSEMBLED:
             self.assertIn(key, result.mission_plan)
+
+    def test_both_successful_cards_list_metrics_and_mark_the_winner(self) -> None:
+        slow = _attempt("a-slow", "b-slow", "m-slow", "c-slow", 20.0, 5.0, count=2)
+        fast = _attempt("a-fast", "b-fast", "m-fast", "c-fast", 9.0, 30.0, count=3)
+        stderr = io.StringIO()
+        with contextlib.redirect_stderr(stderr):
+            result = self._solve([slow, fast], "min_time", job_id="job_both_metrics")
+        self.assertIsInstance(result, Solution)
+        self.assertEqual(result.objective_value, 9.0)
+        self.assertEqual(result.mission_plan["mission"]["mission_time_s"], 9.0)
+        rows = [line for line in result.limitations if line.startswith("candidate ")]
+        self.assertEqual(
+            rows,
+            [
+                "candidate aerodrome a-fast board b-fast model m-fast camera c-fast count 3: "
+                "winner mission_time_s=9.0 total_flight_time_s=30.0",
+                "candidate aerodrome a-slow board b-slow model m-slow camera c-slow count 2: "
+                "mission_time_s=20.0 total_flight_time_s=5.0",
+            ],
+        )
+        self.assertIn("winner", rows[0])
+        self.assertNotIn("winner", rows[1])
+        logged = (log_directory() / "job_both_metrics.log").read_text(encoding="utf-8")
+        self.assertIn(rows[0], logged)
+        self.assertIn(rows[1], logged)
+        self.assertIn(rows[0], stderr.getvalue())
+        self.assertIn(rows[1], stderr.getvalue())
+
+    def test_min_flight_hours_orders_by_total_flight_time_and_keeps_both_metrics(self) -> None:
+        slow = _attempt(
+            "a-slow", "b-slow", "m-slow", "c-slow", 20.0, 5.0, criterion="min_flight_hours", count=1
+        )
+        fast = _attempt(
+            "a-fast", "b-fast", "m-fast", "c-fast", 9.0, 30.0, criterion="min_flight_hours", count=4
+        )
+        result = self._solve([fast, slow], "min_flight_hours")
+        self.assertIsInstance(result, Solution)
+        self.assertEqual(result.objective_value, 5.0)
+        rows = [line for line in result.limitations if line.startswith("candidate ")]
+        self.assertEqual(
+            rows,
+            [
+                "candidate aerodrome a-slow board b-slow model m-slow camera c-slow count 1: "
+                "winner mission_time_s=20.0 total_flight_time_s=5.0",
+                "candidate aerodrome a-fast board b-fast model m-fast camera c-fast count 4: "
+                "mission_time_s=9.0 total_flight_time_s=30.0",
+            ],
+        )
+
+    def test_skip_and_spectrum_miss_have_no_flight_time(self) -> None:
+        skip = Skip(
+            aerodrome_id="a-skip",
+            board_id="b-skip",
+            model_id="m-skip",
+            camera_id="c-skip",
+            count=2,
+            missing=("focal_length_mm",),
+        )
+        mismatch = SpectrumMismatch(
+            aerodrome_id="a-miss",
+            board_id="b-miss",
+            model_id="m-miss",
+            camera_id="c-miss",
+            count=1,
+            required_spectrum="LiDAR",
+            camera_spectra=("RGB",),
+        )
+        stderr = io.StringIO()
+        with contextlib.redirect_stderr(stderr):
+            result = self._solve(
+                [],
+                "min_time",
+                skips=(skip,),
+                mismatches=(mismatch,),
+                job_id="job_skip_miss",
+            )
+        self.assertIsInstance(result, Infeasible)
+        skip_line = (
+            "skipped aerodrome a-skip board b-skip model m-skip camera c-skip count 2: "
+            "missing focal_length_mm"
+        )
+        miss_line = (
+            "spectrum mismatch aerodrome a-miss board b-miss model m-miss camera c-miss count 1: "
+            "required LiDAR, camera spectra RGB"
+        )
+        self.assertIn(skip_line, result.limitations)
+        self.assertIn(miss_line, result.limitations)
+        self.assertNotIn("mission_time_s", skip_line)
+        self.assertNotIn("total_flight_time_s", skip_line)
+        self.assertNotIn("mission_time_s", miss_line)
+        self.assertNotIn("total_flight_time_s", miss_line)
+        logged = (log_directory() / "job_skip_miss.log").read_text(encoding="utf-8")
+        self.assertIn(skip_line, logged)
+        self.assertIn(miss_line, logged)
+        self.assertIn(skip_line, stderr.getvalue())
+
+    def test_timed_out_attempt_is_listed_without_a_flight_time(self) -> None:
+        attempt = Attempt(
+            aerodrome_id="a-stop",
+            board_id="b-stop",
+            model_id="m-stop",
+            camera_id="c-stop",
+            count=6,
+            data=None,
+            result={"status": "unknown", "reason": "time limit"},
+        )
+        stderr = io.StringIO()
+        with contextlib.redirect_stderr(stderr):
+            result = self._solve([attempt], "min_time", job_id="job_timed_card")
+        self.assertIsInstance(result, TimedOut)
+        row = (
+            "candidate aerodrome a-stop board b-stop model m-stop camera c-stop count 6: "
+            "unknown time limit"
+        )
+        self.assertIn(row, result.limitations)
+        self.assertNotIn("mission_time_s", row)
+        self.assertNotIn("total_flight_time_s", row)
+        logged = (log_directory() / "job_timed_card.log").read_text(encoding="utf-8")
+        self.assertIn(row, logged)
+        self.assertIn(row, stderr.getvalue())
 
     def test_min_flight_hours_reads_total_flight_time(self) -> None:
         slow = _attempt("a-slow", "b-slow", "m-slow", "c-slow", 20.0, 5.0, criterion="min_flight_hours")

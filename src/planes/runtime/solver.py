@@ -14,9 +14,8 @@ from typing import Any
 from planes.runtime.enumeration import (
     is_outer_scenario,
     run_candidates,
+    search_limitation_lines,
     select_winner,
-    skip_limitation,
-    spectrum_mismatch_limitation,
 )
 from planes.runtime.logs import record
 
@@ -89,6 +88,10 @@ def solve(problem: Problem, deadline: float) -> Solution | Infeasible | TimedOut
     The outer path takes ``turn_time_s`` from the catalog model and leaves
     ``apply_turn_to_base`` false. Only ``time_limit_s`` is the task limit.
     Non-passport values are written into limitations and the process log.
+    Each successful board card is listed there too, with both mission metrics
+    and the winner marked. Skips and spectrum misses are listed with the
+    reason and without a flight time. The same lines are written on a
+    feasible, infeasible, or timed-out outer outcome.
     """
     if isinstance(problem.scenario, dict) and "uav_types" in problem.scenario:
         raise ValueError("uav_types is not accepted")
@@ -123,22 +126,19 @@ def _solve_outer(problem: Problem, deadline: float) -> Solution | Infeasible | T
     criterion = problem.scenario.get("criterion")
     if not isinstance(criterion, str):
         raise ValueError("missing fields: criterion")
-    noted = (
-        *tuple(skip_limitation(skip) for skip in outcome.skips),
-        *tuple(spectrum_mismatch_limitation(item) for item in outcome.mismatches),
-        *outcome.disclosures,
-    )
     winner = select_winner(outcome.attempts, criterion)
+    search = search_limitation_lines(outcome, criterion, winner)
     if winner is not None:
         mapped = _map_result(winner.result)
         if isinstance(mapped, Solution):
             lines = (
                 *mapped.limitations,
+                *search,
                 f"winning aerodrome id: {winner.aerodrome_id}",
                 f"winning board id: {winner.board_id}",
                 f"winning model id: {winner.model_id}",
                 f"winning camera id: {winner.camera_id}",
-                *noted,
+                *outcome.disclosures,
             )
             _log_outer(problem.job_id, lines)
             return Solution(
@@ -147,7 +147,7 @@ def _solve_outer(problem: Problem, deadline: float) -> Solution | Infeasible | T
                 objective_value=mapped.objective_value,
                 limitations=lines,
             )
-        lines = (*mapped.limitations, *noted)
+        lines = (*mapped.limitations, *search, *outcome.disclosures)
         _log_outer(problem.job_id, lines)
         if isinstance(mapped, Infeasible):
             return Infeasible(lines)
@@ -155,7 +155,7 @@ def _solve_outer(problem: Problem, deadline: float) -> Solution | Infeasible | T
     if outcome.stopped_for_deadline or any(
         item.result.get("status") == "unknown" for item in outcome.attempts
     ):
-        lines = (_TIME_LIMIT, *noted)
+        lines = (_TIME_LIMIT, *search, *outcome.disclosures)
         _log_outer(problem.job_id, lines)
         return TimedOut(lines)
     reasons: list[str] = []
@@ -165,7 +165,7 @@ def _solve_outer(problem: Problem, deadline: float) -> Solution | Infeasible | T
         reason = item.result.get("reason")
         if isinstance(reason, str) and reason and reason not in reasons:
             reasons.append(reason)
-    for line in noted:
+    for line in (*search, *outcome.disclosures):
         if line not in reasons:
             reasons.append(line)
     lines = tuple(reasons)

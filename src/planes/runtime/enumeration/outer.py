@@ -89,6 +89,7 @@ class Candidate:
     board_id: str
     model_id: str
     camera_id: str
+    count: int
     data: Any
 
 
@@ -98,21 +99,28 @@ class Attempt:
     board_id: str
     model_id: str
     camera_id: str
+    count: int
     data: Any
     result: dict[str, Any]
 
 
 @dataclass(frozen=True)
 class Skip:
+    aerodrome_id: str
+    board_id: str
     model_id: str
     camera_id: str
+    count: int
     missing: tuple[str, ...]
 
 
 @dataclass(frozen=True)
 class SpectrumMismatch:
+    aerodrome_id: str
+    board_id: str
     model_id: str
     camera_id: str
+    count: int
     required_spectrum: str
     camera_spectra: tuple[str, ...]
 
@@ -149,17 +157,102 @@ def is_outer_scenario(scenario: dict[str, Any]) -> bool:
 
 
 def skip_limitation(skip: Skip) -> str:
+    """Name a card that was not called. This line has no flight time."""
     return (
-        f"skipped model {skip.model_id} camera {skip.camera_id}: "
+        f"skipped aerodrome {skip.aerodrome_id} board {skip.board_id} "
+        f"model {skip.model_id} camera {skip.camera_id} count {skip.count}: "
         f"missing {', '.join(skip.missing)}"
     )
 
 
 def spectrum_mismatch_limitation(mismatch: SpectrumMismatch) -> str:
+    """Name a spectrum miss. This line has no flight time."""
     spectra = ", ".join(mismatch.camera_spectra)
     return (
-        f"spectrum mismatch model {mismatch.model_id} camera {mismatch.camera_id}: "
+        f"spectrum mismatch aerodrome {mismatch.aerodrome_id} board {mismatch.board_id} "
+        f"model {mismatch.model_id} camera {mismatch.camera_id} count {mismatch.count}: "
         f"required {mismatch.required_spectrum}, camera spectra {spectra}"
+    )
+
+
+def search_limitation_lines(
+    outcome: EnumerationResult,
+    criterion: str,
+    winner: Winner | None,
+) -> tuple[str, ...]:
+    """One line per successful call, skip, and spectrum miss.
+
+    Successful rows are ordered by the criterion value. Ties keep card order,
+    so the earlier card (the winner) stays first. Each successful row carries
+    both mission metrics. The winner row is marked. Skips and spectrum misses
+    carry the reason and no flight time.
+    """
+    if criterion not in ("min_time", "min_flight_hours"):
+        raise ValueError("missing fields: criterion")
+    field = "mission_time_s" if criterion == "min_time" else "total_flight_time_s"
+    ranked: list[tuple[float, int, Attempt]] = []
+    others: list[Attempt] = []
+    for index, attempt in enumerate(outcome.attempts):
+        if attempt.result.get("status") in _OK:
+            _mission_metrics(attempt.result)
+            ranked.append((float(attempt.result["mission"][field]), index, attempt))
+        else:
+            others.append(attempt)
+    ranked.sort(key=lambda item: (item[0], item[1]))
+    lines: list[str] = []
+    for _value, _index, attempt in ranked:
+        mission_time, flight_time = _mission_metrics(attempt.result)
+        marked = winner is not None and attempt.result is winner.result
+        lines.append(_success_line(attempt, marked, mission_time, flight_time))
+    for attempt in others:
+        lines.append(_unsuccessful_line(attempt))
+    lines.extend(skip_limitation(skip) for skip in outcome.skips)
+    lines.extend(spectrum_mismatch_limitation(item) for item in outcome.mismatches)
+    return tuple(lines)
+
+
+def _card_prefix(aerodrome_id: str, board_id: str, model_id: str, camera_id: str, count: int) -> str:
+    return (
+        f"aerodrome {aerodrome_id} board {board_id} "
+        f"model {model_id} camera {camera_id} count {count}"
+    )
+
+
+def _format_metric(value: float) -> str:
+    text = f"{float(value):.6f}".rstrip("0").rstrip(".")
+    if "." not in text:
+        text += ".0"
+    return text
+
+
+def _mission_metrics(result: dict[str, Any]) -> tuple[float, float]:
+    mission = result.get("mission")
+    if not isinstance(mission, dict):
+        raise ValueError("missing fields: mission")
+    missing = [name for name in ("mission_time_s", "total_flight_time_s") if name not in mission]
+    if missing:
+        raise ValueError("missing fields: " + ", ".join(f"mission.{name}" for name in missing))
+    return float(mission["mission_time_s"]), float(mission["total_flight_time_s"])
+
+
+def _success_line(attempt: Attempt, winner: bool, mission_time: float, flight_time: float) -> str:
+    mark = " winner" if winner else ""
+    return (
+        f"candidate {_card_prefix(attempt.aerodrome_id, attempt.board_id, attempt.model_id, attempt.camera_id, attempt.count)}:"
+        f"{mark} mission_time_s={_format_metric(mission_time)} "
+        f"total_flight_time_s={_format_metric(flight_time)}"
+    )
+
+
+def _unsuccessful_line(attempt: Attempt) -> str:
+    """A called card that did not succeed. No flight time is written."""
+    status = attempt.result.get("status")
+    status_text = status if isinstance(status, str) and status else "not successful"
+    reason = attempt.result.get("reason")
+    detail = f"{status_text} {reason}" if isinstance(reason, str) and reason else status_text
+    return (
+        f"candidate {_card_prefix(attempt.aerodrome_id, attempt.board_id, attempt.model_id, attempt.camera_id, attempt.count)}: "
+        f"{detail}"
     )
 
 
@@ -236,6 +329,7 @@ def run_candidates(
                 board_id=item.board_id,
                 model_id=item.model_id,
                 camera_id=item.camera_id,
+                count=item.count,
                 data=data,
                 result=result,
             )
@@ -326,8 +420,11 @@ def _prepare(
         if required_spectrum not in camera_spectra:
             mismatches.append(
                 SpectrumMismatch(
+                    aerodrome_id=board["aerodrome_id"],
+                    board_id=board["id"],
                     model_id=model_id,
                     camera_id=camera_id,
+                    count=board["count"],
                     required_spectrum=required_spectrum,
                     camera_spectra=camera_spectra,
                 )
@@ -336,7 +433,16 @@ def _prepare(
             continue
         missing_fields = _missing_fields(model, camera)
         if missing_fields:
-            skips.append(Skip(model_id=model_id, camera_id=camera_id, missing=tuple(missing_fields)))
+            skips.append(
+                Skip(
+                    aerodrome_id=board["aerodrome_id"],
+                    board_id=board["id"],
+                    model_id=model_id,
+                    camera_id=camera_id,
+                    count=board["count"],
+                    missing=tuple(missing_fields),
+                )
+            )
             notes.extend(board_notes)
             continue
         notes.extend(board_notes)
@@ -369,6 +475,7 @@ def _prepare(
                 board_id=board["id"],
                 model_id=board["model_id"],
                 camera_id=board["camera_id"],
+                count=board["count"],
                 data=data,
             )
         )
