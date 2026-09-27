@@ -21,7 +21,7 @@ from planes.runtime.lock import JobLock, default_lock_path
 from planes.runtime.logs import redact
 from planes.runtime.types import dump_response, make_response, parse_response, safe_job_id
 
-MAX_BODY_BYTES = 1_048_576
+MAX_BODY_BYTES = 32 * 1024 * 1024
 # Process kill sits after the SCIP budget. The listener buffer stays on top.
 WRAPPER_SLACK_SECONDS = 5
 _CLI_BUFFER_SECONDS = 2.0
