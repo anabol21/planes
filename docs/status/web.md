@@ -53,9 +53,16 @@ limitation before deployment.
 - Source: `apps/web/src/MissionMap.tsx`, `apps/web/src/missionMapData.ts`, and typed additions in
   `apps/web/src/types.ts`.
 - Fixture: `apps/web/src/test-fixtures/mission-result-v0.json`.
-- Landing checks on this tree (`pnpm typecheck`, `pnpm test -- --run`, `pnpm build`,
-  `python scripts/validate_workspace.py`, `git diff --check`) are recorded with this branch's
-  vitest output after the cherry-pick.
+- `pnpm typecheck` from `apps/web`: passed (`tsc --noEmit`).
+- `pnpm test -- --run` from `apps/web`: passed 67 tests in 8 files (Vitest 5.0.1). The package
+  script is `vitest run`, so the process was `vitest run -- --run`.
+- `pnpm build` from `apps/web`: passed. Vite 8.3.0 transformed 61 modules. MapLibre stays in the
+  lazy `MissionMap` chunk, separate from the initial bundle. Vite warned that the MapLibre chunk
+  is larger than 500 kB; the build still exited 0.
+- `python3 scripts/validate_workspace.py` from the repo root: `Workspace validation: PASS`.
+  This environment has `/usr/bin/python3` and no `python` binary. The same script passed when
+  `python` was resolved to that `python3`.
+- `git diff --check`: passed, with no whitespace errors.
 
 ### Blockers / limitations
 
