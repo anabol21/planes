@@ -21,6 +21,8 @@ from .store import SQLiteJobStore
 StartResponse = Callable[[str, list[tuple[str, str]]], Any]
 _JOB_PATH = re.compile(r"^/jobs/([^/]+)$")
 _RESULT_PATH = re.compile(r"^/jobs/([^/]+)/result$")
+# Scenario JSON inlines survey_kml and constraints_kml.
+MAX_REQUEST_BODY_BYTES = 32 * 1024 * 1024
 
 
 class BackendAPI:
@@ -66,8 +68,10 @@ class BackendAPI:
             length = int(environ.get("CONTENT_LENGTH") or 0)
         except ValueError as error:
             raise ValidationError("invalid Content-Length") from error
-        if length <= 0 or length > 1_000_000:
-            raise ValidationError("request body must be between 1 and 1000000 bytes")
+        if length <= 0 or length > MAX_REQUEST_BODY_BYTES:
+            raise ValidationError(
+                f"request body must be between 1 and {MAX_REQUEST_BODY_BYTES} bytes"
+            )
         body = environ["wsgi.input"].read(length)
         payload = json.loads(body.decode("utf-8"))
         if not isinstance(payload, dict):

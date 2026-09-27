@@ -15,7 +15,7 @@ from wsgiref.simple_server import WSGIRequestHandler, make_server
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 
-from planes.backend.api import BackendAPI
+from planes.backend.api import MAX_REQUEST_BODY_BYTES, BackendAPI
 from planes.backend.fake_engine import FakeOptimizationEngine
 from planes.backend.service import BackendService, ResultNotReadyError
 from planes.backend.store import SQLiteJobStore
@@ -145,6 +145,57 @@ class BackendPipelineTests(unittest.TestCase):
         status, result = self.call_api(api, "GET", f"/jobs/{job_id}/result")
         self.assertEqual("200 OK", status)
         self.assertEqual("feasible", result["outcome"])
+
+    def test_body_over_old_million_byte_ceiling_is_accepted(self) -> None:
+        survey_kml = "K" * 1_100_000
+        payload = {
+            "scenario": {
+                "name": "organizer",
+                "survey_kml": survey_kml,
+                "constraints_kml": "",
+            },
+            "optimization": {},
+            "seed": 1,
+        }
+        body = json.dumps(payload).encode("utf-8")
+        self.assertGreater(len(body), 1_000_000)
+        self.assertLessEqual(len(body), MAX_REQUEST_BODY_BYTES)
+        status, response = self.call_raw_api(
+            BackendAPI(self.service), "POST", "/jobs", body
+        )
+        self.assertEqual("202 Accepted", status)
+        self.assertNotIn("1000000", json.dumps(response))
+        stored = self.store.get_job(response["job_id"])
+        self.assertIsNotNone(stored)
+        self.assertEqual(survey_kml, stored.scenario["survey_kml"])
+
+    def test_body_over_32_mib_returns_400(self) -> None:
+        self.assertEqual(32 * 1024 * 1024, MAX_REQUEST_BODY_BYTES)
+
+        class Unreadable(io.RawIOBase):
+            def read(self, size: int = -1) -> bytes:
+                raise AssertionError("oversized body must be rejected before it is read")
+
+        captured: dict[str, Any] = {}
+
+        def start_response(status: str, headers: list[tuple[str, str]]) -> None:
+            captured["status"] = status
+
+        environ = {
+            "REQUEST_METHOD": "POST",
+            "PATH_INFO": "/jobs",
+            "CONTENT_LENGTH": str(MAX_REQUEST_BODY_BYTES + 1),
+            "wsgi.input": Unreadable(),
+        }
+        response_body = b"".join(BackendAPI(self.service)(environ, start_response))
+        response = json.loads(response_body)
+        self.assertEqual("400 Bad Request", captured["status"])
+        self.assertEqual("invalid_request", response["error"])
+        self.assertEqual(
+            f"request body must be between 1 and {MAX_REQUEST_BODY_BYTES} bytes",
+            response["message"],
+        )
+        self.assertNotIn("1000000", response["message"])
 
     def test_malformed_json_returns_400(self) -> None:
         status, response = self.call_raw_api(BackendAPI(self.service), "POST", "/jobs", b"{")
