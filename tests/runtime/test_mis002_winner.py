@@ -1,4 +1,8 @@
-"""The live path returns one winning call. These cases use a fake core."""
+"""Winner selection stays on the enumeration module.
+
+The live envelope with aerodromes and boards calls the geo core. These cases
+cover ``select_winner`` and the one-card gibrid path.
+"""
 
 from __future__ import annotations
 
@@ -7,8 +11,8 @@ import time
 import unittest
 from pathlib import Path
 
-from planes.runtime.enumeration import Attempt, EnumerationResult, is_outer_scenario
-from planes.runtime.solver import Infeasible, Problem, Solution, TimedOut, solve
+from planes.runtime.enumeration import Attempt, is_outer_scenario, select_winner
+from planes.runtime.solver import Infeasible, Problem, TimedOut, solve
 
 _INPUT = (
     Path(__file__).resolve().parents[2]
@@ -20,8 +24,6 @@ _INPUT = (
     / "data"
     / "input.json"
 )
-
-_ASSEMBLED = ("routes", "strips", "validation", "mission")
 
 
 def _plan(
@@ -66,83 +68,66 @@ def _attempt(
 
 
 class WinnerSelectionTest(unittest.TestCase):
-    def _solve(self, attempts: list[Attempt], criterion: str, *, stopped: bool = False):
-        import planes.runtime.solver as solver_module
+    def test_min_time_keeps_the_shorter_mission(self) -> None:
+        slow = _attempt("a-slow", "b-slow", "m-slow", "c-slow", 20.0, 5.0)
+        fast = _attempt("a-fast", "b-fast", "m-fast", "c-fast", 9.0, 30.0)
+        winner = select_winner((slow, fast), "min_time")
+        self.assertIsNotNone(winner)
+        assert winner is not None
+        self.assertEqual(winner.objective_value, 9.0)
+        self.assertEqual(winner.aerodrome_id, "a-fast")
+        self.assertEqual(winner.board_id, "b-fast")
+        self.assertEqual(winner.model_id, "m-fast")
+        self.assertEqual(winner.camera_id, "c-fast")
+        self.assertEqual(winner.result["mission"]["mission_time_s"], 9.0)
 
-        def fake_run(scenario, *, seed, time_limit_s, core=None, deadline=None):
-            del scenario, seed, time_limit_s, core, deadline
-            return EnumerationResult(attempts=tuple(attempts), stopped_for_deadline=stopped)
+    def test_min_flight_hours_reads_total_flight_time(self) -> None:
+        slow = _attempt("a-slow", "b-slow", "m-slow", "c-slow", 20.0, 5.0, criterion="min_flight_hours")
+        fast = _attempt("a-fast", "b-fast", "m-fast", "c-fast", 9.0, 30.0, criterion="min_flight_hours")
+        winner = select_winner((slow, fast), "min_flight_hours")
+        self.assertIsNotNone(winner)
+        assert winner is not None
+        self.assertEqual(winner.objective_value, 5.0)
+        self.assertEqual(winner.aerodrome_id, "a-slow")
+        self.assertEqual(winner.board_id, "b-slow")
 
-        original = solver_module.run_candidates
-        solver_module.run_candidates = fake_run
+    def test_tie_keeps_the_earlier_call(self) -> None:
+        first = _attempt("a1", "b1", "m1", "c1", 9.0, 9.0)
+        second = _attempt("a2", "b2", "m2", "c2", 9.0, 9.0)
+        winner = select_winner((first, second), "min_time")
+        self.assertIsNotNone(winner)
+        assert winner is not None
+        self.assertEqual(winner.aerodrome_id, "a1")
+        self.assertEqual(winner.board_id, "b1")
+
+    def test_empty_attempts_have_no_winner(self) -> None:
+        self.assertIsNone(select_winner((), "min_time"))
+
+    def test_expired_outer_deadline_does_not_call_the_geo_core(self) -> None:
+        import planes.runtime.geo_mission as geo_mission
+
+        def boom(*args, **kwargs):
+            del args, kwargs
+            raise AssertionError("expired envelope called the geo core")
+
+        original = geo_mission._run_pipeline
+        geo_mission._run_pipeline = boom
         problem = Problem(
             job_id="job_outer",
             scenario={
                 "aerodromes": [{"id": "аэродром 1", "lat": 55.747, "lon": 37.6}],
                 "boards": [],
                 "required_spectrum": "RGB",
-                "criterion": criterion,
+                "criterion": "min_time",
             },
-            objective="min_time" if criterion == "min_time" else "min_total_flight_time",
+            objective="min_time",
             seed=7,
             time_limit_seconds=90,
         )
         try:
-            return solve(problem, time.monotonic() + 30)
+            result = solve(problem, time.monotonic() - 1)
         finally:
-            solver_module.run_candidates = original
-
-    def test_min_time_keeps_the_shorter_mission_and_names_the_winner(self) -> None:
-        slow = _attempt("a-slow", "b-slow", "m-slow", "c-slow", 20.0, 5.0)
-        fast = _attempt("a-fast", "b-fast", "m-fast", "c-fast", 9.0, 30.0)
-        result = self._solve([slow, fast], "min_time")
-        self.assertIsInstance(result, Solution)
-        self.assertEqual(result.objective_value, 9.0)
-        self.assertEqual(result.mission_plan["mission"]["mission_time_s"], 9.0)
-        self.assertIn("winning aerodrome id: a-fast", result.limitations)
-        self.assertIn("winning board id: b-fast", result.limitations)
-        self.assertIn("winning model id: m-fast", result.limitations)
-        self.assertIn("winning camera id: c-fast", result.limitations)
-        for key in _ASSEMBLED:
-            self.assertIn(key, result.mission_plan)
-
-    def test_min_flight_hours_reads_total_flight_time(self) -> None:
-        slow = _attempt("a-slow", "b-slow", "m-slow", "c-slow", 20.0, 5.0, criterion="min_flight_hours")
-        fast = _attempt("a-fast", "b-fast", "m-fast", "c-fast", 9.0, 30.0, criterion="min_flight_hours")
-        result = self._solve([slow, fast], "min_flight_hours")
-        self.assertIsInstance(result, Solution)
-        self.assertEqual(result.objective_value, 5.0)
-        self.assertIn("winning aerodrome id: a-slow", result.limitations)
-        self.assertIn("winning board id: b-slow", result.limitations)
-        self.assertIn("winning model id: m-slow", result.limitations)
-        self.assertIn("winning camera id: c-slow", result.limitations)
-
-    def test_tie_keeps_the_earlier_call(self) -> None:
-        first = _attempt("a1", "b1", "m1", "c1", 9.0, 9.0)
-        second = _attempt("a2", "b2", "m2", "c2", 9.0, 9.0)
-        result = self._solve([first, second], "min_time")
-        self.assertIsInstance(result, Solution)
-        self.assertIn("winning aerodrome id: a1", result.limitations)
-        self.assertIn("winning board id: b1", result.limitations)
-        self.assertIn("winning model id: m1", result.limitations)
-
-    def test_heuristic_limitation_stays_with_the_winner(self) -> None:
-        attempt = _attempt("a1", "b1", "m1", "c1", 4.0, 4.0, status="heuristic")
-        result = self._solve([attempt], "min_time")
-        self.assertIsInstance(result, Solution)
-        self.assertTrue(any("not globally optimal" in item for item in result.limitations))
-        self.assertIn("winning aerodrome id: a1", result.limitations)
-        self.assertIn("winning board id: b1", result.limitations)
-        self.assertIn("winning model id: m1", result.limitations)
-        self.assertIn("winning camera id: c1", result.limitations)
-
-    def test_no_runnable_board_is_infeasible(self) -> None:
-        result = self._solve([], "min_time")
-        self.assertIsInstance(result, Infeasible)
-        self.assertIn("no runnable board", result.limitations)
-
-    def test_deadline_without_a_success_is_timed_out(self) -> None:
-        result = self._solve([], "min_time", stopped=True)
+            geo_mission._run_pipeline = original
         self.assertIsInstance(result, TimedOut)
 
     def test_single_call_uses_meta_and_keeps_grisha_solver_fields(self) -> None:
@@ -195,7 +180,6 @@ class WinnerSelectionTest(unittest.TestCase):
 
     def test_single_takeoff_uav_does_not_use_the_catalog(self) -> None:
         import planes.runtime.enumeration.outer as outer
-        import planes.runtime.solver as solver_module
 
         scenario = json.loads(_INPUT.read_text(encoding="utf-8"))
         scenario.pop("solver", None)
@@ -203,17 +187,11 @@ class WinnerSelectionTest(unittest.TestCase):
         self.assertIn("takeoff", scenario)
         self.assertIn("uav", scenario)
 
-        def boom(*args, **kwargs):
-            del args, kwargs
-            raise AssertionError("single takeoff/uav scenario enumerated")
-
         def boom_catalog(*args, **kwargs):
             del args, kwargs
             raise AssertionError("single takeoff/uav scenario read the catalog")
 
-        original = solver_module.run_candidates
         original_catalog = outer.load_catalog
-        solver_module.run_candidates = boom
         outer.load_catalog = boom_catalog
         problem = Problem(
             job_id="job_one",
@@ -225,7 +203,6 @@ class WinnerSelectionTest(unittest.TestCase):
         try:
             result = solve(problem, time.monotonic() - 1)
         finally:
-            solver_module.run_candidates = original
             outer.load_catalog = original_catalog
         self.assertIsInstance(result, TimedOut)
 

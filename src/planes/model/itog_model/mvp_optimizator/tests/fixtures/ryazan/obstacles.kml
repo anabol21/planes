@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2">
+  <Document>
+    <name>Ryazan obstacles</name>
+
+    <Placemark>
+      <name>tower-1</name>
+      <description>height=50</description>
+      <Polygon>
+        <outerBoundaryIs>
+          <LinearRing>
+            <coordinates>
+              39.7485,54.9145,0
+              39.7488,54.9145,0
+              39.7488,54.9148,0
+              39.7485,54.9148,0
+              39.7485,54.9145,0
+            </coordinates>
+          </LinearRing>
+        </outerBoundaryIs>
+      </Polygon>
+    </Placemark>
+
+    <Placemark>
+      <name>building-1</name>
+      <description>height=30</description>
+      <Polygon>
+        <outerBoundaryIs>
+          <LinearRing>
+            <coordinates>
+              39.7510,54.9155,0
+              39.7515,54.9155,0
+              39.7515,54.9160,0
+              39.7510,54.9160,0
+              39.7510,54.9155,0
+            </coordinates>
+          </LinearRing>
+        </outerBoundaryIs>
+      </Polygon>
+    </Placemark>
+
+  </Document>
+</kml>

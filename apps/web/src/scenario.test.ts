@@ -66,22 +66,6 @@ const ZONE_KML = `<?xml version="1.0" encoding="UTF-8"?>
 </coordinates></LinearRing></outerBoundaryIs></Polygon>
 </Placemark></Document></kml>`;
 
-const OBSTACLE_KML = `<?xml version="1.0" encoding="UTF-8"?>
-<kml xmlns="http://www.opengis.net/kml/2.2"><Document>
-<Placemark><name>BUILDING</name><Polygon><altitudeMode>relativeToGround</altitudeMode>
-<outerBoundaryIs><LinearRing><coordinates>
-37.602,55.749,48 37.603,55.749,48 37.603,55.750,48 37.602,55.749,48
-</coordinates></LinearRing></outerBoundaryIs></Polygon></Placemark>
-<Placemark><name>COMMUNICATION_TOWER</name><Polygon><altitudeMode>relativeToGround</altitudeMode>
-<outerBoundaryIs><LinearRing><coordinates>
-37.0,55.0,80 38.0,55.0,80 38.0,56.0,80 37.0,56.0,80 37.0,55.0,80
-</coordinates></LinearRing></outerBoundaryIs></Polygon></Placemark>
-<Placemark><name>FAR_BUILDING</name><Polygon><altitudeMode>relativeToGround</altitudeMode>
-<outerBoundaryIs><LinearRing><coordinates>
-10,10,20 10.1,10,20 10.1,10.1,20 10,10,20
-</coordinates></LinearRing></outerBoundaryIs></Polygon></Placemark>
-</Document></kml>`;
-
 const EMPTY_SURVEY_KML = `<?xml version="1.0" encoding="UTF-8"?>
 <kml xmlns="http://www.opengis.net/kml/2.2"><Document><Placemark><name>takeoff</name>
 <Point><coordinates>37.6,55.747,0</coordinates></Point>
@@ -159,7 +143,6 @@ function inputs(): ScenarioInputs {
     windDirectionFromDeg: 270,
     surveyTask: kml("survey", "survey_task", SURVEY_KML),
     restrictedZones: kml("restricted", "restricted_zones", ZONE_KML),
-    obstacles: [kml("obstacle-a", "obstacle", OBSTACLE_KML)],
   };
 }
 
@@ -227,13 +210,8 @@ describe("prototype scenario", () => {
       criterion: "min_time",
       crs: "EPSG:4326",
       gsd_cm_per_px: 3,
-      area: [
-        [37.601, 55.748],
-        [37.609, 55.748],
-        [37.609, 55.7525],
-        [37.601, 55.7525],
-        [37.601, 55.748],
-      ],
+      survey_kml: SURVEY_KML,
+      constraints_kml: ZONE_KML,
       required_spectrum: "RGB",
       survey: { forward_overlap: 0.7, side_overlap: 0.6, strip_direction_deg: 0 },
       wind: { speed_ms: 3, direction_deg: 270 },
@@ -261,44 +239,13 @@ describe("prototype scenario", () => {
     expect(scenario("min_total_flight_time").criterion).toBe("min_flight_hours");
   });
 
-  it("keeps restriction text and obstacles whose footprint meets the survey bbox", () => {
+  it("uploads the survey and constraint KML texts and does not parse them only in the browser", () => {
     const built = scenario();
-    expect(built.zone_constraints).toEqual([
-      {
-        ring: [
-          [37.602, 55.749],
-          [37.603, 55.749],
-          [37.603, 55.75],
-          [37.602, 55.749],
-        ],
-        name: "Сектор А",
-        type: "врем_ограничение",
-        altitudes_text: "от 800 м AMSL до FL90",
-      },
-    ]);
-    expect(built.obstacles).toEqual([
-      {
-        ring: [
-          [37.602, 55.749],
-          [37.603, 55.749],
-          [37.603, 55.75],
-          [37.602, 55.749],
-        ],
-        height_m: 48,
-        kind: "BUILDING",
-      },
-      {
-        ring: [
-          [37, 55],
-          [38, 55],
-          [38, 56],
-          [37, 56],
-          [37, 55],
-        ],
-        height_m: 80,
-        kind: "COMMUNICATION_TOWER",
-      },
-    ]);
+    expect(built.survey_kml).toBe(SURVEY_KML);
+    expect(built.constraints_kml).toBe(ZONE_KML);
+    expect(built).not.toHaveProperty("area");
+    expect(built).not.toHaveProperty("zone_constraints");
+    expect(built).not.toHaveProperty("obstacles");
     expect(built).not.toHaveProperty("default_profile");
     expect(built).not.toHaveProperty("power_coeffs");
   });
@@ -368,14 +315,21 @@ describe("prototype scenario", () => {
     expect(request.scenario.boards).toHaveLength(1);
     expect(request.scenario.uav_types).toBeUndefined();
     expect(request.scenario.required_camera).toBeUndefined();
-    expect(request.scenario.area).toHaveLength(5);
-    expect(request.scenario.obstacles).toHaveLength(2);
-    expect(request.scenario.zone_constraints).toHaveLength(1);
+    expect(request.scenario.survey_kml).toBe(SURVEY_KML);
+    expect(request.scenario.constraints_kml).toBe(ZONE_KML);
+    expect(request.scenario.area).toBeUndefined();
+    expect(request.scenario.obstacles).toBeUndefined();
+    expect(request.scenario.zone_constraints).toBeUndefined();
   });
 
   it("rejects missing required survey KML", () => {
     const invalid = { ...inputs(), surveyTask: null };
     expect(() => validateScenarioInputs(invalid)).toThrow("Загрузите корректный KML");
+  });
+
+  it("rejects missing required constraint KML", () => {
+    const invalid = { ...inputs(), restrictedZones: null };
+    expect(() => validateScenarioInputs(invalid)).toThrow("зонами ограничений");
   });
 
   it("rejects a camera that is not compatible with the selected model", () => {

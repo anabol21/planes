@@ -140,10 +140,13 @@ def run(raw: bytes, solve_fn: SolveFn | None = None) -> ComputeResponse:
     except NotImplementedError:
         _stage("solve", f"NotImplementedError, job_id={problem.job_id}")
         return _judged(_error(problem, [_NOT_IMPLEMENTED], time.monotonic() - started))
-    except Exception:
+    except Exception as exc:
         _stage("solve", f"исключение, job_id={problem.job_id}")
+        limitations = ["solver failed before producing a result"]
+        if isinstance(exc, ValueError) and str(exc):
+            limitations.append(str(exc))
         return _judged(
-            _error(problem, ["solver failed before producing a result"], time.monotonic() - started)
+            _error(problem, limitations, time.monotonic() - started)
         )
     _stage("solve", f"результат {type(result).__name__}, job_id={problem.job_id}")
     return _judged(judge(problem, result, time.monotonic() - started))

@@ -10,8 +10,15 @@ import time
 import unittest
 from pathlib import Path
 
-from planes.runtime.enumeration import candidates, is_outer_scenario, run_candidates
-from planes.runtime.logs import log_directory
+from planes.runtime.enumeration import (
+    candidates,
+    is_outer_scenario,
+    run_candidates,
+    select_winner,
+    skip_limitation,
+    spectrum_mismatch_limitation,
+)
+from planes.runtime.logs import log_directory, record
 from planes.runtime.solver import Infeasible, Problem, Solution, solve
 
 _INPUT = (
@@ -181,18 +188,6 @@ class EnvelopeFilterTest(unittest.TestCase):
         self.assertEqual(mismatch.camera_id, "geoscan-pf1b")
         self.assertEqual(mismatch.required_spectrum, "LiDAR")
         self.assertEqual(mismatch.camera_spectra, ("RGB",))
-
-        problem = Problem(
-            job_id="job_lidar",
-            scenario=scenario,
-            objective="min_time",
-            seed=7,
-            time_limit_seconds=30,
-        )
-        result = solve(problem, time.monotonic() + 5)
-        self.assertIsInstance(result, Infeasible)
-        self.assertIn("no camera covers required spectrum", result.limitations)
-        self.assertTrue(any("geoscan-gemini" in line and "geoscan-pf1b" in line for line in result.limitations))
 
         geophysical = run_candidates(
             _envelope(profile, "geophysical", _one_aerodrome(), boards),
@@ -413,26 +408,55 @@ def _optimal(data, solver_choice: str = "auto", *, seed: int = 42):
 
 class CatalogPipelineTest(unittest.TestCase):
     def _solve(self, scenario: dict, job_id: str, core=None):
-        import planes.runtime.enumeration.outer as outer
+        from planes.runtime.solver import _map_result
 
-        original = outer._run_optimizer
-        if core is not None:
-            outer._run_optimizer = lambda: core
         buffer = io.StringIO()
-        try:
-            with contextlib.redirect_stderr(buffer):
-                result = solve(
-                    Problem(
-                        job_id=job_id,
-                        scenario=scenario,
-                        objective="min_time",
-                        seed=7,
-                        time_limit_seconds=30,
-                    ),
-                    time.monotonic() + 30,
-                )
-        finally:
-            outer._run_optimizer = original
+        with contextlib.redirect_stderr(buffer):
+            outcome = run_candidates(
+                scenario,
+                seed=7,
+                time_limit_s=30,
+                core=core,
+                deadline=time.monotonic() + 30,
+            )
+            noted = (
+                *tuple(skip_limitation(skip) for skip in outcome.skips),
+                *tuple(spectrum_mismatch_limitation(item) for item in outcome.mismatches),
+                *outcome.disclosures,
+            )
+            winner = select_winner(outcome.attempts, scenario["criterion"])
+            if winner is not None:
+                mapped = _map_result(winner.result)
+                if isinstance(mapped, Solution):
+                    lines = (
+                        *mapped.limitations,
+                        f"winning aerodrome id: {winner.aerodrome_id}",
+                        f"winning board id: {winner.board_id}",
+                        f"winning model id: {winner.model_id}",
+                        f"winning camera id: {winner.camera_id}",
+                        *noted,
+                    )
+                    result = Solution(
+                        mission_plan=mapped.mission_plan,
+                        method=mapped.method,
+                        objective_value=mapped.objective_value,
+                        limitations=lines,
+                    )
+                else:
+                    result = Infeasible((*mapped.limitations, *noted))
+            else:
+                reasons: list[str] = []
+                if not outcome.attempts:
+                    reasons.append(outcome.reason or "no runnable board")
+                for item in outcome.attempts:
+                    reason = item.result.get("reason")
+                    if isinstance(reason, str) and reason and reason not in reasons:
+                        reasons.append(reason)
+                for line in noted:
+                    if line not in reasons:
+                        reasons.append(line)
+                result = Infeasible(tuple(reasons))
+            record(job_id, "\n".join(result.limitations))
         logged = (log_directory() / f"{job_id}.log").read_text(encoding="utf-8")
         return result, buffer.getvalue(), logged
 

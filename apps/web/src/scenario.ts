@@ -3,8 +3,6 @@ import fleetCatalog from "../../../src/planes/runtime/catalog/fleet_catalog.json
 import type { JsonObject } from "./types";
 import {
   extractKmlPolygons,
-  ringBounds,
-  ringIntersectsBounds,
   type KmlFileRecord,
   type KmlPolygonRing,
   type XmlParser,
@@ -46,7 +44,6 @@ export interface ScenarioInputs {
   windDirectionFromDeg: number | null;
   surveyTask: KmlFileRecord | null;
   restrictedZones: KmlFileRecord | null;
-  obstacles: KmlFileRecord[];
 }
 
 export const DEFAULT_AERODROME_LON = 37.6;
@@ -152,8 +149,8 @@ export function validateScenarioInputs(inputs: ScenarioInputs): void {
   if (!inputs.surveyTask || inputs.surveyTask.status !== "ready") {
     throw new Error("Загрузите корректный KML с границами задания на съёмку.");
   }
-  if (inputs.restrictedZones?.status === "error" || inputs.obstacles.some((file) => file.status === "error")) {
-    throw new Error("Исправьте ошибки чтения KML перед запуском.");
+  if (!inputs.restrictedZones || inputs.restrictedZones.status !== "ready") {
+    throw new Error("Загрузите корректный KML с зонами ограничений.");
   }
   if (inputs.aerodromes.length < 1 || inputs.aerodromes.length > 4) {
     throw new Error("Число аэродромов от 1 до 4.");
@@ -209,23 +206,12 @@ export function solverCriterion(objective: string): "min_time" | "min_flight_hou
   throw new Error("Выберите критерий оптимизации.");
 }
 
-function extendedValue(data: Record<string, string>, key: string): string | null {
-  if (data[key]) return data[key];
-  const match = Object.entries(data).find(([name]) => name.toLowerCase() === key.toLowerCase());
-  return match?.[1] ?? null;
-}
-
 function polygonLabel(polygon: KmlPolygonRing, index: number): string {
   const name = polygon.name?.trim() || `polygon ${index + 1}`;
   const lon = polygon.ring[0]?.[0];
   const lat = polygon.ring[0]?.[1];
   if (!Number.isFinite(lon) || !Number.isFinite(lat)) return name;
   return `${name} (${lon}, ${lat})`;
-}
-
-function polygonsOf(file: KmlFileRecord | null, parser?: XmlParser): KmlPolygonRing[] {
-  if (!file || file.status !== "ready" || !file.raw_text) return [];
-  return extractKmlPolygons(file.raw_text, parser);
 }
 
 function surveyRing(file: KmlFileRecord, parser?: XmlParser): number[][] {
@@ -282,8 +268,11 @@ export function buildPrototypeScenario(
   objective = "min_time",
   parser?: XmlParser,
 ): JsonObject {
-  if (!inputs.surveyTask || inputs.surveyTask.status !== "ready") {
+  if (!inputs.surveyTask || inputs.surveyTask.status !== "ready" || !inputs.surveyTask.raw_text) {
     throw new Error("Загрузите корректный KML с границами задания на съёмку.");
+  }
+  if (!inputs.restrictedZones || inputs.restrictedZones.status !== "ready" || !inputs.restrictedZones.raw_text) {
+    throw new Error("Загрузите корректный KML с зонами ограничений.");
   }
   if (inputs.aerodromes.length < 1 || inputs.aerodromes.length > 4) {
     throw new Error("Число аэродромов от 1 до 4.");
@@ -302,33 +291,14 @@ export function buildPrototypeScenario(
     throw new Error("Перекрытие поперёк должно быть от 0 до 1, не включая 1.");
   }
   requireFinite(inputs.stripDirectionDeg, "Направление полос");
-  const area = surveyRing(inputs.surveyTask, parser);
-  const bounds = ringBounds(area);
-  if (!bounds) throw new Error("В KML задания нет полигона съёмки.");
-  const zoneConstraints = polygonsOf(inputs.restrictedZones, parser).map((polygon) => ({
-    ring: polygon.ring,
-    name: extendedValue(polygon.extended_data, "Name") ?? polygon.name,
-    type: extendedValue(polygon.extended_data, "Type"),
-    altitudes_text: extendedValue(polygon.extended_data, "Altitudes"),
-  }));
-  const obstacles = inputs.obstacles.flatMap((file) =>
-    polygonsOf(file, parser).flatMap((polygon) => {
-      if (!ringIntersectsBounds(polygon.ring, bounds)) return [];
-      return [
-        {
-          ring: polygon.ring,
-          height_m: polygon.height_m,
-          kind: polygon.name,
-        },
-      ];
-    }),
-  );
+  surveyRing(inputs.surveyTask, parser);
   return {
     scenario_id: inputs.scenarioId.trim(),
     crs: "EPSG:4326",
     criterion: solverCriterion(objective),
     gsd_cm_per_px: inputs.gsdCmPerPx,
-    area,
+    survey_kml: inputs.surveyTask.raw_text,
+    constraints_kml: inputs.restrictedZones.raw_text,
     required_spectrum: inputs.surveyType,
     aerodromes: inputs.aerodromes.map((aerodrome, index) => ({
       id: aerodromeId(index),
@@ -346,13 +316,10 @@ export function buildPrototypeScenario(
       speed_ms: inputs.windSpeedMps,
       direction_deg: windDirectionDeg(inputs.windDirectionFromDeg),
     },
-    zone_constraints: zoneConstraints,
-    obstacles,
     prototype_limitations: [
-      "KML rings are extracted in the browser. Source files stay local and are not uploaded.",
-      "Altitude sentences in zone constraints are copied as text and are not parsed.",
-      "Obstacles are limited to footprints that intersect the survey bounding box.",
-      "Each board card names a catalog model, a compatible camera, an aerodrome, and a count of identical aircraft. The server reads flight and optic numbers from the fleet catalog. Power coefficients and turn time come from the selected model. Survey spectrum does not filter cameras.",
+      "Survey and constraint KML texts are uploaded with the job. The server parses both.",
+      "Altitude sentences are copied as text and are not parsed in the browser.",
+      "Each board card names a catalog model, a compatible camera, an aerodrome, and a count of identical aircraft. Survey spectrum does not filter cameras.",
     ],
   };
 }

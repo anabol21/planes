@@ -1,0 +1,25 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "area-1",
+        "name": "Test area",
+        "survey_type": "visible"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [37.620, 55.750],
+            [37.628, 55.750],
+            [37.628, 55.7545],
+            [37.620, 55.7545],
+            [37.620, 55.750]
+          ]
+        ]
+      }
+    }
+  ]
+}

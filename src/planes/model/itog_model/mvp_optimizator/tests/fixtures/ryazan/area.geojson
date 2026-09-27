@@ -1,0 +1,25 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "area-1",
+        "name": "Ryazan test area",
+        "survey_type": "visible"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [39.7462, 54.9128],
+            [39.7538, 54.9128],
+            [39.7538, 54.9173],
+            [39.7462, 54.9173],
+            [39.7462, 54.9128]
+          ]
+        ]
+      }
+    }
+  ]
+}

@@ -11,14 +11,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from planes.runtime.enumeration import (
-    is_outer_scenario,
-    run_candidates,
-    select_winner,
-    skip_limitation,
-    spectrum_mismatch_limitation,
-)
-from planes.runtime.logs import record
+from planes.runtime.enumeration import is_outer_scenario
 
 
 @dataclass(frozen=True)
@@ -74,21 +67,19 @@ _optimizer: tuple[Any, Any, Any] | None = None
 def solve(problem: Problem, deadline: float) -> Solution | Infeasible | TimedOut:
     """Build one ``InputData`` and call ``run``.
 
-    An envelope with ``aerodromes`` and ``boards`` enumerates one core call
-    per runnable board card and returns the single best successful call.
-    An envelope that still has ``pads`` or ``uav_types`` is rejected. A
-    scenario that still has one ``takeoff`` and one ``uav`` stays on that
-    one-call path.
+    An envelope with ``aerodromes`` and ``boards`` calls
+    ``planner.solver.pipeline`` of the copied geo core. An envelope that
+    still has ``pads`` or ``uav_types`` is rejected. A scenario that still
+    has one ``takeoff`` and one ``uav`` stays on gibrid-optimizer with
+    ``solver_choice="meta"``.
 
     ``deadline`` is ``time.monotonic()`` plus the problem time limit.
-    Missing fields and pydantic or import failures raise ``ValueError``.
-    The pipeline turns that into ``outcome=error``.
+    Missing fields, a missing terrain key, an invalid raster, and pydantic
+    or import failures raise ``ValueError``. The pipeline turns that into
+    ``outcome=error``. A missing raster is not replaced with flat terrain.
 
-    The core call uses Grisha's metaheuristic (``solver_choice="meta"``).
-    A single takeoff/uav scenario keeps his ``SolverCfg`` turn fields.
-    The outer path takes ``turn_time_s`` from the catalog model and leaves
-    ``apply_turn_to_base`` false. Only ``time_limit_s`` is the task limit.
-    Non-passport values are written into limitations and the process log.
+    A single takeoff/uav scenario keeps Grisha's ``SolverCfg`` turn fields.
+    Only ``time_limit_s`` is the task limit on that path.
     """
     if isinstance(problem.scenario, dict) and "uav_types" in problem.scenario:
         raise ValueError("uav_types is not accepted")
@@ -109,74 +100,10 @@ def solve(problem: Problem, deadline: float) -> Solution | Infeasible | TimedOut
 
 
 def _solve_outer(problem: Problem, deadline: float) -> Solution | Infeasible | TimedOut:
-    """Enumerate admitted board cards and return the single best successful call."""
-    if time.monotonic() >= deadline:
-        lines = (_TIME_LIMIT,)
-        _log_outer(problem.job_id, lines)
-        return TimedOut(lines)
-    outcome = run_candidates(
-        problem.scenario,
-        seed=problem.seed,
-        time_limit_s=problem.time_limit_seconds,
-        deadline=deadline,
-    )
-    criterion = problem.scenario.get("criterion")
-    if not isinstance(criterion, str):
-        raise ValueError("missing fields: criterion")
-    noted = (
-        *tuple(skip_limitation(skip) for skip in outcome.skips),
-        *tuple(spectrum_mismatch_limitation(item) for item in outcome.mismatches),
-        *outcome.disclosures,
-    )
-    winner = select_winner(outcome.attempts, criterion)
-    if winner is not None:
-        mapped = _map_result(winner.result)
-        if isinstance(mapped, Solution):
-            lines = (
-                *mapped.limitations,
-                f"winning aerodrome id: {winner.aerodrome_id}",
-                f"winning board id: {winner.board_id}",
-                f"winning model id: {winner.model_id}",
-                f"winning camera id: {winner.camera_id}",
-                *noted,
-            )
-            _log_outer(problem.job_id, lines)
-            return Solution(
-                mission_plan=mapped.mission_plan,
-                method=mapped.method,
-                objective_value=mapped.objective_value,
-                limitations=lines,
-            )
-        lines = (*mapped.limitations, *noted)
-        _log_outer(problem.job_id, lines)
-        if isinstance(mapped, Infeasible):
-            return Infeasible(lines)
-        return TimedOut(lines)
-    if outcome.stopped_for_deadline or any(
-        item.result.get("status") == "unknown" for item in outcome.attempts
-    ):
-        lines = (_TIME_LIMIT, *noted)
-        _log_outer(problem.job_id, lines)
-        return TimedOut(lines)
-    reasons: list[str] = []
-    if not outcome.attempts:
-        reasons.append(outcome.reason or "no runnable board")
-    for item in outcome.attempts:
-        reason = item.result.get("reason")
-        if isinstance(reason, str) and reason and reason not in reasons:
-            reasons.append(reason)
-    for line in noted:
-        if line not in reasons:
-            reasons.append(line)
-    lines = tuple(reasons)
-    _log_outer(problem.job_id, lines)
-    return Infeasible(lines)
+    """Call the copied geo core once for the whole aerodrome and board envelope."""
+    from planes.runtime.geo_mission import solve_envelope
 
-
-def _log_outer(job_id: str, lines: tuple[str, ...]) -> None:
-    """Write limitation lines to the job process log, including when ``run()`` was not called."""
-    body = "\n".join(lines) if lines else "outer enumeration: no limitation lines"
-    record(job_id, f"job_id={job_id} outer-limitations\n{body}")
+    return solve_envelope(problem, deadline)
 
 
 def _solver_cfg(time_limit_s: int | float, existing: Any) -> dict[str, Any]:

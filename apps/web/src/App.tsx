@@ -392,7 +392,6 @@ export default function App() {
   const [seedText, setSeedText] = useState(DEFAULT_SEED);
   const [surveyTask, setSurveyTask] = useState<KmlFileRecord | null>(null);
   const [restrictedZones, setRestrictedZones] = useState<KmlFileRecord | null>(null);
-  const [obstacles, setObstacles] = useState<KmlFileRecord[]>([]);
   const [loadingCategory, setLoadingCategory] = useState<KmlCategory | null>(null);
   const [job, setJob] = useState<JobStatus | null>(null);
   const [result, setResult] = useState<JobResult | null>(null);
@@ -418,8 +417,7 @@ export default function App() {
     windDirectionFromDeg: windDirection,
     surveyTask,
     restrictedZones,
-    obstacles,
-  }), [scenarioId, aerodromes, boards, surveyType, gsdCmPerPx, forwardOverlap, sideOverlap, stripDirectionDeg, windSpeed, windDirection, surveyTask, restrictedZones, obstacles]);
+  }), [scenarioId, aerodromes, boards, surveyType, gsdCmPerPx, forwardOverlap, sideOverlap, stripDirectionDeg, windSpeed, windDirection, surveyTask, restrictedZones]);
 
   function changeAerodromeCount(count: number) {
     setAerodromes((current) => resizeAerodromes(current, count));
@@ -449,7 +447,6 @@ export default function App() {
       const records = await Promise.all(files.map((file) => readKmlFile(file, category, `kml-${++fileSequence.current}`)));
       if (category === "survey_task") setSurveyTask(records[0]);
       else if (category === "restricted_zones") setRestrictedZones(records[0]);
-      else setObstacles((current) => [...current, ...records]);
     } finally {
       setLoadingCategory(null);
     }
@@ -517,7 +514,7 @@ export default function App() {
 
       <div className="honesty-banner">
         <strong>Prototype scenario profile</strong>
-        <p>KML читается локально. В запрос уходят кольца полигонов, аэродромы, борты, GSD, перекрытия и направление полос. Камера берётся из рёбер совместимости выбранной модели. Скорость, батарея, оптика и коэффициенты мощности подставляются на сервере из справочника модели. Маршруты рассчитывает только backend/runtime.</p>
+        <p>Два KML уходят на сервер вместе с заданием: границы съёмки и зоны ограничений. Сервер разбирает оба файла. Камера берётся из рёбер совместимости выбранной модели. Маршруты рассчитывает только backend/runtime.</p>
       </div>
 
       <form onSubmit={handleSubmit} noValidate>
@@ -527,11 +524,10 @@ export default function App() {
         </section>
 
         <section className="card workflow-section" aria-labelledby="geo-title">
-          <div className="section-heading"><div><p className="eyebrow">02 · Геоданные</p><h2 id="geo-title">KML-файлы организатора</h2><p className="section-description">Исходные файлы остаются в браузере. В запрос попадают кольца: один полигон задания, зоны ограничений и препятствия, чей след пересекает bbox съёмки.</p></div><span className="step-chip">.kml</span></div>
+          <div className="section-heading"><div><p className="eyebrow">02 · Геоданные</p><h2 id="geo-title">KML-файлы организатора</h2><p className="section-description">На сервер уходят тексты двух файлов: задание на съёмку и зоны ограничений. Кольца разбирает сервер.</p></div><span className="step-chip">.kml</span></div>
           <div className="upload-grid">
             <UploadCard category="survey_task" title="Границы задания на съёмку" description="Основная область работ. Один файл обязателен для запуска." sourceHint="Границы полетов.kml" files={surveyTask ? [surveyTask] : []} loading={loadingCategory === "survey_task"} onFiles={(files) => void handleKmlFiles("survey_task", files)} onRemove={() => setSurveyTask(null)} />
-            <UploadCard category="restricted_zones" title="Зоны ограничений" description="Временные и постоянные запретные зоны из примера организатора." sourceHint="Московская зона.kml" files={restrictedZones ? [restrictedZones] : []} loading={loadingCategory === "restricted_zones"} onFiles={(files) => void handleKmlFiles("restricted_zones", files)} onRemove={() => setRestrictedZones(null)} />
-            <UploadCard category="obstacle" title="Высотные препятствия" description="Можно выбрать несколько KML с 3D-примитивами препятствий." sourceHint="obstacles_Московская область.kml; высотные препятствия Приморский край.kml" files={obstacles} multiple loading={loadingCategory === "obstacle"} onFiles={(files) => void handleKmlFiles("obstacle", files)} onRemove={(id) => setObstacles((current) => current.filter((file) => file.id !== id))} />
+            <UploadCard category="restricted_zones" title="Зоны ограничений" description="Файл ограничений уходит на сервер вместе с заданием. Высоты копируются как текст." sourceHint="Московская зона.kml" files={restrictedZones ? [restrictedZones] : []} loading={loadingCategory === "restricted_zones"} onFiles={(files) => void handleKmlFiles("restricted_zones", files)} onRemove={() => setRestrictedZones(null)} />
           </div>
         </section>
 
