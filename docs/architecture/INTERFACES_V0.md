@@ -1,6 +1,35 @@
 # Interfaces v0 — checkpoint contract
 
-This document freezes names and semantics for parallel prototyping. Concrete JSON Schema/Pydantic definitions are still a G0 integration task.
+This document freezes names and semantics for parallel prototyping. INT-004 adds the executable standard-library contract in `src/planes/contracts/scenario_v0.py` and the shared golden request in `tests/fixtures/scenario_v0_full.json`.
+
+## Scenario v0
+
+```text
+scenario
+├── scenario_id
+├── crs = EPSG:4326
+├── survey_areas[]: {id, geometry}
+├── restricted_zones[]: {id, name, kind, altitudes_text, geometry}
+├── obstacles[]: {id, kind, height_m, geometry}
+├── aerodromes[]: {id, lat_deg, lon_deg}
+├── board_cards[]: {id, model_id, camera_id, aerodrome_id, count}
+├── survey
+│   ├── survey_type
+│   ├── required_spectrum
+│   ├── gsd_cm_per_px
+│   ├── overlap_front
+│   ├── overlap_side
+│   └── strip_direction_deg
+└── wind: {speed_mps, direction_deg}
+```
+
+Geometry is GeoJSON-like `Polygon` or `MultiPolygon`. Coordinates are closed rings in
+`[longitude_deg, latitude_deg]` order. The scenario declares `EPSG:4326`; numeric units are in
+field names. Unknown fields fail validation instead of being ignored.
+
+`optimization` contains only `objective` (`min_time` or `min_total_flight_time`) and
+`time_limit_seconds`. The request envelope also carries `contract_version = v0` and integer
+`seed`. The public optimization criterion is not duplicated inside `scenario`.
 
 ## Backend-facing engine port
 
@@ -28,15 +57,19 @@ The call may be implemented in-process or through a remote/process adapter. Back
 - `solver_report`: method, objective, bound/gap if meaningful, runtime, seed, limitations
 - `artifacts`: references to logs or generated files; never embedded credentials
 
-## Domain entities that must be frozen next
+## Domain entities that remain to be frozen
 
 `Scenario`, `UAV`, `Payload`, `SurveyRequirement`, `FlightSpec`, `FlightEvaluation`, `SortieCandidate`, `OptimizationRequest`, `MissionPlan`, `SolverReport`, and `VerificationReport`.
 
 Every numeric field must name or declare its unit. Geospatial coordinates must declare CRS. Time values must distinguish duration from timestamps.
 
-## Live scenario on main
+## Legacy optimizer mapping
 
-The port above is unchanged (`v0`). On the enumeration path the form sends `aerodromes` and `boards`, not `pads` or `uav_types`. An envelope that still has `pads` or `uav_types` is rejected by the listener. SQLite stores the scenario unchanged. Optics and `power_coeffs` are read from `fleet_catalog.json` on the listener, which is filled from Grisha's `data.json`. `geoscan-801` there is his 1.5 kg quadcopter. GSD, overlaps, and strip direction come from the form.
+The port above remains `v0`. SQLite and HTTP retain the complete public scenario. Only after
+runtime parsing does `legacy_scenario.py` map one survey polygon, aerodromes, board cards, wind,
+survey settings, and objective to the current enumeration envelope. Multiple survey areas and
+non-Polygon geometry fail explicitly. The current enumerator still does not copy restricted zones
+or obstacles into legacy `InputData`; this is an optimizer-adapter limitation, not transport loss.
 
 The listener is `planes-compute.service` at `/opt/planes`, git `da3da56` on branch `runtime/MIS-002-external-enumeration`, health `live`, contract `v0`, `solver_choice` `meta`. Documentation commit `794fb2d` was not deployed to it. Pairs that reach `run()` and pairs that do not are listed in `docs/architecture/agent-brief-runtime.md`. The worker path is `docs/architecture/agent-brief-backend.md`. Local processes are the form at `127.0.0.1:5173`, the API at `127.0.0.1:8000`, and the worker with `--engine runtime`.
 
@@ -44,7 +77,7 @@ Remaining approximations, not new contract fields: `geoscan-201` receives `kh`/`
 
 ## Compatibility rule
 
-During the current checkpoint, each stream may use local dataclasses. Integration is based on committed JSON fixtures. A contract-breaking field change requires:
+Layer-local classes may remain, but they must round-trip the executable contract and shared fixture. A contract-breaking field change requires:
 
 1. a dedicated contract diff;
 2. updates to producer and consumer fixtures;

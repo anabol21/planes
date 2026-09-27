@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import goldenRequest from "../../../tests/fixtures/scenario_v0_full.json";
 
 import {
   createApiClient,
@@ -63,12 +64,7 @@ describe("API client", () => {
   it("serializes the v0 submission request exactly", async () => {
     const fetchMock = vi.fn(async () => response(202, QUEUED));
     const api = createApiClient(fetchMock as typeof fetch);
-    const request: SubmitJobRequest = {
-      contract_version: "v0",
-      scenario: { name: "Demo mission" },
-      optimization: { test_outcome: "feasible" },
-      seed: 17,
-    };
+    const request = goldenRequest as SubmitJobRequest;
 
     await api.submitJob(request);
 
@@ -84,12 +80,7 @@ describe("API client", () => {
 
   it("returns the submitted job from a successful POST", async () => {
     const api = createApiClient(vi.fn(async () => response(202, QUEUED)) as typeof fetch);
-    const submitted = await api.submitJob({
-      contract_version: "v0",
-      scenario: { name: "Demo" },
-      optimization: {},
-      seed: 17,
-    });
+    const submitted = await api.submitJob(goldenRequest as SubmitJobRequest);
     expect(submitted).toEqual(QUEUED);
   });
 });

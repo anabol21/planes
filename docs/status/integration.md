@@ -1,15 +1,55 @@
 ---
 workstream: integration
 owner: Team
-task: DEMO-001
+task: INT-004
 status: review
-updated: 2026-09-24
+updated: 2026-09-27
 checkpoint: 2026-09-23
-branch: main
+branch: integration/INT-004-input-to-runtime
 contract_version: v0
 ---
 
 # Integration status
+
+## INT-004 — Scenario v0 transport
+
+- [x] Added the executable shared Scenario/Optimization v0 contract.
+- [x] Added `tests/fixtures/scenario_v0_full.json` as the one cross-layer fixture.
+- [x] Preserved full geometry, restricted zones, obstacles, aerodromes, board cards, survey settings,
+  wind, objective, and seed through backend, SQLite, worker, runtime HTTP, and runtime parsing.
+- [x] Added a real local HTTP vertical test with an injected capture solver.
+- [x] Isolated the narrower current optimizer mapping in `runtime/legacy_scenario.py`.
+
+Next action: team review and maintainer-approved target-branch reconciliation. Landing remains blocked on
+maintainer-approved reconciliation of divergent `main` and `dev` histories documented in INT-004.
+
+Interface impact: additive executable freeze of public v0 semantics. Existing database columns and
+bearer transport are unchanged. The legacy optimizer explicitly rejects multiple survey areas and
+still does not consume restricted zones or obstacles after the runtime boundary.
+
+Evidence:
+
+- `pnpm typecheck` — PASS.
+- `pnpm test -- --run` — PASS, 52 tests in 5 files.
+- `pnpm build` — PASS, Vite production build.
+- `python -m unittest discover -s tests/backend -v` — PASS, 32 tests.
+- `python -m unittest discover -s tests/integration -v` — PASS, 4 tests.
+- Runtime fixture, pipeline, and INT-004 legacy-adapter subset — PASS, 11 tests.
+- `python -m compileall` for changed Python packages/tests — PASS.
+- `scripts/validate_workspace.py` on an exact working-tree copy excluding generated dependencies,
+  build output, and caches — `Workspace validation: PASS`.
+- `test_golden_scenario_reaches_runtime_parser_without_field_loss` exercised backend HTTP, SQLite,
+  worker, production runtime client, authenticated runtime HTTP parsing, capture solver, and
+  `queued → running → completed` in 0.65 seconds.
+
+Blockers and limitations:
+
+- `main`/`dev` reconciliation requires a maintainer; this branch does not alter either ref.
+- Full runtime discovery is not runnable in the current system Python: production lock uses POSIX
+  `fcntl`, and the legacy optimizer dependency `pydantic` is absent. INT-004 runtime subsets and the
+  injected-lock HTTP vertical test pass without changing production locking.
+- No interactive browser smoke or real VPS call was run. Tests use a deterministic dummy bearer.
+- TER-GRI, COP30, optimizer physics/routing, and terrain lifecycle remain unconnected.
 
 Live path on `main`: form `127.0.0.1:5173`, API `127.0.0.1:8000`, worker `--engine runtime`. The CLI default remains `fake`. SQLite stores the scenario unchanged; catalog numbers are applied only on the listener. `fleet_catalog.json` is filled from Grisha's `data.json`; `geoscan-801` is his 1.5 kg quadcopter. GSD, overlaps, and strip direction come from the form. The form sends `aerodromes` and `boards`, not `pads` or `uav_types`. The listener is `planes-compute.service` at `/opt/planes`, git `da3da56` on `runtime/MIS-002-external-enumeration`, health `live`, contract `v0`, `solver_choice` `meta`. Documentation commit `794fb2d` did not move the listener. Pairs that reach `run()` and the remaining approximations (`geoscan-201` `kh`/`kv`/`kw` `90`/`0.02`/`0.008` instead of `220` W, `turn_time_s` `5.0`, `apply_turn_to_base` `false`, zones and obstacles not copied into `InputData`) are in `docs/architecture/agent-brief-runtime.md` and `docs/architecture/agent-brief-backend.md`.
 

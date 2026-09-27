@@ -1,15 +1,25 @@
 ---
 workstream: web
 owner: Integration / Web
-task: WEB-001
-status: in_progress
-updated: 2026-09-24
+task: INT-004
+status: review
+updated: 2026-09-27
 checkpoint: 2026-09-22
-branch: cursor/kml-field-stitch-e347
+branch: integration/INT-004-input-to-runtime
 contract_version: v0
 ---
 
 # Web status
+
+## INT-004 update
+
+- [x] The form serializes public Scenario v0 rather than optimizer-specific `area`/`criterion`.
+- [x] Every survey polygon becomes a `survey_areas` geometry.
+- [x] Restricted zones and all loaded obstacle footprints are retained; missing obstacle height is
+  an explicit input error rather than a zero default.
+- [x] Aerodrome coordinates, board model/camera IDs, GSD, overlaps, strip direction, wind, objective,
+  and seed use the shared names and explicit units.
+- [x] Frontend compatibility reads the shared golden fixture.
 
 Live path on `main`: the form at `http://127.0.0.1:5173` sends `aerodromes` and `boards`, not `pads` or `uav_types`. GSD, overlaps, and strip direction come from the form. The API is `http://127.0.0.1:8000`. The live worker is `--engine runtime` (CLI default remains `fake`). SQLite stores the scenario unchanged; catalog numbers are applied only on the listener. `fleet_catalog.json` is filled from Grisha's `data.json`; `geoscan-801` is his 1.5 kg quadcopter. The listener is `planes-compute.service` at `/opt/planes`, git `da3da56` on `runtime/MIS-002-external-enumeration`, health `live`, contract `v0`, `solver_choice` `meta`. Documentation commit `794fb2d` was not deployed there. Pairs that reach `run()` and the remaining approximations are in `docs/architecture/agent-brief-runtime.md`. The backend path is `docs/architecture/agent-brief-backend.md`.
 

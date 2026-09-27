@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 import sys
 import unittest
@@ -20,6 +21,13 @@ from planes.runtime.types import (
     ComputeResponse as RuntimeComputeResponse,
     make_response,
 )
+
+
+GOLDEN = Path(__file__).resolve().parents[1] / "fixtures" / "scenario_v0_full.json"
+
+
+def golden_scenario() -> dict[str, object]:
+    return json.loads(GOLDEN.read_text(encoding="utf-8"))["scenario"]
 
 
 class StubRuntimeAdapter:
@@ -66,7 +74,7 @@ class RuntimeEngineConversionTests(unittest.TestCase):
         return ComputeRequest(
             contract_version="v0",
             job_id="job-runtime-001",
-            scenario={"name": "runtime scenario", "nested": {"value": 1}},
+            scenario=golden_scenario(),
             optimization=optimization,
             seed=17,
         )
@@ -79,8 +87,6 @@ class RuntimeEngineConversionTests(unittest.TestCase):
             self.request(
                 objective="min_time",
                 time_limit_seconds=30,
-                test_outcome="infeasible",
-                ignored_backend_setting=True,
             )
         )
 
@@ -89,29 +95,25 @@ class RuntimeEngineConversionTests(unittest.TestCase):
         self.assertIsInstance(converted, RuntimeComputeRequest)
         self.assertEqual("v0", converted.contract_version)
         self.assertEqual("job-runtime-001", converted.job_id)
-        self.assertEqual(
-            {"name": "runtime scenario", "nested": {"value": 1}}, converted.scenario
-        )
+        self.assertEqual(golden_scenario(), converted.scenario)
         self.assertEqual("min_time", converted.optimization.objective)
         self.assertEqual(30, converted.optimization.time_limit_seconds)
         self.assertIsNone(converted.optimization.placeholder_outcome)
         self.assertEqual(17, converted.seed)
 
-    def test_conversion_ignores_fake_only_optimization_fields(self) -> None:
+    def test_conversion_rejects_unknown_optimization_fields(self) -> None:
         adapter = StubRuntimeAdapter(runtime_response("job-runtime-001", "infeasible"))
         engine = RuntimeOptimizationEngine(cast(RuntimeAdapter, adapter))
 
-        engine.solve(
-            self.request(
-                objective="min_total_flight_time",
-                time_limit_seconds=0,
-                test_outcome="feasible",
+        with self.assertRaisesRegex(ValueError, "unsupported fields"):
+            engine.solve(
+                self.request(
+                    objective="min_total_flight_time",
+                    time_limit_seconds=0,
+                    test_outcome="feasible",
+                )
             )
-        )
-
-        converted = adapter.requests[0]
-        self.assertFalse(hasattr(converted.optimization, "test_outcome"))
-        self.assertEqual("min_total_flight_time", converted.optimization.objective)
+        self.assertEqual([], adapter.requests)
 
     def test_runtime_artifact_references_survive_response_conversion(self) -> None:
         adapter = StubRuntimeAdapter(
@@ -141,11 +143,12 @@ class RuntimeWorkerLifecycleTests(unittest.TestCase):
 
     def submit(self, optimization: dict[str, object] | None = None) -> str:
         return self.service.submit_job(
-            scenario={"name": "runtime lifecycle", "crs": "EPSG:4326"},
+            scenario=golden_scenario(),
             optimization=optimization
             if optimization is not None
             else {"objective": "min_time", "time_limit_seconds": 30},
             seed=17,
+            validate_contract=False,
         )["job_id"]
 
     def run_response(self, outcome: str) -> tuple[str, StubRuntimeAdapter]:
@@ -168,7 +171,7 @@ class RuntimeWorkerLifecycleTests(unittest.TestCase):
         self.assertEqual("failed", self.service.get_job(job_id)["state"])
         error = self.service.get_result(job_id)["error"]
         self.assertEqual("ValueError", error["type"])
-        self.assertIn("optimization.objective", error["message"])
+        self.assertIn("optimization missing fields", error["message"])
         self.assertEqual("worker", error["source"])
 
     def test_feasible_runtime_response_completes_job(self) -> None:

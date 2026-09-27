@@ -18,6 +18,7 @@ from planes.runtime.enumeration import (
     select_winner,
 )
 from planes.runtime.logs import record
+from planes.runtime.legacy_scenario import is_public_scenario_v0, to_legacy_envelope
 
 
 @dataclass(frozen=True)
@@ -93,6 +94,14 @@ def solve(problem: Problem, deadline: float) -> Solution | Infeasible | TimedOut
     reason and without a flight time. The same lines are written on a
     feasible, infeasible, or timed-out outer outcome.
     """
+    if is_public_scenario_v0(problem.scenario):
+        problem = Problem(
+            job_id=problem.job_id,
+            scenario=to_legacy_envelope(problem.scenario, problem.objective),
+            objective=problem.objective,
+            seed=problem.seed,
+            time_limit_seconds=problem.time_limit_seconds,
+        )
     if isinstance(problem.scenario, dict) and "uav_types" in problem.scenario:
         raise ValueError("uav_types is not accepted")
     if isinstance(problem.scenario, dict) and "pads" in problem.scenario:

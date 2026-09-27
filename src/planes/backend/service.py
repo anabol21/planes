@@ -6,6 +6,8 @@ import json
 import uuid
 from typing import Any, Mapping
 
+from planes.contracts import parse_optimization_v0, parse_scenario_v0
+
 from .models import CONTRACT_VERSION
 from .store import JobRecord, SQLiteJobStore
 
@@ -34,6 +36,7 @@ class BackendService:
         seed: int,
         contract_version: str = CONTRACT_VERSION,
         job_id: str | None = None,
+        validate_contract: bool = True,
     ) -> dict[str, Any]:
         if contract_version != CONTRACT_VERSION:
             raise ValidationError(f"contract_version must be {CONTRACT_VERSION!r}")
@@ -43,6 +46,12 @@ class BackendService:
             raise ValidationError("optimization must be a JSON object")
         if isinstance(seed, bool) or not isinstance(seed, int):
             raise ValidationError("seed must be an integer")
+        if validate_contract:
+            try:
+                parse_scenario_v0(dict(scenario))
+                parse_optimization_v0(dict(optimization))
+            except ValueError as error:
+                raise ValidationError(str(error)) from error
         if job_id is None:
             job_id = str(uuid.uuid4())
         elif not isinstance(job_id, str) or not job_id.strip():

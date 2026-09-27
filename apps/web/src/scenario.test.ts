@@ -1,5 +1,6 @@
 import { DOMParser } from "@xmldom/xmldom";
 import { describe, expect, it } from "vitest";
+import goldenRequest from "../../../tests/fixtures/scenario_v0_full.json";
 
 import { parseSubmission } from "./api";
 import type { KmlFileRecord, KmlSummary, XmlParser } from "./kml";
@@ -222,21 +223,28 @@ describe("aerodromes and boards", () => {
 });
 
 describe("prototype scenario", () => {
+  it("accepts the shared golden Scenario v0 without changing fields", () => {
+    const request = parseSubmission(
+      JSON.stringify(goldenRequest.scenario),
+      JSON.stringify(goldenRequest.optimization),
+      String(goldenRequest.seed),
+    );
+    expect(request).toEqual(goldenRequest);
+  });
+
   it("sends aerodromes, boards, and the survey spectrum", () => {
     expect(scenario()).toMatchObject({
-      criterion: "min_time",
       crs: "EPSG:4326",
-      gsd_cm_per_px: 3,
-      area: [
-        [37.601, 55.748],
-        [37.609, 55.748],
-        [37.609, 55.7525],
-        [37.601, 55.7525],
-        [37.601, 55.748],
-      ],
-      required_spectrum: "RGB",
-      survey: { forward_overlap: 0.7, side_overlap: 0.6, strip_direction_deg: 0 },
-      wind: { speed_ms: 3, direction_deg: 270 },
+      survey_areas: [{ id: "survey-area-1" }],
+      survey: {
+        survey_type: "RGB",
+        required_spectrum: "RGB",
+        gsd_cm_per_px: 3,
+        overlap_front: 0.7,
+        overlap_side: 0.6,
+        strip_direction_deg: 0,
+      },
+      wind: { speed_mps: 3, direction_deg: 270 },
     });
     expect(scenario()).not.toHaveProperty("power_coeffs");
     const built = scenario();
@@ -245,8 +253,8 @@ describe("prototype scenario", () => {
     expect(built).not.toHaveProperty("required_camera");
     expect(built).not.toHaveProperty("uav_types");
     expect(built).not.toHaveProperty("pads");
-    expect(built.aerodromes).toEqual([{ id: "аэродром 1", lat: 55.747, lon: 37.6 }]);
-    expect(built.boards).toEqual([
+    expect(built.aerodromes).toEqual([{ id: "аэродром 1", lat_deg: 55.747, lon_deg: 37.6 }]);
+    expect(built.board_cards).toEqual([
       {
         id: "БВС 1",
         model_id: "geoscan-gemini",
@@ -258,47 +266,26 @@ describe("prototype scenario", () => {
   });
 
   it("maps the total flight-time form value onto min_flight_hours", () => {
-    expect(scenario("min_total_flight_time").criterion).toBe("min_flight_hours");
+    expect(buildOptimization("min_total_flight_time", 45).objective).toBe("min_total_flight_time");
   });
 
   it("keeps restriction text and obstacles whose footprint meets the survey bbox", () => {
     const built = scenario();
-    expect(built.zone_constraints).toEqual([
+    expect(built.restricted_zones).toEqual([
       {
-        ring: [
-          [37.602, 55.749],
-          [37.603, 55.749],
-          [37.603, 55.75],
-          [37.602, 55.749],
-        ],
+        id: "restricted-zone-1",
         name: "Сектор А",
-        type: "врем_ограничение",
+        kind: "врем_ограничение",
         altitudes_text: "от 800 м AMSL до FL90",
+        geometry: { type: "Polygon", coordinates: [[
+          [37.602, 55.749], [37.603, 55.749], [37.603, 55.75], [37.602, 55.749],
+        ]] },
       },
     ]);
-    expect(built.obstacles).toEqual([
-      {
-        ring: [
-          [37.602, 55.749],
-          [37.603, 55.749],
-          [37.603, 55.75],
-          [37.602, 55.749],
-        ],
-        height_m: 48,
-        kind: "BUILDING",
-      },
-      {
-        ring: [
-          [37, 55],
-          [38, 55],
-          [38, 56],
-          [37, 56],
-          [37, 55],
-        ],
-        height_m: 80,
-        kind: "COMMUNICATION_TOWER",
-      },
-    ]);
+    expect(built.obstacles).toHaveLength(3);
+    expect(built.obstacles[0]).toMatchObject({
+      id: "obstacle-a-obstacle-1", height_m: 48, kind: "BUILDING",
+    });
     expect(built).not.toHaveProperty("default_profile");
     expect(built).not.toHaveProperty("power_coeffs");
   });
@@ -312,11 +299,10 @@ describe("prototype scenario", () => {
     expect(() => buildPrototypeScenario(invalid, "min_time", xmlParser())).not.toThrow(/infeasible/i);
   });
 
-  it("lists every survey polygon instead of keeping the first", () => {
-    const invalid = inputs();
-    invalid.surveyTask = kml("survey", "survey_task", MULTI_SURVEY_KML);
-    expect(() => buildPrototypeScenario(invalid, "min_time", xmlParser())).toThrow(/North/);
-    expect(() => buildPrototypeScenario(invalid, "min_time", xmlParser())).toThrow(/South/);
+  it("serializes every survey polygon instead of keeping the first", () => {
+    const multiple = inputs();
+    multiple.surveyTask = kml("survey", "survey_task", MULTI_SURVEY_KML);
+    expect(buildPrototypeScenario(multiple, "min_time", xmlParser()).survey_areas).toHaveLength(2);
   });
 
   it("writes GSD, overlaps, and strip direction from the form fields", () => {
@@ -326,10 +312,13 @@ describe("prototype scenario", () => {
     custom.sideOverlap = 0.5;
     custom.stripDirectionDeg = 12;
     const built = buildPrototypeScenario(custom, "min_time", xmlParser());
-    expect(built.gsd_cm_per_px).toBe(4.5);
+    expect(built.survey.gsd_cm_per_px).toBe(4.5);
     expect(built.survey).toEqual({
-      forward_overlap: 0.8,
-      side_overlap: 0.5,
+      survey_type: "RGB",
+      required_spectrum: "RGB",
+      gsd_cm_per_px: 4.5,
+      overlap_front: 0.8,
+      overlap_side: 0.5,
       strip_direction_deg: 12,
     });
     expect(built).not.toHaveProperty("power_coeffs");
@@ -365,12 +354,12 @@ describe("prototype scenario", () => {
     expect(request.scenario.uav).toBeUndefined();
     expect(request.scenario.pads).toBeUndefined();
     expect(request.scenario.aerodromes).toHaveLength(1);
-    expect(request.scenario.boards).toHaveLength(1);
+    expect(request.scenario.board_cards).toHaveLength(1);
     expect(request.scenario.uav_types).toBeUndefined();
     expect(request.scenario.required_camera).toBeUndefined();
-    expect(request.scenario.area).toHaveLength(5);
-    expect(request.scenario.obstacles).toHaveLength(2);
-    expect(request.scenario.zone_constraints).toHaveLength(1);
+    expect(request.scenario.survey_areas).toHaveLength(1);
+    expect(request.scenario.obstacles).toHaveLength(3);
+    expect(request.scenario.restricted_zones).toHaveLength(1);
   });
 
   it("rejects missing required survey KML", () => {
@@ -393,8 +382,8 @@ describe("enumeration input", () => {
 
   it("emits aerodromes and boards so solver.solve takes the enumeration path", () => {
     const built = scenario();
-    expect(built.aerodromes).toEqual([{ id: "аэродром 1", lat: 55.747, lon: 37.6 }]);
-    expect(built.boards).toEqual([
+    expect(built.aerodromes).toEqual([{ id: "аэродром 1", lat_deg: 55.747, lon_deg: 37.6 }]);
+    expect(built.board_cards).toEqual([
       {
         id: "БВС 1",
         model_id: "geoscan-gemini",
@@ -403,7 +392,7 @@ describe("enumeration input", () => {
         count: 1,
       },
     ]);
-    expect(built.required_spectrum).toBe("RGB");
+    expect(built.survey.required_spectrum).toBe("RGB");
     expect(built).not.toHaveProperty("takeoff");
     expect(built).not.toHaveProperty("uav");
     expect(built).not.toHaveProperty("uav_types");
@@ -413,10 +402,10 @@ describe("enumeration input", () => {
 
   it("sets required_spectrum from the survey type and does not stamp it on the aerodrome", () => {
     const built = scenario();
-    expect(built.required_spectrum).toBe("RGB");
-    expect(built.aerodromes).toEqual([{ id: "аэродром 1", lat: 55.747, lon: 37.6 }]);
+    expect(built.survey.required_spectrum).toBe("RGB");
+    expect(built.aerodromes).toEqual([{ id: "аэродром 1", lat_deg: 55.747, lon_deg: 37.6 }]);
     expect(JSON.stringify(built.aerodromes)).not.toContain("RGB");
-    expect(JSON.stringify(built.boards)).not.toContain("RGB");
+    expect(JSON.stringify(built.board_cards)).not.toContain("RGB");
   });
 
   it("keeps two board cards in order, each with its own aerodrome and count", () => {
@@ -431,10 +420,10 @@ describe("enumeration input", () => {
     ];
     const built = buildPrototypeScenario(two, "min_time", xmlParser());
     expect(built.aerodromes).toEqual([
-      { id: "аэродром 1", lat: 55.747, lon: 37.6 },
-      { id: "аэродром 2", lat: 55.75, lon: 37.61 },
+      { id: "аэродром 1", lat_deg: 55.747, lon_deg: 37.6 },
+      { id: "аэродром 2", lat_deg: 55.75, lon_deg: 37.61 },
     ]);
-    expect(built.boards).toEqual([
+    expect(built.board_cards).toEqual([
       {
         id: "БВС 1",
         model_id: "geoscan-gemini",
@@ -459,8 +448,8 @@ describe("enumeration input", () => {
     const multispectral = inputs();
     multispectral.surveyType = "multispectral";
     const built = buildPrototypeScenario(multispectral, "min_time", xmlParser());
-    expect(built.required_spectrum).toBe("multispectral");
-    expect(built.boards).toEqual([
+    expect(built.survey.required_spectrum).toBe("multispectral");
+    expect(built.board_cards).toEqual([
       {
         id: "БВС 1",
         model_id: "geoscan-gemini",

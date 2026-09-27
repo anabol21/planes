@@ -1,0 +1,126 @@
+{
+  "contract_version": "v0",
+  "scenario": {
+    "scenario_id": "scenario-v0-full",
+    "crs": "EPSG:4326",
+    "survey_areas": [
+      {
+        "id": "survey-north",
+        "geometry": {
+          "type": "Polygon",
+          "coordinates": [
+            [
+              [37.601, 55.748],
+              [37.609, 55.748],
+              [37.609, 55.7525],
+              [37.601, 55.7525],
+              [37.601, 55.748]
+            ]
+          ]
+        }
+      },
+      {
+        "id": "survey-south",
+        "geometry": {
+          "type": "Polygon",
+          "coordinates": [
+            [
+              [37.602, 55.741],
+              [37.608, 55.741],
+              [37.608, 55.745],
+              [37.602, 55.745],
+              [37.602, 55.741]
+            ]
+          ]
+        }
+      }
+    ],
+    "restricted_zones": [
+      {
+        "id": "restricted-1",
+        "name": "Temporary sector",
+        "kind": "temporary_restriction",
+        "altitudes_text": "800 m AMSL to FL90",
+        "geometry": {
+          "type": "Polygon",
+          "coordinates": [
+            [
+              [37.604, 55.749],
+              [37.605, 55.749],
+              [37.605, 55.75],
+              [37.604, 55.749]
+            ]
+          ]
+        }
+      }
+    ],
+    "obstacles": [
+      {
+        "id": "obstacle-building",
+        "kind": "BUILDING",
+        "height_m": 48.0,
+        "geometry": {
+          "type": "Polygon",
+          "coordinates": [
+            [
+              [37.602, 55.749],
+              [37.603, 55.749],
+              [37.603, 55.75],
+              [37.602, 55.749]
+            ]
+          ]
+        }
+      },
+      {
+        "id": "obstacle-tower",
+        "kind": "COMMUNICATION_TOWER",
+        "height_m": 80.0,
+        "geometry": {
+          "type": "Polygon",
+          "coordinates": [
+            [
+              [37.606, 55.746],
+              [37.6065, 55.746],
+              [37.6065, 55.7465],
+              [37.606, 55.746]
+            ]
+          ]
+        }
+      }
+    ],
+    "aerodromes": [
+      {"id": "aerodrome-1", "lat_deg": 55.747, "lon_deg": 37.6},
+      {"id": "aerodrome-2", "lat_deg": 55.753, "lon_deg": 37.612}
+    ],
+    "board_cards": [
+      {
+        "id": "board-1",
+        "model_id": "geoscan-gemini",
+        "camera_id": "geoscan-pf1b",
+        "aerodrome_id": "aerodrome-1",
+        "count": 2
+      },
+      {
+        "id": "board-2",
+        "model_id": "geoscan-gemini",
+        "camera_id": "geoscan-pollux",
+        "aerodrome_id": "aerodrome-2",
+        "count": 1
+      }
+    ],
+    "survey": {
+      "survey_type": "multispectral",
+      "required_spectrum": "multispectral",
+      "gsd_cm_per_px": 4.5,
+      "overlap_front": 0.78,
+      "overlap_side": 0.64,
+      "strip_direction_deg": 27.0
+    },
+    "wind": {"speed_mps": 6.5, "direction_deg": 245.0}
+  },
+  "optimization": {
+    "objective": "min_total_flight_time",
+    "time_limit_seconds": 73
+  },
+  "seed": 4242
+}

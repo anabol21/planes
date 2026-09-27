@@ -14,17 +14,35 @@ import json
 import os
 import subprocess
 import sys
+from collections.abc import Callable
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from typing import Protocol
 from urllib.parse import urlsplit
 
-from planes.runtime.lock import JobLock, default_lock_path
+from planes.contracts import ScenarioV0, parse_optimization_v0, parse_scenario_v0
 from planes.runtime.logs import redact
-from planes.runtime.types import dump_response, make_response, parse_response, safe_job_id
+from planes.runtime.types import (
+    ComputeRequest,
+    dump_response,
+    make_response,
+    parse_request_bytes,
+    parse_response,
+    safe_job_id,
+)
 
 MAX_BODY_BYTES = 1_048_576
 # Process kill sits after the SCIP budget. The listener buffer stays on top.
 WRAPPER_SLACK_SECONDS = 5
 _CLI_BUFFER_SECONDS = 2.0
+
+
+class RequestLock(Protocol):
+    def try_acquire(self) -> bool: ...
+    def release(self) -> None: ...
+
+
+RequestExecutor = Callable[[ComputeRequest, ScenarioV0, bytes], bytes]
+LockFactory = Callable[[], RequestLock]
 
 
 class ComputeHandler(BaseHTTPRequestHandler):
@@ -48,12 +66,27 @@ class ComputeHandler(BaseHTTPRequestHandler):
         if error is not None:
             self._send_json(400, {"contract_version": "v0", "error": error})
             return
-        lock = JobLock(default_lock_path())
+        try:
+            request = parse_request_bytes(body)
+            scenario = parse_scenario_v0(request.scenario)
+            parse_optimization_v0(
+                {
+                    "objective": request.optimization.objective,
+                    "time_limit_seconds": request.optimization.time_limit_seconds,
+                }
+            )
+        except ValueError as exc:
+            self._send_json(
+                400,
+                {"contract_version": "v0", "error": "invalid_request", "message": str(exc)},
+            )
+            return
+        lock = self.server.lock_factory()
         if not lock.try_acquire():
             self._send_json(503, {"contract_version": "v0", "error": "busy"})
             return
         try:
-            payload = _run_cli(body)
+            payload = self.server.request_executor(request, scenario, body)
         finally:
             lock.release()
         self._send_bytes(200, payload)
@@ -90,10 +123,19 @@ class ComputeHTTPServer(ThreadingHTTPServer):
     daemon_threads = True
     allow_reuse_address = True
 
-    def __init__(self, server_address: tuple[str, int], request_handler_class: type[ComputeHandler]) -> None:
+    def __init__(
+        self,
+        server_address: tuple[str, int],
+        request_handler_class: type[ComputeHandler],
+        *,
+        request_executor: RequestExecutor | None = None,
+        lock_factory: LockFactory | None = None,
+    ) -> None:
         super().__init__(server_address, request_handler_class)
         # Fixed for the process lifetime. Callers keep their own COMPUTE_TOKEN.
         self.compute_token = os.environ.get("COMPUTE_TOKEN", "")
+        self.request_executor = request_executor or _execute_cli
+        self.lock_factory = lock_factory or _default_lock_factory
 
 
 def serve(host: str = "0.0.0.0", port: int = 8080) -> None:
@@ -160,6 +202,18 @@ def _run_cli(body: bytes) -> bytes:
     if completed.stdout.endswith(b"\n"):
         return completed.stdout
     return completed.stdout + b"\n"
+
+
+def _execute_cli(_request: ComputeRequest, _scenario: ScenarioV0, body: bytes) -> bytes:
+    return _run_cli(body)
+
+
+def _default_lock_factory() -> RequestLock:
+    # POSIX locking remains production-owned. Tests on Windows inject a lock
+    # without importing or weakening the production implementation.
+    from planes.runtime.lock import JobLock, default_lock_path
+
+    return JobLock(default_lock_path())
 
 
 def _forward_stderr(payload: bytes | None) -> None:

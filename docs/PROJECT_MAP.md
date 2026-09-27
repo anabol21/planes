@@ -26,6 +26,17 @@ The listener unit `planes-compute.service` uses `WorkingDirectory=/opt/planes`, 
 
 Remaining approximations on that path: `geoscan-201` receives `kh`/`kv`/`kw` `90`/`0.02`/`0.008` instead of `220` W, `turn_time_s` is `5.0`, `apply_turn_to_base` is `false`, and zones and obstacles are not copied into `InputData`.
 
+## INT-004 transport target
+
+The INT-004 branch formalizes the product boundary as:
+
+`React → Backend API → SQLite snapshot → Worker → Runtime HTTP → parsed complete Scenario v0`.
+
+The canonical fixture is `tests/fixtures/scenario_v0_full.json`. Restricted zones, obstacles,
+multiple survey polygons, aerodromes, board cards, camera IDs, survey settings, wind, objective,
+and seed reach runtime parsing unchanged. Legacy optimizer conversion is downstream and explicit;
+the future TER-GRI adapter will consume the same complete scenario.
+
 ## Human workstreams
 
 ### Grisha — simplified model

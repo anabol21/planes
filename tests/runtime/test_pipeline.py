@@ -35,7 +35,7 @@ class PipelineTest(unittest.TestCase):
         self.assertEqual(response.outcome, "feasible")
         self.assertEqual(response.mission_plan, {"kind": "injected", "job_id": "job_01"})
         self.assertEqual(response.solver_report.method, "injected")
-        self.assertEqual(seen["scenario"], {"id": "scenario_01"})
+        self.assertEqual(seen["scenario"]["scenario_id"], "scenario-v0-full")
         self.assertEqual(seen["job_id"], "job_01")
         self.assertGreater(seen["deadline"], started)
 
@@ -77,7 +77,7 @@ class PipelineTest(unittest.TestCase):
         self.assertNotIn("[ingest]", payload)
         text = buffer.getvalue()
         self.assertNotIn(TOKEN, text)
-        self.assertNotIn("scenario_01", text)
+        self.assertNotIn("scenario-v0-full", text)
         cursor = -1
         for prefix in ("[ingest]", "[bind]", "[compile]", "[solve]", "[judge]", "[emit]"):
             found = text.find(prefix, cursor + 1)
@@ -111,9 +111,9 @@ class PipelineTest(unittest.TestCase):
         request = parse_request({**load_fixture(), "scenario": scenario})
         problem = compile(bind(request))
         self.assertEqual(problem.scenario, scenario)
-        self.assertEqual(problem.objective, "min_time")
-        self.assertEqual(problem.seed, 7)
-        self.assertEqual(problem.time_limit_seconds, 30)
+        self.assertEqual(problem.objective, "min_total_flight_time")
+        self.assertEqual(problem.seed, 4242)
+        self.assertEqual(problem.time_limit_seconds, 73)
 
 
 if __name__ == "__main__":

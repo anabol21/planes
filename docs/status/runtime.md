@@ -1,15 +1,26 @@
 ---
 workstream: runtime
 owner: Misha
-task: MIS-001
+task: INT-004
 status: review
 updated: 2026-09-27
 checkpoint: 2026-09-22
-branch: cursor/kml-field-stitch-e347
+branch: integration/INT-004-input-to-runtime
 contract_version: v0
 ---
 
 # Runtime status
+
+## INT-004 update
+
+- [x] The listener validates a complete Scenario v0 before acquiring the solver slot.
+- [x] Runtime HTTP exposes a production-equivalent injected executor/lock seam for deterministic
+  capture tests without changing the default POSIX lock or subprocess execution.
+- [x] `legacy_scenario.py` is the explicit downstream compatibility adapter.
+- [x] Multiple survey areas fail clearly at the legacy boundary; zones and obstacles are retained
+  through runtime and documented as unsupported by the current optimizer adapter.
+
+The TER-GRI optimizer and terrain acquisition were not connected or modified.
 
 - `review`: MIS-002 — справочник из `data.json` и входные поля съёмки. `fleet_catalog.json` заполнен камерами и бортами Гриши: числа помечены `passport`, `estimate` или `calculation`; 801 заменён его квадрокоптером; UMC разделён на 16 и 20 мм; рёбра Sony A6000 и Pollux у 801 сняты. Карточка вызывает `run()`, когда спектр заявки входит в `spectra` и на месте пять чисел оптики плюс скорость, энергия, масса, время, набор, ветер и мощность. Коэффициенты и `turn_time_s` берутся из записи модели. Для 201 ядро получает `90 / 0.02 / 0.008`, потому что постоянные `220` Вт оно принять не может. GSD, перекрытия и направление полос пишутся из полей формы. Оценка или расчёт, который доходит до `InputData`, назван в ограничениях и в журнале процесса на каждом исходе, включая промах спектра и пропуск, когда `run()` не вызывается. `apply_turn_to_base=false` назван как фиксированное значение ядра. Зоны и препятствия в `InputData` не кладутся. `usable_by_current_solver` допуск не решает. Бриф: `docs/workstreams/runtime/MIS-002.md`.
 

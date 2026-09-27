@@ -2,7 +2,22 @@
 
 ## Runtime topology
 
-API and worker share one codebase and run as separate processes. SQLite is the prototype job store. It stores the accepted scenario unchanged. Catalog numbers are applied only on the listener.
+API and worker share one codebase and run as separate processes. SQLite is the prototype job store. It stores the validated Scenario v0 and Optimization v0 snapshots unchanged. The worker reloads those exact objects. `RuntimeOptimizationEngine` validates and serializes the same fields, and the runtime HTTP server authenticates and parses the complete Scenario before any optimizer adapter runs. Catalog numbers are applied only after this boundary.
+
+```text
+React Scenario v0
+→ POST /jobs
+→ SQLite immutable JSON
+→ worker ComputeRequest v0
+→ RuntimeOptimizationEngine
+→ POST /v0/solve
+→ authenticated ScenarioV0 parser
+→ legacy adapter or future TER-GRI adapter
+```
+
+Transport never summarizes geometry and never removes restricted zones or obstacles. A narrower
+optimizer may reject or explicitly report an unsupported field only after the parsed runtime
+boundary.
 
 On `main` the live worker is `--engine runtime`. It posts `ComputeRequest` to the listener. The listener unit is `planes-compute.service`, `WorkingDirectory=/opt/planes`, git `da3da562b3d38d92dcc3dfc2f3b46636331cb8fc` (`da3da56`), branch `runtime/MIS-002-external-enumeration`. `GET /health` returns `{"status": "live", "contract_version": "v0"}`. The core call uses `solver_choice` `meta`. Documentation commit `794fb2d71e8b9635798e59fba1d363e2988222eb` was not deployed to that unit. Field lists, catalog pairs, and remaining approximations are in `docs/architecture/agent-brief-runtime.md` and `docs/architecture/agent-brief-backend.md`. Those briefs do not replace this boundary or `AGENTS.md`.
 

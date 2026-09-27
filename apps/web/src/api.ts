@@ -5,6 +5,8 @@ import {
   type JobStatus,
   type JsonObject,
   type LifecycleState,
+  type OptimizationV0,
+  type ScenarioV0,
   type SubmitJobRequest,
 } from "./types";
 
@@ -227,8 +229,8 @@ export function parseSubmission(
   optimizationText: string,
   seedText: string,
 ): SubmitJobRequest {
-  const scenario = parseJsonObject("Scenario", scenarioText);
-  const optimization = parseJsonObject("Optimization", optimizationText);
+  const scenario = parseJsonObject("Scenario", scenarioText) as ScenarioV0;
+  const optimization = parseJsonObject("Optimization", optimizationText) as OptimizationV0;
   if (!/^-?\d+$/.test(seedText.trim())) {
     throw new InputError("Seed must be an integer.");
   }

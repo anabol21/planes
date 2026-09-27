@@ -1,10 +1,8 @@
 import fleetCatalog from "../../../src/planes/runtime/catalog/fleet_catalog.json";
 
-import type { JsonObject } from "./types";
+import type { OptimizationV0, ScenarioV0 } from "./types";
 import {
   extractKmlPolygons,
-  ringBounds,
-  ringIntersectsBounds,
   type KmlFileRecord,
   type KmlPolygonRing,
   type XmlParser,
@@ -215,28 +213,16 @@ function extendedValue(data: Record<string, string>, key: string): string | null
   return match?.[1] ?? null;
 }
 
-function polygonLabel(polygon: KmlPolygonRing, index: number): string {
-  const name = polygon.name?.trim() || `polygon ${index + 1}`;
-  const lon = polygon.ring[0]?.[0];
-  const lat = polygon.ring[0]?.[1];
-  if (!Number.isFinite(lon) || !Number.isFinite(lat)) return name;
-  return `${name} (${lon}, ${lat})`;
-}
-
 function polygonsOf(file: KmlFileRecord | null, parser?: XmlParser): KmlPolygonRing[] {
   if (!file || file.status !== "ready" || !file.raw_text) return [];
   return extractKmlPolygons(file.raw_text, parser);
 }
 
-function surveyRing(file: KmlFileRecord, parser?: XmlParser): number[][] {
+function surveyPolygons(file: KmlFileRecord, parser?: XmlParser): KmlPolygonRing[] {
   if (!file.raw_text) throw new Error("В KML задания нет полигона съёмки.");
   const polygons = extractKmlPolygons(file.raw_text, parser);
   if (polygons.length === 0) throw new Error("В KML задания нет полигона съёмки.");
-  if (polygons.length > 1) {
-    const listed = polygons.map(polygonLabel).join("; ");
-    throw new Error(`В KML задания несколько полигонов: ${listed}. Нужен один полигон съёмки.`);
-  }
-  return polygons[0].ring;
+  return polygons;
 }
 
 function boardRows(inputs: ScenarioInputs) {
@@ -277,11 +263,18 @@ function windDirectionDeg(value: number | null): number {
   return value === 360 ? 0 : value;
 }
 
+function obstacleHeightM(value: number | null, label: string): number {
+  if (value === null || !Number.isFinite(value) || value < 0) {
+    throw new Error(`${label}: в KML отсутствует корректная высота препятствия в метрах.`);
+  }
+  return value;
+}
+
 export function buildPrototypeScenario(
   inputs: ScenarioInputs,
-  objective = "min_time",
+  _objective = "min_time",
   parser?: XmlParser,
-): JsonObject {
+): ScenarioV0 {
   if (!inputs.surveyTask || inputs.surveyTask.status !== "ready") {
     throw new Error("Загрузите корректный KML с границами задания на съёмку.");
   }
@@ -302,58 +295,49 @@ export function buildPrototypeScenario(
     throw new Error("Перекрытие поперёк должно быть от 0 до 1, не включая 1.");
   }
   requireFinite(inputs.stripDirectionDeg, "Направление полос");
-  const area = surveyRing(inputs.surveyTask, parser);
-  const bounds = ringBounds(area);
-  if (!bounds) throw new Error("В KML задания нет полигона съёмки.");
-  const zoneConstraints = polygonsOf(inputs.restrictedZones, parser).map((polygon) => ({
-    ring: polygon.ring,
+  const surveyAreas = surveyPolygons(inputs.surveyTask, parser).map((polygon, index) => ({
+    id: `survey-area-${index + 1}`,
+    geometry: { type: "Polygon" as const, coordinates: [polygon.ring] },
+  }));
+  const restrictedZones = polygonsOf(inputs.restrictedZones, parser).map((polygon, index) => ({
+    id: `restricted-zone-${index + 1}`,
     name: extendedValue(polygon.extended_data, "Name") ?? polygon.name,
-    type: extendedValue(polygon.extended_data, "Type"),
+    kind: extendedValue(polygon.extended_data, "Type"),
     altitudes_text: extendedValue(polygon.extended_data, "Altitudes"),
+    geometry: { type: "Polygon" as const, coordinates: [polygon.ring] },
   }));
   const obstacles = inputs.obstacles.flatMap((file) =>
-    polygonsOf(file, parser).flatMap((polygon) => {
-      if (!ringIntersectsBounds(polygon.ring, bounds)) return [];
-      return [
-        {
-          ring: polygon.ring,
-          height_m: polygon.height_m,
-          kind: polygon.name,
-        },
-      ];
-    }),
+    polygonsOf(file, parser).map((polygon, index) => ({
+      id: `${file.id}-obstacle-${index + 1}`,
+      height_m: obstacleHeightM(polygon.height_m, polygon.name ?? file.file_name),
+      kind: polygon.name,
+      geometry: { type: "Polygon" as const, coordinates: [polygon.ring] },
+    })),
   );
   return {
     scenario_id: inputs.scenarioId.trim(),
     crs: "EPSG:4326",
-    criterion: solverCriterion(objective),
-    gsd_cm_per_px: inputs.gsdCmPerPx,
-    area,
-    required_spectrum: inputs.surveyType,
+    survey_areas: surveyAreas,
+    restricted_zones: restrictedZones,
+    obstacles,
     aerodromes: inputs.aerodromes.map((aerodrome, index) => ({
       id: aerodromeId(index),
-      lat: aerodrome.lat,
-      lon: aerodrome.lon,
+      lat_deg: aerodrome.lat,
+      lon_deg: aerodrome.lon,
     })),
-    boards: boardRows(inputs),
+    board_cards: boardRows(inputs),
     survey: {
-      forward_overlap: inputs.forwardOverlap,
-      side_overlap: inputs.sideOverlap,
+      survey_type: inputs.surveyType,
+      required_spectrum: inputs.surveyType,
+      gsd_cm_per_px: inputs.gsdCmPerPx,
+      overlap_front: inputs.forwardOverlap,
+      overlap_side: inputs.sideOverlap,
       strip_direction_deg: inputs.stripDirectionDeg,
     },
-    survey_type: inputs.surveyType,
     wind: {
-      speed_ms: inputs.windSpeedMps,
+      speed_mps: inputs.windSpeedMps,
       direction_deg: windDirectionDeg(inputs.windDirectionFromDeg),
     },
-    zone_constraints: zoneConstraints,
-    obstacles,
-    prototype_limitations: [
-      "KML rings are extracted in the browser. Source files stay local and are not uploaded.",
-      "Altitude sentences in zone constraints are copied as text and are not parsed.",
-      "Obstacles are limited to footprints that intersect the survey bounding box.",
-      "Each board card names a catalog model, a compatible camera, an aerodrome, and a count of identical aircraft. The server reads flight and optic numbers from the fleet catalog. Power coefficients and turn time come from the selected model. Survey spectrum does not filter cameras.",
-    ],
   };
 }
 
@@ -362,8 +346,10 @@ export const DEFAULT_TIME_LIMIT = "90";
 // 110 is the max the form shows and accepts.
 export const MAX_TIME_LIMIT_SECONDS = 110;
 
-export function buildOptimization(objective: string, timeLimitSeconds: number): JsonObject {
-  if (!objective.trim()) throw new Error("Выберите критерий оптимизации.");
+export function buildOptimization(objective: string, timeLimitSeconds: number): OptimizationV0 {
+  if (objective !== "min_time" && objective !== "min_total_flight_time") {
+    throw new Error("Выберите критерий оптимизации.");
+  }
   if (!Number.isFinite(timeLimitSeconds) || timeLimitSeconds < 0) {
     throw new Error("Лимит расчёта должен быть неотрицательным числом секунд.");
   }

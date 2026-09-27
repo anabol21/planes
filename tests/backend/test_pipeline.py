@@ -22,6 +22,13 @@ from planes.backend.store import SQLiteJobStore
 from planes.backend.worker import Worker
 
 
+GOLDEN = Path(__file__).resolve().parents[1] / "fixtures" / "scenario_v0_full.json"
+
+
+def golden_submission() -> dict[str, Any]:
+    return json.loads(GOLDEN.read_text(encoding="utf-8"))
+
+
 class BackendPipelineTests(unittest.TestCase):
     def setUp(self) -> None:
         self.database_path = (
@@ -40,6 +47,7 @@ class BackendPipelineTests(unittest.TestCase):
             scenario={"name": "test scenario", "crs": "EPSG:4326"},
             optimization={"test_outcome": outcome, "limit_seconds": 1},
             seed=17,
+            validate_contract=False,
         )
 
     def test_happy_lifecycle_and_submission_is_asynchronous(self) -> None:
@@ -111,7 +119,7 @@ class BackendPipelineTests(unittest.TestCase):
         scenario = {"name": "original", "nested": {"value": 1}}
         optimization = {"test_outcome": "feasible", "weights": [1, 2]}
         job_id = self.service.submit_job(
-            scenario=scenario, optimization=optimization, seed=9
+            scenario=scenario, optimization=optimization, seed=9, validate_contract=False
         )["job_id"]
 
         scenario["name"] = "mutated"
@@ -126,8 +134,7 @@ class BackendPipelineTests(unittest.TestCase):
 
     def test_http_adapter_exposes_submit_status_and_result(self) -> None:
         api = BackendAPI(self.service)
-        fixture_path = Path(__file__).resolve().parent / "fixtures" / "job_submission_v0.json"
-        submission_fixture = json.loads(fixture_path.read_text(encoding="utf-8"))
+        submission_fixture = golden_submission()
         status, submitted = self.call_api(
             api,
             "POST",
@@ -262,11 +269,7 @@ class BackendPipelineTests(unittest.TestCase):
         server_thread = threading.Thread(target=server.serve_forever, daemon=True)
         server_thread.start()
         base_url = f"http://127.0.0.1:{server.server_port}"
-        payload = {
-            "scenario": {"name": "socket smoke", "crs": "EPSG:4326"},
-            "optimization": {"test_outcome": "feasible"},
-            "seed": 5,
-        }
+        payload = golden_submission()
         try:
             request = Request(
                 f"{base_url}/jobs",

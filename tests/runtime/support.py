@@ -22,7 +22,7 @@ from typing import Any
 
 REPO = Path(__file__).resolve().parents[2]
 SRC = REPO / "src"
-FIXTURE = Path(__file__).resolve().parent / "fixtures" / "compute_request_v0.json"
+FIXTURE = REPO / "tests" / "fixtures" / "scenario_v0_full.json"
 TOKEN = "test-token-do-not-print"
 
 if str(SRC) not in sys.path:
@@ -33,7 +33,9 @@ from planes.runtime.types import ComputeRequest, parse_request  # noqa: E402
 
 
 def load_fixture() -> dict[str, Any]:
-    return json.loads(FIXTURE.read_text(encoding="utf-8"))
+    payload = json.loads(FIXTURE.read_text(encoding="utf-8"))
+    payload["job_id"] = "job_01"
+    return payload
 
 
 def request_from_fixture(**optimization: object) -> ComputeRequest:

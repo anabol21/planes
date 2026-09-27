@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Protocol, cast
 
+from planes.contracts import parse_optimization_v0, parse_scenario_v0
 from planes.runtime.adapter import RuntimeEngineAdapter
 from planes.runtime.types import (
     ComputeRequest as RuntimeComputeRequest,
@@ -40,16 +41,16 @@ class RuntimeOptimizationEngine:
 
     @staticmethod
     def _to_runtime_request(request: ComputeRequest) -> RuntimeComputeRequest:
-        optimization = {
-            "objective": request.optimization.get("objective"),
-            "time_limit_seconds": request.optimization.get("time_limit_seconds"),
-        }
+        scenario = thaw_json(request.scenario)
+        optimization = thaw_json(request.optimization)
+        parsed_scenario = parse_scenario_v0(scenario)
+        parsed_optimization = parse_optimization_v0(optimization)
         return parse_request(
             {
                 "contract_version": request.contract_version,
                 "job_id": request.job_id,
-                "scenario": thaw_json(request.scenario),
-                "optimization": optimization,
+                "scenario": parsed_scenario.to_dict(),
+                "optimization": parsed_optimization.to_dict(),
                 "seed": request.seed,
             }
         )

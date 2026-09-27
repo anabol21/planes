@@ -1,15 +1,25 @@
 ---
 workstream: backend
 owner: Ruslan
-task: INT-001
+task: INT-004
 status: review
-updated: 2026-09-24
+updated: 2026-09-27
 checkpoint: 2026-09-23
-branch: main
+branch: integration/INT-004-input-to-runtime
 contract_version: v0
 ---
 
 # Backend status
+
+## INT-004 update
+
+- [x] `POST /jobs` validates complete Scenario v0 and Optimization v0.
+- [x] SQLite continues to store the accepted objects as immutable JSON snapshots.
+- [x] Worker reloads and forwards the exact snapshots; no domain reconstruction was added.
+- [x] `RuntimeOptimizationEngine` rejects unknown fields rather than silently narrowing them.
+
+Evidence and final command results are recorded in `docs/status/integration.md`. No schema migration
+or lifecycle-state change was introduced.
 
 - `planned`: RUS-002 — рельеф из отдельного KML местности в матрицы `precompute`. Бриф: `docs/workstreams/model/RUS-002.md`.
 
