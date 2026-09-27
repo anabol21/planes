@@ -85,8 +85,8 @@ def build_input_scenario(
     """Assemble Grisha's scenario fields plus rings the solver does not read yet."""
     if wind_direction_deg < 0 or wind_direction_deg > 360:
         raise ValueError("wind direction must be from 0 to 360 degrees")
-    area = _survey_ring(survey_kml)
-    bounds = _ring_bounds(area)
+    survey_polygons = _survey_rings(survey_kml)
+    bounds = _rings_bounds(survey_polygons)
     if bounds is None:
         raise ValueError("survey KML has no polygon")
     defaults = _default_profile()
@@ -117,7 +117,8 @@ def build_input_scenario(
         "crs": "EPSG:4326",
         "criterion": solver_criterion(objective),
         "gsd_cm_per_px": defaults["gsd_cm_per_px"],
-        "area": area,
+        "area": survey_polygons[0],
+        "survey_polygons": survey_polygons,
         "takeoff": {"lat": launch_lat, "lon": launch_lon},
         "uav": {
             "model": uav_model,
@@ -162,22 +163,28 @@ def _default_profile() -> dict[str, Any]:
     }
 
 
-def _survey_ring(text: str) -> list[list[float]]:
+def _survey_rings(text: str) -> list[list[list[float]]]:
+    """Every survey outer ring. A file with no polygon is an error."""
     polygons = extract_polygons(text)
     if not polygons:
         raise ValueError("survey KML has no polygon")
-    if len(polygons) > 1:
-        listed = "; ".join(_polygon_label(polygon, index) for index, polygon in enumerate(polygons))
-        raise ValueError(f"survey KML has multiple polygons: {listed}")
-    return polygons[0]["ring"]
+    return [polygon["ring"] for polygon in polygons]
 
 
-def _polygon_label(polygon: dict[str, Any], index: int) -> str:
-    name = (polygon.get("name") or "").strip() or f"polygon {index + 1}"
-    ring = polygon["ring"]
-    if not ring:
-        return name
-    return f"{name} ({ring[0][0]}, {ring[0][1]})"
+def _rings_bounds(rings: list[list[list[float]]]) -> dict[str, float] | None:
+    bounds: dict[str, float] | None = None
+    for ring in rings:
+        item = _ring_bounds(ring)
+        if item is None:
+            continue
+        if bounds is None:
+            bounds = dict(item)
+            continue
+        bounds["west"] = min(bounds["west"], item["west"])
+        bounds["south"] = min(bounds["south"], item["south"])
+        bounds["east"] = max(bounds["east"], item["east"])
+        bounds["north"] = max(bounds["north"], item["north"])
+    return bounds
 
 
 def _root(text: str) -> ET.Element:

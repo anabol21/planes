@@ -1,5 +1,7 @@
 # Быстрый запуск демо на Windows
 
+На ветке `test_merge` картина для тиммейтов и их агентов — `docs/architecture/STITCH_PICTURE.md`. Абзацы ниже описывают `main` на `da3da56`, до сшивки.
+
 На `main` живой путь — перебор аэродромов и бортов. Форма на `http://127.0.0.1:5173` отправляет `aerodromes` и `boards`, не `pads` и не `uav_types`. API слушает `http://127.0.0.1:8000`. Живой worker запускается с `--engine runtime`. SQLite хранит принятый `scenario` без подстановки справочника; числа каталога применяет только слушатель.
 
 Слушатель — unit `planes-compute.service`, рабочий каталог `/opt/planes`, git `da3da562b3d38d92dcc3dfc2f3b46636331cb8fc` (`da3da56`), ветка `runtime/MIS-002-external-enumeration`. `GET /health` без токена отвечает `{"status": "live", "contract_version": "v0"}`. Вызов ядра идёт с `solver_choice` `meta`. Коммит `794fb2d71e8b9635798e59fba1d363e2988222eb` меняет только документацию; слушатель на него не переводился.

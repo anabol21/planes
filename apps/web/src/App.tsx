@@ -1,4 +1,6 @@
 import {
+  lazy,
+  Suspense,
   useEffect,
   useMemo,
   useRef,
@@ -55,11 +57,15 @@ import {
   type JobStatus,
   type JsonObject,
   type LifecycleState,
+  type MissionPlan,
 } from "./types";
 
 const DEFAULT_OBJECTIVE = "min_time";
 const DEFAULT_SEED = "7";
 const TIME_LIMIT_TOO_LONG = `Лимит расчёта не больше ${MAX_TIME_LIMIT_SECONDS} секунд.`;
+const MissionMap = lazy(() =>
+  import("./MissionMap").then((module) => ({ default: module.MissionMap })),
+);
 
 const STATE_LABELS: Record<LifecycleState, string> = {
   queued: "В очереди",
@@ -126,9 +132,13 @@ function SolverSummary({ report }: { report: JsonObject }) {
   );
 }
 
-function MissionPlanSummary({ plan }: { plan: JsonObject }) {
-  const sorties = Array.isArray(plan.sorties) ? plan.sorties : null;
-  const explicitAssignments = sorties?.flatMap((sortie, index) => {
+function MissionPlanSummary({ plan }: { plan: MissionPlan }) {
+  const assignments = Array.isArray(plan.routes)
+    ? plan.routes
+    : Array.isArray(plan.sorties)
+      ? plan.sorties
+      : null;
+  const explicitAssignments = assignments?.flatMap((sortie, index) => {
     if (typeof sortie !== "object" || sortie === null || Array.isArray(sortie)) return [];
     const item = sortie as JsonObject;
     const uavId = readString(item.uav_id) ?? readString(item.aircraft_id);
@@ -138,7 +148,7 @@ function MissionPlanSummary({ plan }: { plan: JsonObject }) {
     <div className="result-section mission-summary">
       <h3>План миссии</h3>
       <div className="mission-summary-grid">
-        <div><strong>{sorties ? sorties.length : "—"}</strong><span>полётных заданий</span></div>
+        <div><strong>{assignments ? assignments.length : "—"}</strong><span>полётных заданий</span></div>
         <p>План показан без браузерных расчётов. Привязка к БВС отображается только при наличии явного идентификатора в ответе backend.</p>
       </div>
       {explicitAssignments.length > 0 && (
@@ -162,7 +172,7 @@ function failureMessage(error: JsonObject | null): string {
   return "Вычислительный контур не смог сформировать результат.";
 }
 
-function ResultPanel({ result }: { result: JobResult }) {
+export function ResultPanel({ result }: { result: JobResult }) {
   const presentation = getResultPresentation(result);
   const synthetic = result.state !== "failed" && result.mission_plan !== null && result.mission_plan.test_data === true;
   const icon = presentation.badge === "feasible" ? "✓" : presentation.badge === "infeasible" ? "—" : presentation.badge === "timed_out" ? "◷" : "!";
@@ -177,7 +187,21 @@ function ResultPanel({ result }: { result: JobResult }) {
       {result.state === "failed" ? (
         <div className="result-section error-detail"><h3>Сообщение вычислительного контура</h3><p>{failureMessage(result.error)}</p></div>
       ) : (
-        <>{result.mission_plan && <MissionPlanSummary plan={result.mission_plan} />}<SolverSummary report={result.solver_report} /></>
+        <>
+          {result.mission_plan && <MissionPlanSummary plan={result.mission_plan} />}
+          {result.state === "completed" && result.outcome === "feasible" && result.mission_plan && (
+            <div className="result-section mission-map-section">
+              <div className="mission-map-heading">
+                <div><p className="eyebrow">Маршрут</p><h3>Карта полётной миссии</h3></div>
+                <span>Спутниковая подложка · EPSG:4326</span>
+              </div>
+              <Suspense fallback={<div className="mission-map-empty" role="status">Загрузка карты…</div>}>
+                <MissionMap plan={result.mission_plan} />
+              </Suspense>
+            </div>
+          )}
+          <SolverSummary report={result.solver_report} />
+        </>
       )}
       <details className="raw-response"><summary>Raw response JSON</summary><pre>{JSON.stringify(result, null, 2)}</pre></details>
     </section>
@@ -392,7 +416,6 @@ export default function App() {
   const [seedText, setSeedText] = useState(DEFAULT_SEED);
   const [surveyTask, setSurveyTask] = useState<KmlFileRecord | null>(null);
   const [restrictedZones, setRestrictedZones] = useState<KmlFileRecord | null>(null);
-  const [obstacles, setObstacles] = useState<KmlFileRecord[]>([]);
   const [loadingCategory, setLoadingCategory] = useState<KmlCategory | null>(null);
   const [job, setJob] = useState<JobStatus | null>(null);
   const [result, setResult] = useState<JobResult | null>(null);
@@ -418,8 +441,7 @@ export default function App() {
     windDirectionFromDeg: windDirection,
     surveyTask,
     restrictedZones,
-    obstacles,
-  }), [scenarioId, aerodromes, boards, surveyType, gsdCmPerPx, forwardOverlap, sideOverlap, stripDirectionDeg, windSpeed, windDirection, surveyTask, restrictedZones, obstacles]);
+  }), [scenarioId, aerodromes, boards, surveyType, gsdCmPerPx, forwardOverlap, sideOverlap, stripDirectionDeg, windSpeed, windDirection, surveyTask, restrictedZones]);
 
   function changeAerodromeCount(count: number) {
     setAerodromes((current) => resizeAerodromes(current, count));
@@ -449,7 +471,6 @@ export default function App() {
       const records = await Promise.all(files.map((file) => readKmlFile(file, category, `kml-${++fileSequence.current}`)));
       if (category === "survey_task") setSurveyTask(records[0]);
       else if (category === "restricted_zones") setRestrictedZones(records[0]);
-      else setObstacles((current) => [...current, ...records]);
     } finally {
       setLoadingCategory(null);
     }
@@ -517,7 +538,7 @@ export default function App() {
 
       <div className="honesty-banner">
         <strong>Prototype scenario profile</strong>
-        <p>KML читается локально. В запрос уходят кольца полигонов, аэродромы, борты, GSD, перекрытия и направление полос. Камера берётся из рёбер совместимости выбранной модели. Скорость, батарея, оптика и коэффициенты мощности подставляются на сервере из справочника модели. Маршруты рассчитывает только backend/runtime.</p>
+        <p>KML границ съёмки обязателен. Файл зон ограничений необязателен: без него полигонов ограничений нет. Сервер разбирает загруженные тексты. Камера берётся из рёбер совместимости выбранной модели. Маршруты рассчитывает только backend/runtime.</p>
       </div>
 
       <form onSubmit={handleSubmit} noValidate>
@@ -527,11 +548,10 @@ export default function App() {
         </section>
 
         <section className="card workflow-section" aria-labelledby="geo-title">
-          <div className="section-heading"><div><p className="eyebrow">02 · Геоданные</p><h2 id="geo-title">KML-файлы организатора</h2><p className="section-description">Исходные файлы остаются в браузере. В запрос попадают кольца: один полигон задания, зоны ограничений и препятствия, чей след пересекает bbox съёмки.</p></div><span className="step-chip">.kml</span></div>
+          <div className="section-heading"><div><p className="eyebrow">02 · Геоданные</p><h2 id="geo-title">KML-файлы организатора</h2><p className="section-description">На сервер уходит текст задания на съёмку. Файл зон ограничений необязателен: без него полигонов ограничений нет. Кольца разбирает сервер.</p></div><span className="step-chip">.kml</span></div>
           <div className="upload-grid">
             <UploadCard category="survey_task" title="Границы задания на съёмку" description="Основная область работ. Один файл обязателен для запуска." sourceHint="Границы полетов.kml" files={surveyTask ? [surveyTask] : []} loading={loadingCategory === "survey_task"} onFiles={(files) => void handleKmlFiles("survey_task", files)} onRemove={() => setSurveyTask(null)} />
-            <UploadCard category="restricted_zones" title="Зоны ограничений" description="Временные и постоянные запретные зоны из примера организатора." sourceHint="Московская зона.kml" files={restrictedZones ? [restrictedZones] : []} loading={loadingCategory === "restricted_zones"} onFiles={(files) => void handleKmlFiles("restricted_zones", files)} onRemove={() => setRestrictedZones(null)} />
-            <UploadCard category="obstacle" title="Высотные препятствия" description="Можно выбрать несколько KML с 3D-примитивами препятствий." sourceHint="obstacles_Московская область.kml; высотные препятствия Приморский край.kml" files={obstacles} multiple loading={loadingCategory === "obstacle"} onFiles={(files) => void handleKmlFiles("obstacle", files)} onRemove={(id) => setObstacles((current) => current.filter((file) => file.id !== id))} />
+            <UploadCard category="restricted_zones" title="Зоны ограничений" description="Необязательный файл. Без него зон ограничений нет. Высоты в загруженном файле копируются как текст." sourceHint="Московская зона.kml" files={restrictedZones ? [restrictedZones] : []} loading={loadingCategory === "restricted_zones"} onFiles={(files) => void handleKmlFiles("restricted_zones", files)} onRemove={() => setRestrictedZones(null)} />
           </div>
         </section>
 

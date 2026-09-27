@@ -3,18 +3,24 @@ workstream: integration
 owner: Team
 task: DEMO-001
 status: review
-updated: 2026-09-24
-checkpoint: 2026-09-23
-branch: main
+updated: 2026-09-27
+checkpoint: 2026-09-27
+branch: test_merge
 contract_version: v0
 ---
 
 # Integration status
 
+- `review`: сшивка на `cursor/geo-core-kml-stitch`. Тракт рельефа скопирован из `origin/integration/TER-GRI-001` (`src/planes/integration/terrain/`, `opentopography.py`). Разбор KML съёмки и ограничений — `src/planes/integration/kml/`. Браузер отправляет тексты `survey_kml` и `constraints_kml`; третья загрузка препятствий снята. Полигоны ограничений идут в ядро как препятствия: у `MissionInput` отдельного типа запретной зоны нет. Высотный текст копируется и не толкуется. Ключ OpenTopography и скачанные растры в git не входят.
+
+On `test_merge` the picture for teammates is `docs/architecture/STITCH_PICTURE.md`. The browser sends raw `survey_kml` and `constraints_kml`. The sentence below is the pre-stitch path on `main`.
+
 Live path on `main`: form `127.0.0.1:5173`, API `127.0.0.1:8000`, worker `--engine runtime`. The CLI default remains `fake`. SQLite stores the scenario unchanged; catalog numbers are applied only on the listener. `fleet_catalog.json` is filled from Grisha's `data.json`; `geoscan-801` is his 1.5 kg quadcopter. GSD, overlaps, and strip direction come from the form. The form sends `aerodromes` and `boards`, not `pads` or `uav_types`. The listener is `planes-compute.service` at `/opt/planes`, git `da3da56` on `runtime/MIS-002-external-enumeration`, health `live`, contract `v0`, `solver_choice` `meta`. Documentation commit `794fb2d` did not move the listener. Pairs that reach `run()` and the remaining approximations (`geoscan-201` `kh`/`kv`/`kw` `90`/`0.02`/`0.008` instead of `220` W, `turn_time_s` `5.0`, `apply_turn_to_base` `false`, zones and obstacles not copied into `InputData`) are in `docs/architecture/agent-brief-runtime.md` and `docs/architecture/agent-brief-backend.md`.
 
 ## Completed
 
+- [x] Terrain tract from `origin/integration/TER-GRI-001`: `src/planes/integration/terrain/opentopography.py` and its package. The geo core was not taken from that branch.
+- [x] Server-side KML parser `src/planes/integration/kml/`: survey polygon (EPSG:4326) and constraint polygons (`ring`, `name`, `type`, altitude text copied and not interpreted). The web job sends both file texts. The third obstacle upload is gone.
 - [x] Defined non-overlapping workstream boundaries and the initial engine port.
 - [x] Added a backend-owned runtime wrapper that converts backend-local v0 requests through runtime-owned parsing.
 - [x] Reused `RuntimeEngineAdapter` unchanged for HTTP transport and converted its structured response back to the backend model.
@@ -32,10 +38,22 @@ Live path on `main`: form `127.0.0.1:5173`, API `127.0.0.1:8000`, worker `--engi
 
 ## Next action
 
-The running path is the enumeration listener in `docs/architecture/agent-brief-runtime.md` and `docs/architecture/agent-brief-backend.md`. The three-terminal fake-worker smoke remains the earlier DEMO-001 check. API, web client, and worker still share one SQLite file.
+Review the stitch on `cursor/geo-core-kml-stitch`. The listener on `main` is still the enumeration path in `docs/architecture/agent-brief-runtime.md`. This branch does not deploy it. The three-terminal fake-worker smoke remains the earlier DEMO-001 check.
 
 ## Evidence
 
+- Command: `PYTHONPATH=src python3 -m unittest tests.runtime.test_geo_kml_stitch -v`
+- Result: `Ran 4 tests in 21.060s` / `OK`. Parser returns the constraint polygon. Mocked terrain HTTP is used once for the bbox; the cache hit does not call it again. `dem_file` is set. The route does not cross the constraint ring. Missing key and invalid raster fail explicitly.
+- Command: `PYTHONPATH=src python3 -m unittest discover -s tests/backend -v`
+- Result: `Ran 32 tests in 0.834s` / `OK`.
+- Command: `PYTHONPATH=src python3 -m unittest discover -s tests/runtime -v`
+- Result: `Ran 73 tests in 35.643s` / `OK`.
+- Command: `pnpm exec vitest run` in `apps/web`
+- Result: 5 files, 52 tests, passed.
+- Command: `pnpm exec tsc --noEmit` in `apps/web`
+- Result: exit 0.
+- Command: `python3 scripts/validate_workspace.py`
+- Result: `Workspace validation: PASS`.
 - `docs/architecture/INTERFACES_V0.md`
 - `docs/checkpoints/2026-09-22.md`
 - Task brief: `docs/workstreams/integration/INT-001.md`.
@@ -61,6 +79,8 @@ The running path is the enumeration listener in `docs/architecture/agent-brief-r
 
 ## Interface changes and downstream impact
 
+- No change under `src/planes/contracts/**`.
+- The job scenario on this branch carries `survey_kml` and `constraints_kml`. The browser no longer sends parsed `area`, `zone_constraints`, or `obstacles` for this tract. Constraint polygons reach the geo core as obstacles because `MissionInput` has no separate no-fly type. Altitude text is copied, not interpreted. Terrain acquisition sets `Params.dem_file`. A missing `OPENTOPOGRAPHY_API_KEY` or an invalid raster fails the job; flat terrain is not a fallback.
 - Worker CLI now accepts `--engine fake` and `--engine runtime`; omission remains equivalent to `--engine fake`.
 - Runtime mode requires `optimization.objective` and `optimization.time_limit_seconds`; generic backend submission validation is unchanged.
 - Runtime transport, runtime internals, infrastructure, shared contracts, frontend, and model code are unchanged.

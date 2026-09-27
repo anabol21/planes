@@ -88,9 +88,13 @@ POST http://$COMPUTE_HOST:8080/v0/solve
 | HTTP 200 и `outcome=infeasible` | Отказ солвера. Запрос не сломан |
 | HTTP 200 и `outcome=timed_out` | Дедлайн, не `infeasible` |
 
-В репозитории `solver.solve` вызывает солвер Гриши с `solver_choice` `meta`. Конверт с `aerodromes` и `boards` идёт во внешний перебор; числа модели и камеры читаются из `fleet_catalog.json`. Конверт с `pads` или `uav_types` даёт `outcome=error`, не `infeasible`. Слушатель на ВМ — unit `planes-compute.service`, каталог `/opt/planes`, git `da3da562b3d38d92dcc3dfc2f3b46636331cb8fc` (`da3da56`), ветка `runtime/MIS-002-external-enumeration`. `GET /health` без токена отвечает `{"status": "live", "contract_version": "v0"}`. Коммит документации `5761f17bfc96f75cdab7a9403a94f86167cf86de` слушатель не переводил.
+На ветке `test_merge` конверт с аэродромами и бортами описан в `docs/architecture/STITCH_PICTURE.md`. Следующий абзац — снимок `main` на `da3da56`.
+
+В репозитории на `main` `solver.solve` вызывает солвер Гриши с `solver_choice` `meta`. Конверт с `aerodromes` и `boards` идёт во внешний перебор; числа модели и камеры читаются из `fleet_catalog.json`. Конверт с `pads` или `uav_types` даёт `outcome=error`, не `infeasible`. Слушатель на ВМ — unit `planes-compute.service`, каталог `/opt/planes`, git `da3da562b3d38d92dcc3dfc2f3b46636331cb8fc` (`da3da56`), ветка `runtime/MIS-002-external-enumeration`. `GET /health` без токена отвечает `{"status": "live", "contract_version": "v0"}`. Коммит документации `5761f17bfc96f75cdab7a9403a94f86167cf86de` слушатель не переводил.
 
 ## Для агента Гриши
+
+На `test_merge` конверт с аэродромами и бортами собирает `src/planes/runtime/geo_mission.py` и вызывает `planner.solver.pipeline`. Тело ядра по-прежнему не править. Картина — `docs/architecture/STITCH_PICTURE.md`.
 
 - Читать: `src/planes/runtime/solver.py`, `src/planes/runtime/pipeline.py`, имена outcome в `types.py`.
 - Делать: единственная точка — тело `solver.solve`. Функция получает `Problem` и `deadline` и возвращает `Solution`, `Infeasible` или `TimedOut`.

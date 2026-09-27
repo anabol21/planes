@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2">
+  <Document>
+    <name>crooked-survey</name>
+    <Placemark>
+      <name>Северный излом</name>
+      <Polygon>
+        <outerBoundaryIs>
+          <LinearRing>
+            <coordinates>
+              37.6010,55.7504,0
+              37.6044,55.7502,0
+              37.6058,55.7514,0
+              37.6046,55.7518,0
+              37.6068,55.7524,0
+              37.6072,55.7534,0
+              37.6048,55.7538,0
+              37.6022,55.7532,0
+              37.6008,55.7520,0
+              37.6010,55.7504,0
+            </coordinates>
+          </LinearRing>
+        </outerBoundaryIs>
+      </Polygon>
+    </Placemark>
+    <Placemark>
+      <name>Южный излом</name>
+      <Polygon>
+        <outerBoundaryIs>
+          <LinearRing>
+            <coordinates>
+              37.6012,55.7468,0
+              37.6038,55.7464,0
+              37.6046,55.7471,0
+              37.6034,55.7476,0
+              37.6020,55.7475,0
+              37.6010,55.7470,0
+              37.6012,55.7468,0
+            </coordinates>
+          </LinearRing>
+        </outerBoundaryIs>
+      </Polygon>
+    </Placemark>
+  </Document>
+</kml>

@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2">
+  <Document>
+    <Placemark>
+      <name>placemark</name>
+      <ExtendedData>
+        <Data name="Name"><value>Сектор А</value></Data>
+        <Data name="Type"><value>врем_ограничение</value></Data>
+        <Data name="Altitudes"><value>от 800 м AMSL до FL90</value></Data>
+      </ExtendedData>
+      <Polygon>
+        <outerBoundaryIs>
+          <LinearRing>
+            <coordinates>
+              37.6025,55.7516,0 37.6055,55.7516,0 37.6055,55.7524,0 37.6025,55.7524,0 37.6025,55.7516,0
+            </coordinates>
+          </LinearRing>
+        </outerBoundaryIs>
+      </Polygon>
+    </Placemark>
+  </Document>
+</kml>

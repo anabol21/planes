@@ -3,7 +3,7 @@ workstream: model
 owner: Grisha
 task: GRI-001
 status: review
-updated: 2026-09-24
+updated: 2026-09-27
 checkpoint: 2026-09-23
 branch: GreforyAbdr-patch-1
 contract_version: v0
@@ -13,7 +13,9 @@ contract_version: v0
 
 - `planned`: GRI-002 — непрямоугольная зона и отдельный KML ограничений полётной зоны. Бриф: `docs/workstreams/model/GRI-002.md`.
 
-Live path: runtime calls `run(data, "meta", seed=...)`. `fleet_catalog.json` is filled from this package's `data.json` and applied only on the listener. `geoscan-801` there is the 1.5 kg quadcopter from that file. The form sends `aerodromes` and `boards`, not `pads` or `uav_types`. GSD, overlaps, and strip direction come from the form. The listener `planes-compute.service` at `/opt/planes` is git `da3da56` on `runtime/MIS-002-external-enumeration`, health `live`, contract `v0`. Documentation commit `794fb2d` was not deployed there. Pairs that reach `run()` and the remaining approximations are in `docs/architecture/agent-brief-runtime.md`. This note does not authorize edits to the optimizer body. Backend agents do not fill optics or power.
+On `test_merge` the aerodromes-and-boards envelope calls `planner.solver.pipeline` from `src/planes/runtime/geo_mission.py`. The one-card path still calls `run(data, "meta", seed=...)`. Read `docs/architecture/STITCH_PICTURE.md` before the `da3da56` briefs. This note does not authorize edits to the optimizer body.
+
+Live path on `main` before the stitch: runtime calls `run(data, "meta", seed=...)`. `fleet_catalog.json` is filled from this package's `data.json` and applied only on the listener. `geoscan-801` there is the 1.5 kg quadcopter from that file. The form sends `aerodromes` and `boards`, not `pads` or `uav_types`. GSD, overlaps, and strip direction come from the form. The listener `planes-compute.service` at `/opt/planes` is git `da3da56` on `runtime/MIS-002-external-enumeration`, health `live`, contract `v0`. Documentation commit `794fb2d` was not deployed there. Pairs that reach `run()` and the remaining approximations are in `docs/architecture/agent-brief-runtime.md`. This note does not authorize edits to the optimizer body. Backend agents do not fill optics or power.
 
 ## Completed
 

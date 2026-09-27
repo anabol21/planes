@@ -1,0 +1,13 @@
+{
+  "vpps": [
+    {
+      "id": "vpp-1",
+      "name": "Main VPP",
+      "lat": 55.7495,
+      "lon": 37.6195,
+      "alt_m": 150,
+      "uavs": ["gemini-1"],
+      "cameras": ["pf1b"]
+    }
+  ]
+}

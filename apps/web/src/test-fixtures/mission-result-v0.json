@@ -1,0 +1,79 @@
+{
+  "contract_version": "v0",
+  "job_id": "job-map-demo-001",
+  "state": "completed",
+  "outcome": "feasible",
+  "mission_plan": {
+    "crs": "EPSG:4326",
+    "criterion": "min_time",
+    "areas": [
+      {
+        "id": "survey-1",
+        "name": "Тестовая область",
+        "survey_type": "visible",
+        "polygon": {
+          "type": "Polygon",
+          "coordinates": [[[37.600, 55.748], [37.610, 55.748], [37.610, 55.754], [37.600, 55.754], [37.600, 55.748]]]
+        }
+      }
+    ],
+    "obstacles": [
+      {
+        "id": "obstacle-1",
+        "name": "Мачта",
+        "height_m": 45,
+        "polygon": {
+          "type": "Polygon",
+          "coordinates": [[[37.605, 55.750], [37.606, 55.750], [37.606, 55.751], [37.605, 55.751], [37.605, 55.750]]]
+        }
+      }
+    ],
+    "constraint_polygons": [
+      {
+        "ring": [[37.608, 55.752], [37.609, 55.752], [37.609, 55.753], [37.608, 55.753], [37.608, 55.752]],
+        "name": "Сектор А",
+        "type": "restricted",
+        "altitudes_text": "от 800 м AMSL до FL90"
+      }
+    ],
+    "routes": [
+      {
+        "uav_id": "БВС 1",
+        "flight_index": 0,
+        "vpp_id": "аэродром 1",
+        "waypoints": [
+          {"lat": 55.748, "lon": 37.604, "alt_m": 245.3},
+          {"lat": 55.750, "lon": 37.607, "alt_m": 275.0},
+          {"lat": 55.748, "lon": 37.604, "alt_m": 245.3}
+        ]
+      },
+      {
+        "uav_id": "БВС 1",
+        "flight_index": 1,
+        "vpp_id": "аэродром 1",
+        "waypoints": [
+          {"lat": 55.748, "lon": 37.604, "alt_m": 245.3},
+          {"lat": 55.751, "lon": 37.609, "alt_m": 282.0},
+          {"lat": 55.748, "lon": 37.604, "alt_m": 245.3}
+        ]
+      },
+      {
+        "uav_id": "БВС 2",
+        "flight_index": 0,
+        "vpp_id": "аэродром 2",
+        "waypoints": [
+          {"lat": 55.749, "lon": 37.602, "alt_m": 241.0},
+          {"lat": 55.753, "lon": 37.608, "alt_m": 291.0}
+        ]
+      }
+    ]
+  },
+  "solver_report": {
+    "method": "pipeline",
+    "objective": "min_time",
+    "runtime_seconds": 4.2,
+    "seed": 7,
+    "limitations": []
+  },
+  "artifacts": []
+}

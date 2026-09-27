@@ -1,7 +1,9 @@
 
 # Бриф: runtime и model
 
-Источник: коммит `da3da562b3d38d92dcc3dfc2f3b46636331cb8fc`, ветка `runtime/MIS-002-external-enumeration`, дерево `/tmp/mis-002-catalog`. Контракт `v0`. Тело оптимизатора Гриши этим путём не меняется.
+На ветке `test_merge` живой конверт — `docs/architecture/STITCH_PICTURE.md`. Текст ниже — снимок `main` на `da3da56`: внешний перебор и `solver_choice` `meta`. На `test_merge` конверт с `aerodromes` и `boards` считает `src/planes/runtime/geo_mission.py` одним вызовом `planner.solver.pipeline`. Одиночный `takeoff` плюс `uav` остаётся на `meta`. Слушатель для живого прогона сшивки стоял на `debcd9c`. Коммит `c04786a` добавляет тесты и на unit не переносился.
+
+Источник этого брифа: коммит `da3da562b3d38d92dcc3dfc2f3b46636331cb8fc`, ветка `runtime/MIS-002-external-enumeration`, дерево `/tmp/mis-002-catalog`. Контракт `v0`. Тело оптимизатора Гриши этим путём не меняется.
 
 ## Правила
 

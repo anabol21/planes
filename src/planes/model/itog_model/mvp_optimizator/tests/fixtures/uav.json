@@ -1,0 +1,14 @@
+{
+  "uavs": [
+    {
+      "id": "gemini-1",
+      "model": "gemini",
+      "camera_id": "pf1b",
+      "gnss_id": "ublox-zed-f9p",
+      "radio_id": "868-mhz-gemini",
+      "battery_id": "battery-gemini",
+      "vpp_id": "vpp-1",
+      "n_camera_slots": 1
+    }
+  ]
+}

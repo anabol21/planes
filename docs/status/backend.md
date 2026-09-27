@@ -3,15 +3,17 @@ workstream: backend
 owner: Ruslan
 task: INT-001
 status: review
-updated: 2026-09-24
+updated: 2026-09-27
 checkpoint: 2026-09-23
-branch: main
+branch: test_merge
 contract_version: v0
 ---
 
 # Backend status
 
 - `planned`: RUS-002 — рельеф из отдельного KML местности в матрицы `precompute`. Бриф: `docs/workstreams/model/RUS-002.md`.
+
+On `test_merge` the backend Python is unchanged. The scenario snapshot carries raw `survey_kml` and `constraints_kml`. The stitched listener path is `docs/architecture/STITCH_PICTURE.md`. The rest of this paragraph is the pre-stitch path on `main`.
 
 Live path on `main`: the form at `127.0.0.1:5173` sends `aerodromes` and `boards`, not `pads` or `uav_types`, to the API at `127.0.0.1:8000`. The live worker is `python -m planes.backend.worker --engine runtime`. The CLI default remains `fake`. SQLite stores `scenario_json` unchanged. Catalog numbers, including optics and power, are applied only on the listener. `fleet_catalog.json` is filled from Grisha's `data.json`; `geoscan-801` is his 1.5 kg quadcopter. GSD, overlaps, and strip direction come from the form. The listener is `planes-compute.service` at `/opt/planes`, git `da3da56` on `runtime/MIS-002-external-enumeration`, health `live`, contract `v0`, `solver_choice` `meta`. Documentation commit `794fb2d` was not deployed there. See `docs/architecture/agent-brief-backend.md` and `docs/architecture/agent-brief-runtime.md`. Remaining approximations (`geoscan-201` `kh`/`kv`/`kw` `90`/`0.02`/`0.008` instead of `220` W, `turn_time_s` `5.0`, `apply_turn_to_base` `false`, zones and obstacles not copied into `InputData`) are in the runtime brief.
 
@@ -36,7 +38,7 @@ Live path on `main`: the form at `127.0.0.1:5173` sends `aerodromes` and `boards
 
 ## Next action
 
-The live worker path is `--engine runtime` against the listener recorded in `docs/architecture/agent-brief-runtime.md` (git `da3da56`, not documentation commit `794fb2d`). The earlier note that a controlled smoke was not recorded in this file stays as checkpoint evidence.
+The live worker path is `--engine runtime`. On `test_merge` read `docs/architecture/STITCH_PICTURE.md` before `docs/architecture/agent-brief-runtime.md`. That brief records the pre-stitch listener at git `da3da56`. The earlier note that a controlled smoke was not recorded in this file stays as checkpoint evidence.
 
 ## Evidence
 
