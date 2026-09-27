@@ -67,6 +67,24 @@ For a manual browser smoke run, start the API, start Vite, submit the form, invo
 - Starting another submission and unmounting the application both cancel the active request chain.
 - Input, network, HTTP, and invalid-response errors are shown explicitly.
 
+## WEB-002 mission result map
+
+A completed feasible result with `mission_plan` is rendered on a MapLibre satellite map. The only
+route source is `mission_plan.routes[].waypoints[]`: every flight becomes a separate GeoJSON
+LineString, input order is preserved, and coordinates are mapped as `[lon, lat]`. The browser does
+not parse result KML, reconstruct swaths, rerun optimization, or alter route geometry.
+
+The map displays all flights, uses one stable presentation color per `uav_id`, marks deduplicated
+start/base points, and fits the viewport to result geometry. Supported `areas[].polygon`,
+`obstacles[].polygon`, and `constraint_polygons[].ring` are optional overlays. Route selection shows
+the authoritative UAV, flight index, and VPP identifiers. Infeasible, timed-out, failed, and
+feasible results without drawable routes retain explicit non-map states.
+
+The demo basemap is Esri World Imagery, requested directly by MapLibre without an API key. Esri
+attribution is always visible. Production use requires a separate review of provider terms,
+availability, privacy, caching, and any required credentials; no provider key belongs in source
+control.
+
 ## Limitations
 
 - Contract `v0` is backend-local and provisional; shared domain contracts are not frozen.
@@ -76,3 +94,7 @@ For a manual browser smoke run, start the API, start Vite, submit the form, invo
 - Backend and worker startup require `PYTHONPATH=src`.
 - The worker processes one job per invocation and does not recover a job if a worker dies after claiming it.
 - Production hosting, authentication, and browser-support policy are outside this client.
+- The map is two-dimensional: altitude is retained in typed waypoint data but no altitude profile,
+  terrain, animation, or certified flight-safety interpretation is provided.
+- Satellite imagery needs network access. Production basemap terms and an offline/fallback policy
+  are not resolved by WEB-002.

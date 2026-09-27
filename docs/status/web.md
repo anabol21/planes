@@ -1,17 +1,76 @@
 ---
 workstream: web
 owner: Integration / Web
-task: WEB-001
-status: in_progress
+task: WEB-002
+status: review
 updated: 2026-09-27
 checkpoint: 2026-09-22
-branch: test_merge
+branch: frontend/WEB-002-on-test-merge
 contract_version: v0
 ---
 
 # Web status
 
 On `test_merge` the form sends raw `survey_kml` and `constraints_kml`. The picture is `docs/architecture/STITCH_PICTURE.md`. The sentence below is the pre-stitch path on `main`.
+
+## WEB-002 review handoff
+
+WEB-002 renders the authoritative `mission_plan.routes[].waypoints[]` result on an Esri World
+Imagery basemap through MapLibre. Each flight remains a separate GeoJSON LineString, waypoint order
+and duplicate XY positions are preserved, and presentation color is assigned consistently per UAV.
+The result view also supports optional survey-area, obstacle, and confirmed constraint-ring
+overlays, deduplicated start/base markers, automatic bounds, a legend, and route identity details.
+
+This landing is on `test_merge` `dc8bbc77b66569917210b027e88cdfd5e24922c1`, branch
+`frontend/WEB-002-on-test-merge`. Route lines are produced by `_plan` on that branch. The map reads
+the computed `mission_plan` and leaves the contract at `v0`.
+
+### Completed
+
+- [x] Added typed v0 mission-result structures without changing the HTTP contract.
+- [x] Added the pure mission-plan-to-GeoJSON presentation adapter and deterministic fixture.
+- [x] Added the lazy-loaded satellite map to completed feasible results only.
+- [x] Preserved the existing summary, solver report, raw JSON, and all non-feasible result states.
+- [x] Added adapter and component regressions for exact coordinate order, multiple UAVs/flights,
+  duplicates, empty routes, overlays, selection, and lifecycle-state gating.
+- [x] Verified typecheck, tests, production build, repository validation, and whitespace checks.
+- [x] Browser-smoked the submission-to-result flow against a deterministic local v0 result: the
+  viewport fitted the mission, two UAV legend entries and two base markers rendered, and 26 Esri
+  satellite tile requests returned HTTP 200.
+
+### Next action
+
+Review this landing on `frontend/WEB-002-on-test-merge` from `test_merge` `dc8bbc7`. A live form
+check on a Mac or VPS is the step after this landing. Esri production terms remain a documented
+limitation before deployment.
+
+### Evidence
+
+- Task brief: `docs/workstreams/web/WEB-002.md`.
+- Source: `apps/web/src/MissionMap.tsx`, `apps/web/src/missionMapData.ts`, and typed additions in
+  `apps/web/src/types.ts`.
+- Fixture: `apps/web/src/test-fixtures/mission-result-v0.json`.
+- Landing checks on this tree (`pnpm typecheck`, `pnpm test -- --run`, `pnpm build`,
+  `python scripts/validate_workspace.py`, `git diff --check`) are recorded with this branch's
+  vitest output after the cherry-pick.
+
+### Blockers / limitations
+
+- Esri World Imagery is suitable for the demo smoke run, but production terms, availability,
+  privacy, caching, and fallback behavior require a separate decision.
+- The map is two-dimensional and does not visualize altitude or terrain. It does not calculate,
+  repair, certify, or reinterpret routes.
+- A route with fewer than two valid waypoints cannot form a LineString and is reported through the
+  feasible empty-map state when no other drawable route exists.
+
+### Interface changes and downstream impact
+
+- No backend, runtime, optimizer, KML, database, or public contract was changed.
+- The frontend now reads optional `mission_plan.routes`, `areas`, `obstacles`, and confirmed
+  `constraint_polygons` fields from an existing terminal result.
+- Missing optional overlay fields remain non-fatal. Backend/runtime values remain authoritative.
+
+## WEB-001 historical status
 
 Live path on `main`: the form at `http://127.0.0.1:5173` sends `aerodromes` and `boards`, not `pads` or `uav_types`. GSD, overlaps, and strip direction come from the form. The API is `http://127.0.0.1:8000`. The live worker is `--engine runtime` (CLI default remains `fake`). SQLite stores the scenario unchanged; catalog numbers are applied only on the listener. `fleet_catalog.json` is filled from Grisha's `data.json`; `geoscan-801` is his 1.5 kg quadcopter. The listener is `planes-compute.service` at `/opt/planes`, git `da3da56` on `runtime/MIS-002-external-enumeration`, health `live`, contract `v0`, `solver_choice` `meta`. Documentation commit `794fb2d` was not deployed there. Pairs that reach `run()` and the remaining approximations are in `docs/architecture/agent-brief-runtime.md`. The backend path is `docs/architecture/agent-brief-backend.md`.
 
