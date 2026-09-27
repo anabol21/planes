@@ -315,9 +315,8 @@ export function buildPrototypeScenario(
 }
 
 export const DEFAULT_TIME_LIMIT = "90";
-// 120 s client wait, minus 5 s wrapper slack, minus 2 s listener buffer, is 113.
-// 110 is the max the form shows and accepts.
-export const MAX_TIME_LIMIT_SECONDS = 110;
+// Hard maximum the form accepts. The default stays below this.
+export const MAX_TIME_LIMIT_SECONDS = 300;
 
 export function buildOptimization(objective: string, timeLimitSeconds: number): JsonObject {
   if (!objective.trim()) throw new Error("Выберите критерий оптимизации.");
