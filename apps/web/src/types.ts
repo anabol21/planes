@@ -9,6 +9,52 @@ export type LifecycleState =
   | "failed";
 export type EngineOutcome = "feasible" | "infeasible" | "timed_out" | "error";
 
+export interface PolygonGeometry extends JsonObject {
+  type: "Polygon";
+  coordinates: number[][][];
+}
+
+export interface RouteWaypoint extends JsonObject {
+  lat: number;
+  lon: number;
+  alt_m: number;
+}
+
+export interface MissionRoute extends JsonObject {
+  uav_id: string;
+  flight_index: number;
+  vpp_id: string;
+  waypoints: RouteWaypoint[];
+}
+
+export interface MissionArea extends JsonObject {
+  id: string;
+  name?: string;
+  polygon: PolygonGeometry;
+}
+
+export interface MissionObstacle extends JsonObject {
+  id: string;
+  name?: string;
+  height_m?: number;
+  polygon: PolygonGeometry;
+}
+
+export interface MissionConstraintPolygon extends JsonObject {
+  ring: number[][];
+  name: string | null;
+  type: string | null;
+  altitudes_text: string | null;
+}
+
+export interface MissionPlan extends JsonObject {
+  crs?: string;
+  areas?: MissionArea[];
+  obstacles?: MissionObstacle[];
+  constraint_polygons?: MissionConstraintPolygon[];
+  routes?: MissionRoute[];
+}
+
 export interface SubmitJobRequest {
   contract_version: typeof CONTRACT_VERSION;
   scenario: JsonObject;
@@ -28,7 +74,7 @@ export interface JobStatus {
 interface ComputeResultBase {
   contract_version: typeof CONTRACT_VERSION;
   job_id: string;
-  mission_plan: JsonObject | null;
+  mission_plan: MissionPlan | null;
   solver_report: JsonObject;
   artifacts: unknown[];
 }
