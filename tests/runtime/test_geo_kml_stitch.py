@@ -113,8 +113,10 @@ def _crosses(route: list[dict], ring: list[list[float]]) -> bool:
 
 class GeoKmlStitchTest(unittest.TestCase):
     def test_fixture_reaches_the_server_parser(self) -> None:
-        ring = parse_survey_polygon(_SURVEY)
+        survey = parse_survey_polygon(_SURVEY)
         polygons = parse_constraint_polygons(_CONSTRAINTS)
+        self.assertEqual(len(survey), 1)
+        ring = [[lon, lat] for lon, lat in survey[0].ring]
         self.assertEqual(ring[0], [37.6, 55.75])
         self.assertEqual(ring[0], ring[-1])
         self.assertEqual(len(polygons), 1)
@@ -123,6 +125,141 @@ class GeoKmlStitchTest(unittest.TestCase):
         self.assertEqual(parsed["type"], "врем_ограничение")
         self.assertEqual(parsed["altitudes_text"], "от 800 м AMSL до FL90")
         self.assertGreaterEqual(len(parsed["ring"]), 4)
+
+    def test_missing_constraints_kml_calls_the_core_with_no_obstacles(self) -> None:
+        from planes.runtime.geo_mission import _optional_text
+
+        for missing in (None, "", "   "):
+            self.assertEqual(parse_constraint_polygons(_optional_text(missing)), [])
+        import planes.integration.terrain.opentopography as terrain
+
+        calls: list[str] = []
+
+        def opener(request, timeout=None):
+            del timeout
+            calls.append(request.full_url)
+            query = urllib.parse.parse_qs(urllib.parse.urlparse(request.full_url).query)
+            payload = _geotiff_bytes(
+                float(query["west"][0]),
+                float(query["south"][0]),
+                float(query["east"][0]),
+                float(query["north"][0]),
+            )
+            return _Body(payload)
+
+        original = terrain.urllib.request.urlopen
+        terrain.urllib.request.urlopen = opener
+        cache = tempfile.mkdtemp(prefix="planes-terrain-empty-")
+        previous_cache = os.environ.get("PLANES_TERRAIN_CACHE_DIR")
+        previous_key = os.environ.get("OPENTOPOGRAPHY_API_KEY")
+        os.environ["PLANES_TERRAIN_CACHE_DIR"] = cache
+        os.environ["OPENTOPOGRAPHY_API_KEY"] = "test-key-not-a-secret"
+        scenario = _scenario()
+        del scenario["constraints_kml"]
+        problem = Problem(
+            job_id="job_stitch_no_constraints",
+            scenario=scenario,
+            objective="min_time",
+            seed=7,
+            time_limit_seconds=60,
+        )
+        try:
+            result = solve(problem, time.monotonic() + 60)
+            self.assertIsInstance(result, Solution)
+            assert isinstance(result, Solution)
+            self.assertEqual(result.method, "pipeline")
+            self.assertEqual(result.mission_plan["constraint_polygons"], [])
+            self.assertEqual(result.mission_plan["obstacles"], [])
+            self.assertTrue(result.mission_plan["routes"])
+            self.assertEqual(len(calls), 1)
+        finally:
+            terrain.urllib.request.urlopen = original
+            if previous_cache is None:
+                os.environ.pop("PLANES_TERRAIN_CACHE_DIR", None)
+            else:
+                os.environ["PLANES_TERRAIN_CACHE_DIR"] = previous_cache
+            if previous_key is None:
+                os.environ.pop("OPENTOPOGRAPHY_API_KEY", None)
+            else:
+                os.environ["OPENTOPOGRAPHY_API_KEY"] = previous_key
+
+    def test_two_survey_polygons_build_two_areas(self) -> None:
+        import planes.integration.terrain.opentopography as terrain
+        import planes.runtime.geo_mission as geo_mission
+
+        survey = """<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2"><Document>
+<Placemark><name>North</name><Polygon><outerBoundaryIs><LinearRing><coordinates>
+37.601,55.748,0 37.609,55.748,0 37.609,55.7525,0 37.601,55.7525,0 37.601,55.748,0
+</coordinates></LinearRing></outerBoundaryIs></Polygon></Placemark>
+<Placemark><name>South</name><Polygon><outerBoundaryIs><LinearRing><coordinates>
+37.601,55.740,0 37.609,55.740,0 37.609,55.745,0 37.601,55.745,0 37.601,55.740,0
+</coordinates></LinearRing></outerBoundaryIs></Polygon></Placemark>
+</Document></kml>"""
+        parsed = parse_survey_polygon(survey)
+        self.assertEqual([polygon.name for polygon in parsed], ["North", "South"])
+
+        def opener(request, timeout=None):
+            del timeout
+            query = urllib.parse.parse_qs(urllib.parse.urlparse(request.full_url).query)
+            payload = _geotiff_bytes(
+                float(query["west"][0]),
+                float(query["south"][0]),
+                float(query["east"][0]),
+                float(query["north"][0]),
+            )
+            return _Body(payload)
+
+        original_open = terrain.urllib.request.urlopen
+        original_run = geo_mission._run_pipeline
+        terrain.urllib.request.urlopen = opener
+        seen: list[object] = []
+
+        def run_pipeline(mission: object) -> object:
+            seen.append(mission)
+            return original_run(mission)
+
+        geo_mission._run_pipeline = run_pipeline
+        cache = tempfile.mkdtemp(prefix="planes-terrain-two-")
+        previous_cache = os.environ.get("PLANES_TERRAIN_CACHE_DIR")
+        previous_key = os.environ.get("OPENTOPOGRAPHY_API_KEY")
+        os.environ["PLANES_TERRAIN_CACHE_DIR"] = cache
+        os.environ["OPENTOPOGRAPHY_API_KEY"] = "test-key-not-a-secret"
+        scenario = _scenario()
+        scenario["survey_kml"] = survey
+        del scenario["constraints_kml"]
+        problem = Problem(
+            job_id="job_stitch_two_areas",
+            scenario=scenario,
+            objective="min_time",
+            seed=7,
+            time_limit_seconds=60,
+        )
+        try:
+            result = solve(problem, time.monotonic() + 60)
+            self.assertIsInstance(result, Solution)
+            assert isinstance(result, Solution)
+            self.assertEqual(len(seen), 1)
+            areas = seen[0].areas
+            self.assertEqual(len(areas), 2)
+            self.assertEqual([area.name for area in areas], ["North", "South"])
+            self.assertEqual(
+                [area.polygon["coordinates"][0][0] for area in areas],
+                [[37.601, 55.748], [37.601, 55.74]],
+            )
+            self.assertEqual(len(result.mission_plan["areas"]), 2)
+            self.assertEqual(result.mission_plan["obstacles"], [])
+        finally:
+            geo_mission._run_pipeline = original_run
+            terrain.urllib.request.urlopen = original_open
+            if previous_cache is None:
+                os.environ.pop("PLANES_TERRAIN_CACHE_DIR", None)
+            else:
+                os.environ["PLANES_TERRAIN_CACHE_DIR"] = previous_cache
+            if previous_key is None:
+                os.environ.pop("OPENTOPOGRAPHY_API_KEY", None)
+            else:
+                os.environ["OPENTOPOGRAPHY_API_KEY"] = previous_key
 
     def test_bbox_requests_terrain_and_the_plan_avoids_constraints(self) -> None:
         import planes.integration.terrain.opentopography as terrain

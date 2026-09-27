@@ -175,13 +175,13 @@ class KmlRingScenarioTest(unittest.TestCase):
         self.assertIn("no polygon", message)
         self.assertNotIn("infeasible", message.lower())
 
-    def test_multiple_survey_polygons_are_listed(self) -> None:
-        with self.assertRaises(ValueError) as caught:
-            _scenario(survey_kml=_TWO_SURVEY_POLYGONS)
-        message = str(caught.exception)
-        self.assertIn("North", message)
-        self.assertIn("South", message)
-        self.assertNotIn("infeasible", message.lower())
+    def test_multiple_survey_polygons_are_kept(self) -> None:
+        scenario = _scenario(survey_kml=_TWO_SURVEY_POLYGONS)
+        polygons = scenario["survey_polygons"]
+        self.assertEqual(len(polygons), 2)
+        self.assertEqual(polygons[0][0], [37.601, 55.748])
+        self.assertEqual(polygons[1][0], [37.601, 55.740])
+        self.assertEqual(scenario["area"], polygons[0])
 
 
 if __name__ == "__main__":

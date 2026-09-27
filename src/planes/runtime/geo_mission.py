@@ -68,7 +68,12 @@ _FLAT_TERRAIN = "terrain raster is not a usable GeoTIFF; refusing flat terrain"
 
 
 def solve_envelope(problem: Problem, deadline: float) -> Solution | Infeasible | TimedOut:
-    """Parse both KML texts, cache COP30, and call the geo-core pipeline."""
+    """Parse the survey KML, cache COP30, and call the geo-core pipeline.
+
+    A missing, null, or blank ``constraints_kml`` is an empty file: no
+    constraint polygons and no invented no-fly zone. The survey KML stays
+    required.
+    """
     from planes.runtime.solver import Infeasible, Solution, TimedOut
 
     if time.monotonic() >= deadline:
@@ -76,13 +81,13 @@ def solve_envelope(problem: Problem, deadline: float) -> Solution | Infeasible |
     scenario = problem.scenario
     if not isinstance(scenario, dict):
         raise ValueError("missing fields: scenario")
-    survey_ring = parse_survey_polygon(_text(scenario.get("survey_kml"), "survey_kml"))
+    survey_polygons = parse_survey_polygon(_text(scenario.get("survey_kml"), "survey_kml"))
     constraints = parse_constraint_polygons(_optional_text(scenario.get("constraints_kml")))
-    dem_path = _acquire_dem(survey_ring)
+    dem_path = _acquire_dem(survey_polygons)
     dem = _load_geotiff(dem_path)
     mission, notes = _mission(
         scenario,
-        survey_ring=survey_ring,
+        survey_polygons=survey_polygons,
         constraints=constraints,
         dem_path=dem_path,
         dem=dem,
@@ -121,8 +126,15 @@ def solve_envelope(problem: Problem, deadline: float) -> Solution | Infeasible |
     )
 
 
-def _acquire_dem(ring: list[list[float]]) -> Path:
-    geometry = {"type": "Polygon", "coordinates": [ring]}
+def _acquire_dem(polygons: list[ConstraintPolygon]) -> Path:
+    coordinates = [
+        [[[lon, lat] for lon, lat in polygon.ring]]
+        for polygon in polygons
+    ]
+    if len(coordinates) == 1:
+        geometry = {"type": "Polygon", "coordinates": coordinates[0]}
+    else:
+        geometry = {"type": "MultiPolygon", "coordinates": coordinates}
     try:
         return Path(
             acquire_terrain_for_area(geometry, survey_crs="EPSG:4326")
@@ -142,7 +154,7 @@ def _load_geotiff(path: Path) -> Any:
 def _mission(
     scenario: dict[str, Any],
     *,
-    survey_ring: list[list[float]],
+    survey_polygons: list[ConstraintPolygon],
     constraints: list[ConstraintPolygon],
     dem_path: Path,
     dem: Any,
@@ -196,12 +208,18 @@ def _mission(
     UAVConfig = symbols["UAVConfig"]
     VPP = symbols["VPP"]
     MissionInput = symbols["MissionInput"]
-    area = Area(
-        id="survey",
-        name="survey",
-        survey_type=SurveyType(survey_type),
-        polygon={"type": "Polygon", "coordinates": [survey_ring]},
-    )
+    areas = [
+        Area(
+            id=f"survey-{index + 1}",
+            name=(polygon.name or "").strip() or f"survey-{index + 1}",
+            survey_type=SurveyType(survey_type),
+            polygon={
+                "type": "Polygon",
+                "coordinates": [[[lon, lat] for lon, lat in polygon.ring]],
+            },
+        )
+        for index, polygon in enumerate(survey_polygons)
+    ]
     obstacles = [
         Obstacle(
             id=f"constraint-{index + 1}",
@@ -247,7 +265,7 @@ def _mission(
     ]
     params = _params(scenario, criterion_name, dem_path, symbols)
     mission = MissionInput(
-        areas=[area],
+        areas=areas,
         obstacles=obstacles,
         vpps=vpps,
         uavs=uavs,
@@ -334,6 +352,7 @@ def _plan(
         "criterion": mission.params.optimization_criterion.value,
         "crs": "EPSG:4326",
         "dem_file": dem_file,
+        "areas": [area.model_dump() for area in mission.areas],
         "constraint_polygons": [polygon.as_dict() for polygon in constraints],
         "obstacles": [obstacle.model_dump() for obstacle in mission.obstacles],
         "routes": routes,
@@ -508,8 +527,9 @@ def _text(value: Any, label: str) -> str:
 
 
 def _optional_text(value: Any) -> str:
+    """Absent and null constraints text are an empty file."""
     if value is None:
-        raise ValueError("missing fields: constraints_kml")
+        return ""
     if not isinstance(value, str):
         raise ValueError("missing fields: constraints_kml")
     return value

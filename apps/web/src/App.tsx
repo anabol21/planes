@@ -514,7 +514,7 @@ export default function App() {
 
       <div className="honesty-banner">
         <strong>Prototype scenario profile</strong>
-        <p>Два KML уходят на сервер вместе с заданием: границы съёмки и зоны ограничений. Сервер разбирает оба файла. Камера берётся из рёбер совместимости выбранной модели. Маршруты рассчитывает только backend/runtime.</p>
+        <p>KML границ съёмки обязателен. Файл зон ограничений необязателен: без него полигонов ограничений нет. Сервер разбирает загруженные тексты. Камера берётся из рёбер совместимости выбранной модели. Маршруты рассчитывает только backend/runtime.</p>
       </div>
 
       <form onSubmit={handleSubmit} noValidate>
@@ -524,10 +524,10 @@ export default function App() {
         </section>
 
         <section className="card workflow-section" aria-labelledby="geo-title">
-          <div className="section-heading"><div><p className="eyebrow">02 · Геоданные</p><h2 id="geo-title">KML-файлы организатора</h2><p className="section-description">На сервер уходят тексты двух файлов: задание на съёмку и зоны ограничений. Кольца разбирает сервер.</p></div><span className="step-chip">.kml</span></div>
+          <div className="section-heading"><div><p className="eyebrow">02 · Геоданные</p><h2 id="geo-title">KML-файлы организатора</h2><p className="section-description">На сервер уходит текст задания на съёмку. Файл зон ограничений необязателен: без него полигонов ограничений нет. Кольца разбирает сервер.</p></div><span className="step-chip">.kml</span></div>
           <div className="upload-grid">
             <UploadCard category="survey_task" title="Границы задания на съёмку" description="Основная область работ. Один файл обязателен для запуска." sourceHint="Границы полетов.kml" files={surveyTask ? [surveyTask] : []} loading={loadingCategory === "survey_task"} onFiles={(files) => void handleKmlFiles("survey_task", files)} onRemove={() => setSurveyTask(null)} />
-            <UploadCard category="restricted_zones" title="Зоны ограничений" description="Файл ограничений уходит на сервер вместе с заданием. Высоты копируются как текст." sourceHint="Московская зона.kml" files={restrictedZones ? [restrictedZones] : []} loading={loadingCategory === "restricted_zones"} onFiles={(files) => void handleKmlFiles("restricted_zones", files)} onRemove={() => setRestrictedZones(null)} />
+            <UploadCard category="restricted_zones" title="Зоны ограничений" description="Необязательный файл. Без него зон ограничений нет. Высоты в загруженном файле копируются как текст." sourceHint="Московская зона.kml" files={restrictedZones ? [restrictedZones] : []} loading={loadingCategory === "restricted_zones"} onFiles={(files) => void handleKmlFiles("restricted_zones", files)} onRemove={() => setRestrictedZones(null)} />
           </div>
         </section>
 

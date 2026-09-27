@@ -4,7 +4,6 @@ import type { JsonObject } from "./types";
 import {
   extractKmlPolygons,
   type KmlFileRecord,
-  type KmlPolygonRing,
   type XmlParser,
 } from "./kml";
 
@@ -136,6 +135,14 @@ function requireFinite(value: number, label: string, minimum?: number): void {
   }
 }
 
+function constraintsFileText(file: KmlFileRecord | null): string {
+  if (!file) return "";
+  if (file.status !== "ready") {
+    throw new Error("Загрузите корректный KML с зонами ограничений.");
+  }
+  return file.raw_text ?? "";
+}
+
 function validatePoint(lon: number, lat: number, label: string): void {
   requireFinite(lon, `${label}, долгота`);
   requireFinite(lat, `${label}, широта`);
@@ -149,9 +156,7 @@ export function validateScenarioInputs(inputs: ScenarioInputs): void {
   if (!inputs.surveyTask || inputs.surveyTask.status !== "ready") {
     throw new Error("Загрузите корректный KML с границами задания на съёмку.");
   }
-  if (!inputs.restrictedZones || inputs.restrictedZones.status !== "ready") {
-    throw new Error("Загрузите корректный KML с зонами ограничений.");
-  }
+  constraintsFileText(inputs.restrictedZones);
   if (inputs.aerodromes.length < 1 || inputs.aerodromes.length > 4) {
     throw new Error("Число аэродромов от 1 до 4.");
   }
@@ -206,23 +211,10 @@ export function solverCriterion(objective: string): "min_time" | "min_flight_hou
   throw new Error("Выберите критерий оптимизации.");
 }
 
-function polygonLabel(polygon: KmlPolygonRing, index: number): string {
-  const name = polygon.name?.trim() || `polygon ${index + 1}`;
-  const lon = polygon.ring[0]?.[0];
-  const lat = polygon.ring[0]?.[1];
-  if (!Number.isFinite(lon) || !Number.isFinite(lat)) return name;
-  return `${name} (${lon}, ${lat})`;
-}
-
-function surveyRing(file: KmlFileRecord, parser?: XmlParser): number[][] {
+function surveyRing(file: KmlFileRecord, parser?: XmlParser): void {
   if (!file.raw_text) throw new Error("В KML задания нет полигона съёмки.");
   const polygons = extractKmlPolygons(file.raw_text, parser);
   if (polygons.length === 0) throw new Error("В KML задания нет полигона съёмки.");
-  if (polygons.length > 1) {
-    const listed = polygons.map(polygonLabel).join("; ");
-    throw new Error(`В KML задания несколько полигонов: ${listed}. Нужен один полигон съёмки.`);
-  }
-  return polygons[0].ring;
 }
 
 function boardRows(inputs: ScenarioInputs) {
@@ -271,9 +263,7 @@ export function buildPrototypeScenario(
   if (!inputs.surveyTask || inputs.surveyTask.status !== "ready" || !inputs.surveyTask.raw_text) {
     throw new Error("Загрузите корректный KML с границами задания на съёмку.");
   }
-  if (!inputs.restrictedZones || inputs.restrictedZones.status !== "ready" || !inputs.restrictedZones.raw_text) {
-    throw new Error("Загрузите корректный KML с зонами ограничений.");
-  }
+  const constraintsKml = constraintsFileText(inputs.restrictedZones);
   if (inputs.aerodromes.length < 1 || inputs.aerodromes.length > 4) {
     throw new Error("Число аэродромов от 1 до 4.");
   }
@@ -298,7 +288,7 @@ export function buildPrototypeScenario(
     criterion: solverCriterion(objective),
     gsd_cm_per_px: inputs.gsdCmPerPx,
     survey_kml: inputs.surveyTask.raw_text,
-    constraints_kml: inputs.restrictedZones.raw_text,
+    constraints_kml: constraintsKml,
     required_spectrum: inputs.surveyType,
     aerodromes: inputs.aerodromes.map((aerodrome, index) => ({
       id: aerodromeId(index),
@@ -317,7 +307,7 @@ export function buildPrototypeScenario(
       direction_deg: windDirectionDeg(inputs.windDirectionFromDeg),
     },
     prototype_limitations: [
-      "Survey and constraint KML texts are uploaded with the job. The server parses both.",
+      "The survey KML is required. A missing constraints KML is an empty file and adds no polygons.",
       "Altitude sentences are copied as text and are not parsed in the browser.",
       "Each board card names a catalog model, a compatible camera, an aerodrome, and a count of identical aircraft. Survey spectrum does not filter cameras.",
     ],

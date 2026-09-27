@@ -29,26 +29,24 @@ class ConstraintPolygon:
         }
 
 
-def parse_survey_polygon(text: str) -> list[list[float]]:
-    """Return the single survey outer ring as closed ``[lon, lat]`` pairs.
+def parse_survey_polygon(text: str) -> list[ConstraintPolygon]:
+    """Return every survey polygon. Each one is its own area.
 
-    The ring is EPSG:4326. More than one polygon is an error that names each
-    polygon. A document with no polygon is an error.
+    Rings are EPSG:4326. A document with no polygon is an error. Several
+    polygons are kept; none of them is dropped.
     """
     polygons = _polygons(text)
     if not polygons:
         raise ValueError("survey KML has no polygon")
-    if len(polygons) > 1:
-        listed = "; ".join(_label(polygon, index) for index, polygon in enumerate(polygons))
-        raise ValueError(f"survey KML has multiple polygons: {listed}")
-    return [[lon, lat] for lon, lat in polygons[0].ring]
+    return polygons
 
 
-def parse_constraint_polygons(text: str) -> list[ConstraintPolygon]:
-    """Return restriction polygons: ring, name, type, and copied altitude text."""
-    if text is None:
-        raise ValueError("constraints KML is missing")
-    if not str(text).strip():
+def parse_constraint_polygons(text: str | None) -> list[ConstraintPolygon]:
+    """Return restriction polygons: ring, name, type, and copied altitude text.
+
+    ``None`` and a blank string are an empty file: no polygons and no error.
+    """
+    if text is None or not text.strip():
         return []
     return _polygons(text)
 
@@ -78,14 +76,6 @@ def _polygons(text: str) -> list[ConstraintPolygon]:
                 )
             )
     return polygons
-
-
-def _label(polygon: ConstraintPolygon, index: int) -> str:
-    name = (polygon.name or "").strip() or f"polygon {index + 1}"
-    if not polygon.ring:
-        return name
-    lon, lat = polygon.ring[0]
-    return f"{name} ({lon}, {lat})"
 
 
 def _root(text: str) -> ET.Element:

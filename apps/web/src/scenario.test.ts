@@ -259,11 +259,13 @@ describe("prototype scenario", () => {
     expect(() => buildPrototypeScenario(invalid, "min_time", xmlParser())).not.toThrow(/infeasible/i);
   });
 
-  it("lists every survey polygon instead of keeping the first", () => {
-    const invalid = inputs();
-    invalid.surveyTask = kml("survey", "survey_task", MULTI_SURVEY_KML);
-    expect(() => buildPrototypeScenario(invalid, "min_time", xmlParser())).toThrow(/North/);
-    expect(() => buildPrototypeScenario(invalid, "min_time", xmlParser())).toThrow(/South/);
+  it("uploads a survey KML that contains several polygons", () => {
+    const multi = inputs();
+    multi.surveyTask = kml("survey", "survey_task", MULTI_SURVEY_KML);
+    const built = buildPrototypeScenario(multi, "min_time", xmlParser());
+    expect(built.survey_kml).toBe(MULTI_SURVEY_KML);
+    expect(String(built.survey_kml)).toContain("North");
+    expect(String(built.survey_kml)).toContain("South");
   });
 
   it("writes GSD, overlaps, and strip direction from the form fields", () => {
@@ -327,9 +329,26 @@ describe("prototype scenario", () => {
     expect(() => validateScenarioInputs(invalid)).toThrow("Загрузите корректный KML");
   });
 
-  it("rejects missing required constraint KML", () => {
-    const invalid = { ...inputs(), restrictedZones: null };
+  it("treats a missing constraints KML as an empty file", () => {
+    const missing = { ...inputs(), restrictedZones: null };
+    expect(() => validateScenarioInputs(missing)).not.toThrow();
+    const built = buildPrototypeScenario(missing, "min_time", xmlParser());
+    expect(built.survey_kml).toBe(SURVEY_KML);
+    expect(built.constraints_kml).toBe("");
+    expect(built).not.toHaveProperty("obstacles");
+    expect(built).not.toHaveProperty("zone_constraints");
+  });
+
+  it("still rejects a constraints file that failed to load", () => {
+    const invalid = inputs();
+    invalid.restrictedZones = {
+      ...kml("restricted", "restricted_zones", ZONE_KML),
+      status: "error",
+      raw_text: null,
+      error: "KML contains malformed XML.",
+    };
     expect(() => validateScenarioInputs(invalid)).toThrow("зонами ограничений");
+    expect(() => buildPrototypeScenario(invalid, "min_time", xmlParser())).toThrow("зонами ограничений");
   });
 
   it("rejects a camera that is not compatible with the selected model", () => {
