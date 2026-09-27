@@ -11,6 +11,8 @@ contract_version: v0
 
 # Web status
 
+Live path on `main`: the form at `http://127.0.0.1:5173` sends `aerodromes` and `boards`, not `pads` or `uav_types`. GSD, overlaps, and strip direction come from the form. The API is `http://127.0.0.1:8000`. The live worker is `--engine runtime` (CLI default remains `fake`). SQLite stores the scenario unchanged; catalog numbers are applied only on the listener. `fleet_catalog.json` is filled from Grisha's `data.json`; `geoscan-801` is his 1.5 kg quadcopter. The listener is `planes-compute.service` at `/opt/planes`, git `da3da56` on `runtime/MIS-002-external-enumeration`, health `live`, contract `v0`, `solver_choice` `meta`. Documentation commit `794fb2d` was not deployed there. Pairs that reach `run()` and the remaining approximations are in `docs/architecture/agent-brief-runtime.md`. The backend path is `docs/architecture/agent-brief-backend.md`.
+
 ## Completed
 
 - [x] Defined frontend ownership and the API-only browser boundary.
@@ -23,7 +25,7 @@ contract_version: v0
 - [x] Installed app-local dependencies and generated `apps/web/pnpm-lock.yaml`.
 - [x] Verified typecheck, 18 deterministic tests, and the production build.
 - [x] Verified that the Vite development server starts and serves the application locally.
-- [x] Scenario JSON now carries Grisha's `InputData` fields. `min_total_flight_time` is sent as `criterion=min_flight_hours`. One survey ring, restriction text, and obstacles that meet the survey bbox are included. Missing sensor and energy fields use the `input.json` default profile and are noted in `scenario.default_profile` and in the local limitations list.
+- [x] The form on `main` sends `aerodromes` (`id`, `lat`, `lon`) and `boards` (`id`, `model_id`, `camera_id`, `aerodrome_id`, `count`). It does not send `pads` or `uav_types`. `min_total_flight_time` is sent as `criterion=min_flight_hours`. GSD, `survey.forward_overlap`, `survey.side_overlap`, and `survey.strip_direction_deg` come from the form. One survey ring, restriction text, and obstacles that meet the survey bbox stay in the scenario object. The builder does not emit `default_profile`. Catalog flight and optic numbers are applied on the listener, not in the browser. An earlier stitch copied missing sensor and energy fields from `input.json` into `scenario.default_profile`.
 
 ## In progress
 
@@ -31,7 +33,7 @@ contract_version: v0
 
 ## Next action
 
-Run the full browser-to-backend lifecycle smoke procedure against the RUS-001 API and worker.
+Use the live path in `docs/architecture/agent-brief-backend.md`: form `127.0.0.1:5173`, API `127.0.0.1:8000`, worker `--engine runtime`. The manual browser smoke against the original RUS-001 fake worker remains unrecorded in this file.
 
 ## Evidence
 
@@ -43,7 +45,7 @@ Run the full browser-to-backend lifecycle smoke procedure against the RUS-001 AP
 - Dependency installation: `pnpm install` completed successfully with pnpm 11.19.0; all versions declared in `apps/web/package.json` resolved without changes and `apps/web/pnpm-lock.yaml` was generated.
 - Typecheck: `pnpm typecheck` passed (`tsc --noEmit`).
 - Tests: `pnpm exec vitest run src/kml.test.ts src/scenario.test.ts` passed 17 tests in 2 files with Vitest 5.0.1. `pnpm typecheck` (`tsc --noEmit`) passed.
-- The browser limitations panel appends the default-profile note because the runtime adapter drops unknown scenario keys before `solver_report.limitations`.
+- Earlier stitch: the browser limitations panel appended a default-profile note. The form on `main` does not send `default_profile`. GSD, overlaps, and strip direction come from the form.
 - Production build: `pnpm build` passed; Vite 8.3.0 transformed 19 modules and emitted the production bundle.
 - Development server: `pnpm dev -- --host 127.0.0.1 --port 5173 --strictPort` reported ready at `http://127.0.0.1:5173/`; an HTTP request returned `200 OK`, no startup compile errors were reported, and the server was stopped after verification.
 - Proxy configuration: the successful Vite startup loaded `vite.config.ts`, including `/api` rewrite/proxy configuration targeting `http://127.0.0.1:8000`.
@@ -52,7 +54,7 @@ Run the full browser-to-backend lifecycle smoke procedure against the RUS-001 AP
 ## Blockers / limitations
 
 - Shared domain contracts remain unfrozen; the client must use backend HTTP contract version `v0` without inventing domain semantics.
-- Backend RUS-001 PR #4 targets `dev` and is not yet merged; this task branch is based directly on its verified commit.
+- Earlier WEB-001 note: backend RUS-001 PR #4 targeted `dev`, and this task branch was based on its verified commit. The enumeration form is on `main`. See the agent briefs.
 - Local backend and worker startup currently require `PYTHONPATH=src`.
 - Production same-origin hosting and reverse-proxy configuration are outside WEB-001.
 - Authentication, browser support details, and deployment constraints remain open under `OPEN-018`, `OPEN-019`, and `OPEN-021`.

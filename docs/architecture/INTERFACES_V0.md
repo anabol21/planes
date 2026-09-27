@@ -34,6 +34,14 @@ The call may be implemented in-process or through a remote/process adapter. Back
 
 Every numeric field must name or declare its unit. Geospatial coordinates must declare CRS. Time values must distinguish duration from timestamps.
 
+## Live scenario on main
+
+The port above is unchanged (`v0`). On the enumeration path the form sends `aerodromes` and `boards`, not `pads` or `uav_types`. An envelope that still has `pads` or `uav_types` is rejected by the listener. SQLite stores the scenario unchanged. Optics and `power_coeffs` are read from `fleet_catalog.json` on the listener, which is filled from Grisha's `data.json`. `geoscan-801` there is his 1.5 kg quadcopter. GSD, overlaps, and strip direction come from the form.
+
+The listener is `planes-compute.service` at `/opt/planes`, git `da3da56` on branch `runtime/MIS-002-external-enumeration`, health `live`, contract `v0`, `solver_choice` `meta`. Documentation commit `794fb2d` was not deployed to it. Pairs that reach `run()` and pairs that do not are listed in `docs/architecture/agent-brief-runtime.md`. The worker path is `docs/architecture/agent-brief-backend.md`. Local processes are the form at `127.0.0.1:5173`, the API at `127.0.0.1:8000`, and the worker with `--engine runtime`.
+
+Remaining approximations, not new contract fields: `geoscan-201` receives `kh`/`kv`/`kw` `90`/`0.02`/`0.008` instead of `220` W, `turn_time_s` is `5.0`, `apply_turn_to_base` is `false`, and zones and obstacles are not copied into `InputData`.
+
 ## Compatibility rule
 
 During the current checkpoint, each stream may use local dataclasses. Integration is based on committed JSON fixtures. A contract-breaking field change requires:

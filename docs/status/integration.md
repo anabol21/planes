@@ -11,6 +11,8 @@ contract_version: v0
 
 # Integration status
 
+Live path on `main`: form `127.0.0.1:5173`, API `127.0.0.1:8000`, worker `--engine runtime`. The CLI default remains `fake`. SQLite stores the scenario unchanged; catalog numbers are applied only on the listener. `fleet_catalog.json` is filled from Grisha's `data.json`; `geoscan-801` is his 1.5 kg quadcopter. GSD, overlaps, and strip direction come from the form. The form sends `aerodromes` and `boards`, not `pads` or `uav_types`. The listener is `planes-compute.service` at `/opt/planes`, git `da3da56` on `runtime/MIS-002-external-enumeration`, health `live`, contract `v0`, `solver_choice` `meta`. Documentation commit `794fb2d` did not move the listener. Pairs that reach `run()` and the remaining approximations (`geoscan-201` `kh`/`kv`/`kw` `90`/`0.02`/`0.008` instead of `220` W, `turn_time_s` `5.0`, `apply_turn_to_base` `false`, zones and obstacles not copied into `InputData`) are in `docs/architecture/agent-brief-runtime.md` and `docs/architecture/agent-brief-backend.md`.
+
 ## Completed
 
 - [x] Defined non-overlapping workstream boundaries and the initial engine port.
@@ -30,7 +32,7 @@ contract_version: v0
 
 ## Next action
 
-Replay the documented three-terminal demo from `main`: API, web client, and worker sharing one SQLite file.
+The running path is the enumeration listener in `docs/architecture/agent-brief-runtime.md` and `docs/architecture/agent-brief-backend.md`. The three-terminal fake-worker smoke remains the earlier DEMO-001 check. API, web client, and worker still share one SQLite file.
 
 ## Evidence
 
@@ -55,7 +57,7 @@ Replay the documented three-terminal demo from `main`: API, web client, and work
 - Real VPS smoke requires out-of-band `COMPUTE_HOST`, `COMPUTE_TOKEN`, and `COMPUTE_TIMEOUT_SECONDS`; none were present during verification.
 - Runtime server tests are Linux/VPS-only: direct discovery under Windows fails at import because `planes.runtime.lock` intentionally uses POSIX `fcntl`; backend runtime-wrapper tests pass on Windows without changing runtime internals.
 - Concrete shared DTO fields and equipment profile provenance remain unfrozen. INT-001 converts between the existing backend-local and runtime-local v0 models without claiming a shared contract freeze.
-- The live runtime solver body may legitimately return `outcome=error` with `solver body is not implemented`; that is not an infeasible result.
+- Earlier checkpoint text treated `solver body is not implemented` as the live solver result. On `main` the listener calls `run(data, "meta", seed=...)`. That string remains only if `solver.solve` raises `NotImplementedError`. A heuristic result is not globally optimal. `794fb2d` is documentation only and was not deployed to the listener.
 
 ## Interface changes and downstream impact
 

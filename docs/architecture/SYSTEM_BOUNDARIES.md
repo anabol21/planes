@@ -2,9 +2,13 @@
 
 ## Runtime topology
 
-For the first vertical slice, API and worker may share one codebase but run as separate processes. SQLite is acceptable for the prototype job store. The optimization modules are direct Python calls behind a port; no internal HTTP is required between M-CATALOG, M-FLIGHT, M-OPT, and Q-CHECK.
+API and worker share one codebase and run as separate processes. SQLite is the prototype job store. It stores the accepted scenario unchanged. Catalog numbers are applied only on the listener.
 
-The VPS boundary may later use a subprocess, container, or queue, but backend code must see the same `OptimizationEngine` interface.
+On `main` the live worker is `--engine runtime`. It posts `ComputeRequest` to the listener. The listener unit is `planes-compute.service`, `WorkingDirectory=/opt/planes`, git `da3da562b3d38d92dcc3dfc2f3b46636331cb8fc` (`da3da56`), branch `runtime/MIS-002-external-enumeration`. `GET /health` returns `{"status": "live", "contract_version": "v0"}`. The core call uses `solver_choice` `meta`. Documentation commit `794fb2d71e8b9635798e59fba1d363e2988222eb` was not deployed to that unit. Field lists, catalog pairs, and remaining approximations are in `docs/architecture/agent-brief-runtime.md` and `docs/architecture/agent-brief-backend.md`. Those briefs do not replace this boundary or `AGENTS.md`.
+
+The local form is `127.0.0.1:5173` and the API is `127.0.0.1:8000`. The form sends `aerodromes` and `boards`, not `pads` or `uav_types`. GSD, overlaps, and strip direction come from the form. `fleet_catalog.json` is filled from Grisha's `data.json`; `geoscan-801` is his 1.5 kg quadcopter. For `geoscan-201` the core receives `kh`/`kv`/`kw` `90`/`0.02`/`0.008` instead of `220` W. `turn_time_s` is `5.0`, `apply_turn_to_base` is `false`, and zones and obstacles are not copied into `InputData`.
+
+Backend code sees the same `OptimizationEngine` interface. The CLI default remains `fake`. The optimization modules inside one core call stay direct Python calls; the listener does not redefine that port.
 
 ## Responsibility matrix
 
@@ -26,7 +30,7 @@ Only the backend persists lifecycle state. The runtime returns structured progre
 
 ## Failure rules
 
-- Invalid input fails before a job is queued.
+- Invalid input fails before a job is queued. The API still stores a non-empty scenario object unchanged. An envelope with `pads` or `uav_types` is rejected by the listener, not by the API. See `docs/architecture/agent-brief-backend.md`.
 - Infeasible is a valid solver outcome, not an infrastructure failure.
 - Timeout is distinct from infeasible.
 - Worker restart must not silently duplicate a running job.

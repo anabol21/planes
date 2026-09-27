@@ -13,6 +13,8 @@ contract_version: v0
 
 - `planned`: RUS-002 — рельеф из отдельного KML местности в матрицы `precompute`. Бриф: `docs/workstreams/model/RUS-002.md`.
 
+Live path on `main`: the form at `127.0.0.1:5173` sends `aerodromes` and `boards`, not `pads` or `uav_types`, to the API at `127.0.0.1:8000`. The live worker is `python -m planes.backend.worker --engine runtime`. The CLI default remains `fake`. SQLite stores `scenario_json` unchanged. Catalog numbers, including optics and power, are applied only on the listener. `fleet_catalog.json` is filled from Grisha's `data.json`; `geoscan-801` is his 1.5 kg quadcopter. GSD, overlaps, and strip direction come from the form. The listener is `planes-compute.service` at `/opt/planes`, git `da3da56` on `runtime/MIS-002-external-enumeration`, health `live`, contract `v0`, `solver_choice` `meta`. Documentation commit `794fb2d` was not deployed there. See `docs/architecture/agent-brief-backend.md` and `docs/architecture/agent-brief-runtime.md`. Remaining approximations (`geoscan-201` `kh`/`kv`/`kw` `90`/`0.02`/`0.008` instead of `220` W, `turn_time_s` `5.0`, `apply_turn_to_base` `false`, zones and obstacles not copied into `InputData`) are in the runtime brief.
+
 ## Completed
 
 - [x] Described the 12-step product pipeline and data lifecycle.
@@ -34,7 +36,7 @@ contract_version: v0
 
 ## Next action
 
-Supply the three worker-only `COMPUTE_*` values out of band and run a controlled backend-to-VPS smoke with `--engine runtime`.
+The live worker path is `--engine runtime` against the listener recorded in `docs/architecture/agent-brief-runtime.md` (git `da3da56`, not documentation commit `794fb2d`). The earlier note that a controlled smoke was not recorded in this file stays as checkpoint evidence.
 
 ## Evidence
 
@@ -74,12 +76,14 @@ Invoke-RestMethod -Uri "http://127.0.0.1:8000/jobs/$($job.job_id)/result"
 
 Automated evidence is recorded above: direct WSGI tests exercise handler behavior, the socket smoke test binds a real localhost port, and the subprocess test executes the worker CLI.
 
+The commands above follow the CLI default `--engine fake` and are the recorded prototype instructions. The live path adds `--engine runtime` and the worker-only `COMPUTE_HOST`, `COMPUTE_TOKEN`, and `COMPUTE_TIMEOUT_SECONDS` values, supplied outside Git. SQLite still stores the scenario unchanged. See `docs/architecture/agent-brief-backend.md`.
+
 ## Blockers / decisions requested
 
 - The shared domain schemas and runtime-facing JSON fixtures remain unfrozen under `OPEN-001..006`, `OPEN-019`, and `OPEN-021`; the committed fixture and structures are backend-local only.
 - No external HTTP framework is declared in the repository, so the prototype uses the Python standard-library WSGI server rather than introducing an out-of-scope dependency.
 - Prototype recovery policy for a worker that dies after claiming a job is intentionally not defined. Such a job remains `running` rather than being silently duplicated or reported successful.
-- Real VPS connectivity remains unverified until the required worker configuration is supplied outside Git.
+- Earlier checkpoint: this file did not record a VPS smoke, because `COMPUTE_HOST`, `COMPUTE_TOKEN`, and `COMPUTE_TIMEOUT_SECONDS` were absent during that check. The listener now recorded in `docs/architecture/agent-brief-runtime.md` is git `da3da56`. Those three values stay outside Git.
 
 ## Interface changes
 

@@ -9,6 +9,10 @@
 - Requirement slice: `REQ-PROD-001..003`, `REQ-OPT-003`, `REQ-PLAT-001`, `REQ-DOC-003..004`, and `REQ-DELIV-F-002`
 - Open dependencies: `OPEN-001..006`, `OPEN-014`, `OPEN-018..021`
 
+## Live path on main
+
+On `main` the running calculation path is worker `--engine runtime` against the listener in `docs/architecture/agent-brief-runtime.md`. The form sends `aerodromes` and `boards`, not `pads` or `uav_types`. SQLite stores the scenario unchanged. The CLI default is still `fake`. This brief's acceptance remains the earlier fake-worker lifecycle smoke.
+
 ## Goal
 
 Publish one branch that a teammate can clone on a fresh Windows machine and use to demonstrate the browser client, backend lifecycle, SQLite queue, and one-shot fake worker, while documenting runtime/VPS mode without storing secrets.
