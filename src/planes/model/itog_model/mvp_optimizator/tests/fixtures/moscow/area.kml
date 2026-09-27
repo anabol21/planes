@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2">
+  <Document>
+    <name>Moscow test area</name>
+
+    <Placemark>
+      <name>area-1</name>
+      <description><![CDATA[
+        id=area-1
+        name=Moscow test area
+        survey_type=visible
+      ]]></description>
+      <Polygon>
+        <outerBoundaryIs>
+          <LinearRing>
+            <coordinates>
+              37.620,55.750,0
+              37.628,55.750,0
+              37.628,55.7545,0
+              37.620,55.7545,0
+              37.620,55.750,0
+            </coordinates>
+          </LinearRing>
+        </outerBoundaryIs>
+      </Polygon>
+    </Placemark>
+
+  </Document>
+</kml>

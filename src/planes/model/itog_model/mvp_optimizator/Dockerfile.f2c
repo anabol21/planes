@@ -4,13 +4,17 @@ ENV DEBIAN_FRONTEND=noninteractive
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONDONTWRITEBYTECODE=1
 
+# ============================================================
 # 1. ЖЁСТКОЕ удаление проблемных репозиториев (Apache Arrow / JFrog)
+# ============================================================
 RUN find /etc/apt/sources.list.d/ -type f \( -name "*arrow*" -o -name "*jfrog*" \) -delete && \
     sed -i '/jfrog\|arrow/d' /etc/apt/sources.list 2>/dev/null || true && \
     sed -i 's|http://archive.ubuntu.com|http://mirror.yandex.ru|g' /etc/apt/sources.list && \
     sed -i 's|http://security.ubuntu.com|http://mirror.yandex.ru|g' /etc/apt/sources.list
 
-# 2. Установка системных зависимостей для компиляции Fields2Cover
+# ============================================================
+# 2. Системные зависимости для Fields2Cover и GDAL
+# ============================================================
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential cmake ninja-build git wget curl \
     libgeos-dev libeigen3-dev \
@@ -21,7 +25,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     swig \
     && rm -rf /var/lib/apt/lists/*
 
-# 3. Установка OR-Tools C++ (Официальный бесплатный релиз от Google)
+# ============================================================
+# 3. OR-Tools C++ v9.9.3963
+# ВАЖНО: версия зафиксирована. Python-пакет ortools ниже — той же версии,
+# иначе символы не совпадут и _pywrapcp.so упадёт с undefined symbol.
+# ============================================================
 WORKDIR /tmp
 RUN wget -q https://github.com/google/or-tools/releases/download/v9.9/or-tools_amd64_ubuntu-22.04_cpp_v9.9.3963.tar.gz -O ortools.tar.gz && \
     mkdir -p /tmp/ortools && \
@@ -33,31 +41,105 @@ RUN wget -q https://github.com/google/or-tools/releases/download/v9.9/or-tools_a
     ldconfig && \
     rm -rf /tmp/ortools*
 
-# 4. Python-зависимости
-# Обновляем pip до гарантированно современной версии (>=23.0)
+# ============================================================
+# 4. Python-зависимости — ВСЕ закреплены точными диапазонами.
+#
+# ПРАВИЛА ПИННИНГА:
+#   - ortools==9.9.3963     → точно совпадает с C++ libortools (шаг 3)
+#   - protobuf 4.25.x       → совместим с ortools 9.9; 5+/7+ ломают символы
+#   - numpy<2               → shapely/rasterio/matplotlib не готовы к numpy 2
+#   - lxml, rasterio, folium, matplotlib — ОБЯЗАТЕЛЬНО в списке,
+#     иначе pip при следующем install снесёт их и не вернёт.
+# ============================================================
 RUN python3 -m pip install --no-cache-dir --upgrade "pip>=23.0" setuptools wheel
 
 RUN python3 -m pip install --no-cache-dir \
-    pydantic numpy shapely pyproj \
-    scikit-learn scipy ortools simplekml click \
-    folium matplotlib pytest pytest-cov \
-    "protobuf>=3.20.0,<4.0.0"
+    "pydantic>=2.5,<3" \
+    "numpy>=1.24,<2" \
+    "shapely>=2.0,<3" \
+    "pyproj>=3.6,<4" \
+    "fiona>=1.9,<2" \
+    "scikit-learn>=1.3,<2" \
+    "scipy>=1.11,<2" \
+    "simplekml>=1.3,<2" \
+    "click>=8.1,<9" \
+    "folium>=0.14,<1" \
+    "matplotlib>=3.7,<4" \
+    "pytest>=7.4,<9" \
+    "pytest-cov>=4,<6" \
+    "lxml>=4.9,<6" \
+    "rasterio>=1.3,<2" \
+    "ortools==9.9.3963" \
+    "protobuf>=4.25,<4.26"
 
-# 5. Установка build-зависимостей для компиляции fields2cover
+# ============================================================
+# 5. Build-зависимости для Fields2Cover
+# ============================================================
 RUN python3 -m pip install --no-cache-dir \
     scikit-build-core \
     pybind11 \
     cmake \
     ninja
 
+# ============================================================
 # 6. Сборка Fields2Cover
+# ============================================================
 COPY fake_deps.cmake /tmp/fake_deps.cmake
 
-# ИСПОЛЬЗУЕМ переменную окружения вместо флага pip. 
-# scikit-build-core нативно читает SKBUILD_CMAKE_DEFINE и передает это в CMake.
 ENV SKBUILD_CMAKE_DEFINE="CMAKE_PROJECT_TOP_LEVEL_INCLUDES=/tmp/fake_deps.cmake"
 
 RUN python3 -m pip install --no-cache-dir --no-build-isolation fields2cover
+
+# ============================================================
+# 7. sitecustomize — автоподгрузка правильной libortools
+# Решает конфликт: Python ortools и Fields2Cover содержат разные
+# libortools.so.9. ldconfig отдаёт Python-ortools наш C++ libortools,
+# _pywrapcp.so не находит символы. sitecustomize грузит правильную
+# библиотеку ДО импорта ortools.
+# ============================================================
+COPY src/sitecustomize.py /usr/local/lib/python3.10/dist-packages/sitecustomize.py
+
+# ============================================================
+# 8. Финальная проверка — все критичные библиотеки на месте
+# ============================================================
+RUN python3 - <<'EOF'
+import sys
+
+required = [
+    ("pydantic",       "pydantic"),
+    ("numpy",          "numpy"),
+    ("shapely",        "shapely"),
+    ("pyproj",         "pyproj"),
+    ("fiona",          "fiona"),
+    ("sklearn",        "scikit-learn"),
+    ("scipy",          "scipy"),
+    ("simplekml",      "simplekml"),
+    ("click",          "click"),
+    ("folium",         "folium"),
+    ("matplotlib",     "matplotlib"),
+    ("pytest",         "pytest"),
+    ("lxml",           "lxml"),
+    ("rasterio",       "rasterio"),
+    ("ortools",        "ortools"),
+    ("fields2cover",   "fields2cover"),
+]
+
+failed = []
+for mod_name, pkg_name in required:
+    try:
+        m = __import__(mod_name)
+        ver = getattr(m, "__version__", "?")
+        print(f"  OK   {pkg_name:15s} {ver}")
+    except Exception as e:
+        print(f"  FAIL {pkg_name:15s} {type(e).__name__}: {e}")
+        failed.append(pkg_name)
+
+if failed:
+    print(f"\nMissing: {failed}")
+    sys.exit(1)
+
+print("\nAll required packages imported successfully.")
+EOF
 
 WORKDIR /app
 CMD ["/bin/bash"]
