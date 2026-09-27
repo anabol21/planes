@@ -8,7 +8,7 @@ import unittest
 from pathlib import Path
 
 from planes.runtime.kml_rings import build_input_scenario
-from planes.runtime.solver import Infeasible, Solution, TimedOut, _SCENARIO_FIELDS, solve
+from planes.runtime.solver import _SCENARIO_FIELDS, solve
 
 
 _GIBRID = (
@@ -136,22 +136,24 @@ class KmlRingScenarioTest(unittest.TestCase):
                 from optimizer.main import run
                 from optimizer.models import InputData
             except ImportError:
-                return
-            payload = {name: scenario[name] for name in _SCENARIO_FIELDS}
-            payload["solver"] = {"time_limit_s": 2}
-            data = InputData(**payload)
-            self.assertEqual(data.criterion, "min_flight_hours")
-            self.assertEqual(len(data.area), 5)
-            outcome = run(data, seed=7)
-            self.assertIn(outcome.get("status"), ("optimal", "feasible", "heuristic"))
+                run = None
+                InputData = None
+            if run is not None and InputData is not None:
+                payload = {name: scenario[name] for name in _SCENARIO_FIELDS}
+                payload["solver"] = {"time_limit_s": 2}
+                data = InputData(**payload)
+                self.assertEqual(data.criterion, "min_flight_hours")
+                self.assertEqual(len(data.area), 5)
+                outcome = run(data, seed=7)
+                self.assertIn(outcome.get("status"), ("optimal", "feasible", "heuristic"))
         finally:
             if inserted and root in sys.path:
                 sys.path.remove(root)
 
         from planes.runtime.solver import Problem
 
-        try:
-            result = solve(
+        with self.assertRaises(ValueError) as caught:
+            solve(
                 Problem(
                     job_id="job_kml_rings",
                     scenario=scenario,
@@ -161,12 +163,8 @@ class KmlRingScenarioTest(unittest.TestCase):
                 ),
                 time.monotonic() + 60,
             )
-        except ValueError as exc:
-            self.assertIn("optimizer import failed", str(exc))
-            self.assertNotIn("infeasible", str(exc).lower())
-            return
-        self.assertIsInstance(result, (Solution, Infeasible, TimedOut))
-        self.assertNotIsInstance(result, Infeasible)
+        self.assertIn("the listener only accepts the geo envelope", str(caught.exception))
+        self.assertNotIn("infeasible", str(caught.exception).lower())
 
     def test_missing_survey_polygon_is_error_not_infeasible(self) -> None:
         with self.assertRaises(ValueError) as caught:

@@ -1,7 +1,7 @@
 """Winner selection stays on the enumeration module.
 
 The live envelope with aerodromes and boards calls the geo core. These cases
-cover ``select_winner`` and the one-card gibrid path.
+cover ``select_winner``. A one-card scenario is rejected before gibrid.
 """
 
 from __future__ import annotations
@@ -12,7 +12,7 @@ import unittest
 from pathlib import Path
 
 from planes.runtime.enumeration import Attempt, is_outer_scenario, select_winner
-from planes.runtime.solver import Infeasible, Problem, TimedOut, solve
+from planes.runtime.solver import Problem, TimedOut, solve
 
 _INPUT = (
     Path(__file__).resolve().parents[2]
@@ -130,36 +130,10 @@ class WinnerSelectionTest(unittest.TestCase):
             geo_mission._run_pipeline = original
         self.assertIsInstance(result, TimedOut)
 
-    def test_single_call_uses_meta_and_keeps_grisha_solver_fields(self) -> None:
-        import planes.runtime.solver as solver_module
-
+    def test_single_call_is_rejected_before_gibrid(self) -> None:
         scenario = json.loads(_INPUT.read_text(encoding="utf-8"))
-        shipped = scenario["solver"]
-        captured: dict[str, object] = {}
-
-        def spy(data, solver_choice: str = "auto", *, seed: int = 42):
-            captured["choice"] = solver_choice
-            captured["seed"] = seed
-            captured["turn_time_s"] = data.solver.turn_time_s
-            captured["apply_turn_to_base"] = data.solver.apply_turn_to_base
-            captured["time_limit_s"] = data.solver.time_limit_s
-            return {"status": "infeasible", "reason": "spy"}
-
-        solve(
-            Problem(
-                job_id="job_warm",
-                scenario=scenario,
-                objective="min_flight_hours",
-                seed=7,
-                time_limit_seconds=90,
-            ),
-            time.monotonic() - 1,
-        )
-        cached = solver_module._optimizer
-        self.assertIsNotNone(cached)
-        solver_module._optimizer = (spy, cached[1], cached[2])
-        try:
-            result = solve(
+        with self.assertRaises(ValueError) as caught:
+            solve(
                 Problem(
                     job_id="job_meta",
                     scenario=scenario,
@@ -169,14 +143,7 @@ class WinnerSelectionTest(unittest.TestCase):
                 ),
                 time.monotonic() + 30,
             )
-        finally:
-            solver_module._optimizer = cached
-        self.assertIsInstance(result, Infeasible)
-        self.assertEqual(captured["choice"], "meta")
-        self.assertEqual(captured["seed"], 11)
-        self.assertEqual(captured["turn_time_s"], shipped["turn_time_s"])
-        self.assertEqual(captured["apply_turn_to_base"], shipped["apply_turn_to_base"])
-        self.assertEqual(captured["time_limit_s"], 90)
+        self.assertIn("the listener only accepts the geo envelope", str(caught.exception))
 
     def test_single_takeoff_uav_does_not_use_the_catalog(self) -> None:
         import planes.runtime.enumeration.outer as outer
@@ -201,10 +168,11 @@ class WinnerSelectionTest(unittest.TestCase):
             time_limit_seconds=90,
         )
         try:
-            result = solve(problem, time.monotonic() - 1)
+            with self.assertRaises(ValueError) as caught:
+                solve(problem, time.monotonic() - 1)
         finally:
             outer.load_catalog = original_catalog
-        self.assertIsInstance(result, TimedOut)
+        self.assertIn("the listener only accepts the geo envelope", str(caught.exception))
 
 
 if __name__ == "__main__":

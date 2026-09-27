@@ -1,8 +1,9 @@
 """Envelope adapter for the copied geo core.
 
 An envelope with aerodromes and boards becomes one ``MissionInput`` and one
-call of ``planner.solver.pipeline``. The one-card ``takeoff`` + ``uav`` path
-stays on gibrid-optimizer. This module does not edit the planner body.
+call of ``planner.solver.pipeline`` (``run_one_angle``, trapezoid by default,
+OR-Tools routing). ``solver.solve`` does not send any other scenario here.
+This module does not edit the planner body.
 """
 
 from __future__ import annotations

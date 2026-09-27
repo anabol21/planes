@@ -678,9 +678,8 @@ class StitchSeamContractTest(unittest.TestCase):
         routed = {route["uav_id"] for route in result.mission_plan["routes"]}
         self.assertEqual(routed, {"БВС 1", "БВС 2"})
 
-    def test_takeoff_uav_stays_on_the_one_card_gibrid_path(self) -> None:
+    def test_takeoff_uav_is_rejected_before_gibrid(self) -> None:
         import planes.runtime.geo_mission as geo_mission
-        import planes.runtime.solver as solver_module
 
         scenario = json.loads(_GIBRID_INPUT.read_text(encoding="utf-8"))
         self.assertNotIn("aerodromes", scenario)
@@ -694,55 +693,22 @@ class StitchSeamContractTest(unittest.TestCase):
 
         original_envelope = geo_mission.solve_envelope
         geo_mission.solve_envelope = boom
-        captured: dict[str, object] = {}
-
-        def spy(data, solver_choice: str = "auto", *, seed: int = 42):
-            del data
-            captured["choice"] = solver_choice
-            captured["seed"] = seed
-            return {
-                "status": "heuristic",
-                "criterion": "min_flight_hours",
-                "solver": "meta",
-                "mission": {"mission_time_s": 3.0, "total_flight_time_s": 4.0},
-                "routes": [],
-                "strips": [],
-                "validation": {},
-            }
-
-        solve(
-            Problem(
-                job_id="job_audit_warm",
-                scenario=scenario,
-                objective="min_flight_hours",
-                seed=7,
-                time_limit_seconds=30,
-            ),
-            time.monotonic() - 1,
-        )
-        cached = solver_module._optimizer
-        self.assertIsNotNone(cached)
-        solver_module._optimizer = (spy, cached[1], cached[2])
         try:
-            result = solve(
-                Problem(
-                    job_id="job_audit_gibrid",
-                    scenario=scenario,
-                    objective="min_flight_hours",
-                    seed=7,
-                    time_limit_seconds=30,
-                ),
-                time.monotonic() + 30,
-            )
+            with self.assertRaises(ValueError) as caught:
+                solve(
+                    Problem(
+                        job_id="job_audit_gibrid",
+                        scenario=scenario,
+                        objective="min_flight_hours",
+                        seed=7,
+                        time_limit_seconds=30,
+                    ),
+                    time.monotonic() + 30,
+                )
         finally:
             geo_mission.solve_envelope = original_envelope
-            solver_module._optimizer = cached
         self.assertEqual(entered, [])
-        self.assertEqual(captured["choice"], "meta")
-        self.assertIsInstance(result, Solution)
-        assert isinstance(result, Solution)
-        self.assertIn("heuristic result is not globally optimal", result.limitations)
-        self.assertEqual(result.method, "meta")
+        self.assertIn("the listener only accepts the geo envelope", str(caught.exception))
 
     def test_backend_job_keeps_the_scenario_text(self) -> None:
         from planes.backend.models import ComputeResponse

@@ -1,8 +1,14 @@
-"""Adapter from Grisha's in-memory optimizer to Solution, Infeasible, and TimedOut."""
+"""The listener accepts only the geo envelope.
+
+A one-card scenario raises ``ValueError`` before any gibrid import.
+``_map_result`` remains for assembled result dicts. The gibrid package
+itself is probed only by ``test_run_accepts_seed_without_files``.
+"""
 
 from __future__ import annotations
 
 import json
+import re
 import sys
 import time
 import unittest
@@ -11,7 +17,9 @@ from pathlib import Path
 from support import load_fixture
 
 from planes.runtime.pipeline import run as run_pipeline
-from planes.runtime.solver import Infeasible, Problem, Solution, TimedOut, solve
+from planes.runtime.solver import Problem, solve
+
+_GEO_ONLY = "the listener only accepts the geo envelope"
 
 _GIBRID = (
     Path(__file__).resolve().parents[2]
@@ -70,62 +78,45 @@ def _problem(scenario: dict, **overrides: object) -> Problem:
 
 
 class SolverAdapterTest(unittest.TestCase):
-    def test_feasible_plan_uses_assembled_dict(self) -> None:
-        result = solve(
-            _problem(_grisha_scenario(), time_limit_seconds=2),
-            time.monotonic() + 30,
-        )
-        self.assertIsInstance(result, Solution)
-        self.assertEqual(result.method, "meta")
-        self.assertEqual(result.mission_plan["status"], "heuristic")
-        self.assertEqual(result.mission_plan["solver"], "meta")
-        for key in ("routes", "strips", "validation", "mission"):
-            self.assertIn(key, result.mission_plan)
-        self.assertNotIn("routes_raw", result.mission_plan)
-        self.assertIsInstance(result.objective_value, float)
-        self.assertTrue(any("not globally optimal" in item for item in result.limitations))
-        self.assertNotIn(str(_GIBRID), sys.path)
-
-    def test_heuristic_is_not_globally_optimal(self) -> None:
-        scenario = _grisha_scenario()
-        scenario["uav"] = {**scenario["uav"], "count": 4}
-        result = solve(_problem(scenario, seed=7), time.monotonic() + 60)
-        self.assertIsInstance(result, Solution)
-        self.assertEqual(result.mission_plan["status"], "heuristic")
-        self.assertEqual(result.method, "meta")
-        self.assertTrue(
-            any("not globally optimal" in item for item in result.limitations)
-        )
-
-    def test_solver_infeasible(self) -> None:
+    def _assert_rejected_before_gibrid(self, scenario: dict, **overrides: object) -> str:
         import planes.runtime.solver as solver_module
 
-        solve(_problem(_grisha_scenario()), time.monotonic() - 1)
-        cached = solver_module._optimizer
-        self.assertIsNotNone(cached)
+        before = {
+            name
+            for name in sys.modules
+            if name == "optimizer" or name.startswith("optimizer.")
+        }
+        with self.assertRaises(ValueError) as caught:
+            solve(_problem(scenario, **overrides), time.monotonic() + 30)
+        message = str(caught.exception)
+        self.assertIn(_GEO_ONLY, message)
+        self.assertNotIn("infeasible", message.lower())
+        after = {
+            name
+            for name in sys.modules
+            if name == "optimizer" or name.startswith("optimizer.")
+        }
+        self.assertEqual(after, before)
+        self.assertFalse(hasattr(solver_module, "_optimizer"))
+        source = Path(solver_module.__file__).read_text(encoding="utf-8")
+        self.assertIsNone(
+            re.search(r"\b(run_optimizer|solve_milp|solve_metaheuristic)\s*\(", source)
+        )
+        self.assertIsNone(re.search(r"""["']meta["']""", source))
+        self.assertNotIn(str(_GIBRID), sys.path)
+        return message
 
-        def infeasible(data, solver_choice: str = "meta", *, seed: int = 42):
-            del data, solver_choice, seed
-            return {"status": "infeasible", "reason": "wind"}
+    def test_one_card_is_rejected_before_gibrid(self) -> None:
+        self._assert_rejected_before_gibrid(_grisha_scenario(), time_limit_seconds=2)
 
-        solver_module._optimizer = (infeasible, cached[1], cached[2])
-        try:
-            result = solve(_problem(_grisha_scenario()), time.monotonic() + 30)
-        finally:
-            solver_module._optimizer = cached
-        self.assertIsInstance(result, Infeasible)
-        self.assertNotIsInstance(result, Solution)
-        self.assertIn("wind", result.limitations)
+    def test_one_card_with_more_uavs_is_rejected(self) -> None:
+        scenario = _grisha_scenario()
+        scenario["uav"] = {**scenario["uav"], "count": 4}
+        self._assert_rejected_before_gibrid(scenario, seed=7)
 
     def test_foreign_scenario_is_error_not_infeasible(self) -> None:
-        problem = _problem(_FOREIGN_SCENARIO, objective="min_time")
-        with self.assertRaises(ValueError) as caught:
-            solve(problem, time.monotonic() + 30)
-        message = str(caught.exception)
-        self.assertIn("missing fields:", message)
-        for name in ("takeoff", "uav", "area", "gsd_cm_per_px", "criterion", "camera", "power_coeffs"):
-            self.assertIn(name, message)
-        self.assertNotIn("infeasible", message)
+        message = self._assert_rejected_before_gibrid(_FOREIGN_SCENARIO, objective="min_time")
+        self.assertIn(_GEO_ONLY, message)
 
         request = load_fixture()
         request["scenario"] = _FOREIGN_SCENARIO
@@ -134,30 +125,26 @@ class SolverAdapterTest(unittest.TestCase):
         self.assertEqual(response.outcome, "error")
         self.assertNotEqual(response.outcome, "infeasible")
         self.assertIsNone(response.mission_plan)
+        self.assertIn(_GEO_ONLY, response.solver_report.limitations)
 
-    def test_solver_stop_without_solution_is_timed_out(self) -> None:
+    def test_expired_deadline_still_rejects_one_card(self) -> None:
         import planes.runtime.solver as solver_module
 
-        solve(_problem(_grisha_scenario()), time.monotonic() - 1)
-        cached = solver_module._optimizer
-        self.assertIsNotNone(cached)
-
-        def stopped(data, solver_choice: str = "meta", *, seed: int = 42):
-            del data, solver_choice, seed
-            return {"status": "unknown", "reason": "Решатель не вернул решение"}
-
-        solver_module._optimizer = (stopped, cached[1], cached[2])
-        try:
-            result = solve(_problem(_grisha_scenario()), time.monotonic() + 30)
-        finally:
-            solver_module._optimizer = cached
-        self.assertIsInstance(result, TimedOut)
-        self.assertTrue(any("time limit" in item for item in result.limitations))
-
-    def test_expired_deadline_is_timed_out(self) -> None:
-        result = solve(_problem(_grisha_scenario()), time.monotonic() - 1)
-        self.assertIsInstance(result, TimedOut)
-        self.assertTrue(any("time limit" in item for item in result.limitations))
+        before = {
+            name
+            for name in sys.modules
+            if name == "optimizer" or name.startswith("optimizer.")
+        }
+        with self.assertRaises(ValueError) as caught:
+            solve(_problem(_grisha_scenario()), time.monotonic() - 1)
+        self.assertIn(_GEO_ONLY, str(caught.exception))
+        after = {
+            name
+            for name in sys.modules
+            if name == "optimizer" or name.startswith("optimizer.")
+        }
+        self.assertEqual(after, before)
+        self.assertFalse(hasattr(solver_module, "_optimizer"))
 
     def test_run_accepts_seed_without_files(self) -> None:
         root = str(_GIBRID)

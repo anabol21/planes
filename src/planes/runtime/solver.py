@@ -1,14 +1,12 @@
 """Для агента Гриши.
 
 ``solve`` is the only solver hook. The pipeline around it already runs.
+The listener accepts only the geo envelope. It does not call gibrid.
 """
 
 from __future__ import annotations
 
-import sys
-import time
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Any
 
 from planes.runtime.enumeration import is_outer_scenario
@@ -57,29 +55,23 @@ _SCENARIO_FIELDS = (
 _ASSEMBLED = ("routes", "strips", "validation", "mission")
 _NOT_GLOBALLY_OPTIMAL = "heuristic result is not globally optimal"
 _TIME_LIMIT = "solver stopped at the time limit"
-_GIBRID_ROOT = (
-    Path(__file__).resolve().parents[1] / "model" / "basic_model" / "gibrid-optimizer"
-)
-
-_optimizer: tuple[Any, Any, Any] | None = None
+_GEO_ONLY = "the listener only accepts the geo envelope"
 
 
 def solve(problem: Problem, deadline: float) -> Solution | Infeasible | TimedOut:
-    """Build one ``InputData`` and call ``run``.
+    """Solve one geo envelope.
 
     An envelope with ``aerodromes`` and ``boards`` calls
-    ``planner.solver.pipeline`` of the copied geo core. An envelope that
-    still has ``pads`` or ``uav_types`` is rejected. A scenario that still
-    has one ``takeoff`` and one ``uav`` stays on gibrid-optimizer with
-    ``solver_choice="meta"``.
+    ``geo_mission.solve_envelope`` (``run_one_angle``, trapezoid by default,
+    OR-Tools routing). An envelope that still has ``pads`` or ``uav_types``
+    is rejected. A one-card ``takeoff`` + ``uav`` scenario, and any other
+    scenario that is not that envelope, raises ``ValueError`` before any
+    gibrid import. The message says the listener only accepts the geo
+    envelope. The pipeline turns that into ``outcome=error``.
 
-    ``deadline`` is ``time.monotonic()`` plus the problem time limit.
-    Missing fields, a missing terrain key, an invalid raster, and pydantic
-    or import failures raise ``ValueError``. The pipeline turns that into
-    ``outcome=error``. A missing raster is not replaced with flat terrain.
-
-    A single takeoff/uav scenario keeps Grisha's ``SolverCfg`` turn fields.
-    Only ``time_limit_s`` is the task limit on that path.
+    ``deadline`` is ``time.monotonic()`` plus the problem time limit. The
+    geo envelope observes it. This function does not call ``run``,
+    ``run_optimizer``, ``solve_milp``, or ``solve_metaheuristic``.
     """
     if isinstance(problem.scenario, dict) and "uav_types" in problem.scenario:
         raise ValueError("uav_types is not accepted")
@@ -87,16 +79,7 @@ def solve(problem: Problem, deadline: float) -> Solution | Infeasible | TimedOut
         raise ValueError("pads is not accepted")
     if is_outer_scenario(problem.scenario):
         return _solve_outer(problem, deadline)
-    payload = _scenario_payload(problem.scenario)
-    payload["solver"] = _solver_cfg(problem.time_limit_seconds, problem.scenario.get("solver"))
-    run_optimizer, data = _load_input(payload)
-    if time.monotonic() >= deadline:
-        return TimedOut((_TIME_LIMIT,))
-    # A finished optimal, feasible, or heuristic result stands. ``unknown`` is
-    # the solver stop without a solution, including a time-limit stop.
-    # The process kill outside this function remains the backstop when the
-    # metaheuristic does not observe ``time_limit_s``.
-    return _map_result(run_optimizer(data, "meta", seed=problem.seed))
+    raise ValueError(_GEO_ONLY)
 
 
 def _solve_outer(problem: Problem, deadline: float) -> Solution | Infeasible | TimedOut:
@@ -104,69 +87,6 @@ def _solve_outer(problem: Problem, deadline: float) -> Solution | Infeasible | T
     from planes.runtime.geo_mission import solve_envelope
 
     return solve_envelope(problem, deadline)
-
-
-def _solver_cfg(time_limit_s: int | float, existing: Any) -> dict[str, Any]:
-    """Task time limit, plus Grisha's other ``SolverCfg`` fields when he sent them."""
-    block: dict[str, Any] = {}
-    if isinstance(existing, dict):
-        for key in ("turn_time_s", "apply_turn_to_base"):
-            if key in existing:
-                block[key] = existing[key]
-    block["time_limit_s"] = time_limit_s
-    return block
-
-
-def _scenario_payload(scenario: dict[str, Any]) -> dict[str, Any]:
-    if not isinstance(scenario, dict):
-        raise ValueError("missing fields: scenario")
-    missing = [name for name in _SCENARIO_FIELDS if name not in scenario]
-    if missing:
-        raise ValueError("missing fields: " + ", ".join(missing))
-    return {name: scenario[name] for name in _SCENARIO_FIELDS}
-
-
-def _load_input(payload: dict[str, Any]) -> tuple[Any, Any]:
-    run_optimizer, input_data_cls, validation_error = _optimizer_api()
-    try:
-        data = input_data_cls(**payload)
-    except validation_error as exc:
-        raise ValueError(_invalid_fields(exc)) from exc
-    return run_optimizer, data
-
-
-def _optimizer_api() -> tuple[Any, Any, Any]:
-    global _optimizer
-    if _optimizer is not None:
-        return _optimizer
-    root = str(_GIBRID_ROOT)
-    inserted = root not in sys.path
-    if inserted:
-        sys.path.insert(0, root)
-    try:
-        from optimizer.main import run as run_optimizer
-        from optimizer.models import InputData
-        from pydantic import ValidationError
-    except ImportError as exc:
-        raise ValueError(f"optimizer import failed: {exc}") from exc
-    finally:
-        if inserted and root in sys.path:
-            sys.path.remove(root)
-    _optimizer = (run_optimizer, InputData, ValidationError)
-    return _optimizer
-
-
-def _invalid_fields(exc: Exception) -> str:
-    errors = getattr(exc, "errors", None)
-    seen: list[str] = []
-    if callable(errors):
-        for err in errors():
-            loc = ".".join(str(part) for part in err.get("loc", ()))
-            if loc and loc not in seen:
-                seen.append(loc)
-    if not seen:
-        seen.append("scenario")
-    return "missing fields: " + ", ".join(seen)
 
 
 def _map_result(result: dict[str, Any]) -> Solution | Infeasible | TimedOut:
