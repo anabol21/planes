@@ -273,75 +273,60 @@ class StitchSeamContractTest(unittest.TestCase):
         self.assertNotIn(800, [value for point in parsed["ring"] for value in point])
         self.assertTrue(all(len(point) == 2 for point in parsed["ring"]))
 
-    def test_terrain_bbox_is_the_survey_only(self) -> None:
+    def test_envelope_does_not_request_a_terrain_bbox(self) -> None:
         scenario = _scenario()
         scenario["constraints_kml"] = _FAR_CONSTRAINTS
         scenario["aerodromes"] = [{"id": "аэродром 1", "lat": 10.05, "lon": 10.05}]
         result, _seen = self._solve(scenario, "job_audit_bbox")
         self.assertIsInstance(result, Solution)
-        self.assertEqual(len(self._calls), 1)
-        query = self._calls[0]
-        self.assertIn("west=37.60000000", query)
-        self.assertIn("south=55.75000000", query)
-        self.assertIn("east=37.60800000", query)
-        self.assertIn("north=55.75400000", query)
-        self.assertNotIn("west=10.00000000", query)
-        self.assertNotIn("south=10.00000000", query)
+        assert isinstance(result, Solution)
+        self.assertEqual(self._calls, [])
+        self.assertEqual(result.mission_plan["dem_file"], "mono")
 
-    def test_repeated_bbox_does_not_hit_the_network_without_the_key(self) -> None:
+    def test_repeated_solve_stays_on_mono_without_the_key(self) -> None:
         scenario = _scenario()
         first, _seen = self._solve(scenario, "job_audit_cache")
         self.assertIsInstance(first, Solution)
-        self.assertEqual(len(self._calls), 1)
+        self.assertEqual(self._calls, [])
         os.environ.pop("OPENTOPOGRAPHY_API_KEY", None)
         second, _seen = self._solve(scenario, "job_audit_cache_again")
         self.assertIsInstance(second, Solution)
-        self.assertEqual(len(self._calls), 1)
+        self.assertEqual(self._calls, [])
         assert isinstance(first, Solution)
         assert isinstance(second, Solution)
-        self.assertEqual(first.mission_plan["dem_file"], second.mission_plan["dem_file"])
+        self.assertEqual(first.mission_plan["dem_file"], "mono")
+        self.assertEqual(second.mission_plan["dem_file"], "mono")
 
-    def test_invalid_raster_and_missing_key_fail_instead_of_flat_terrain(self) -> None:
-        from planes.runtime.pipeline import run
-
+    def test_invalid_raster_and_missing_key_use_the_flat_stub(self) -> None:
         def bad_opener(request, timeout=None):
             del request, timeout
             return _Body(b"not-a-geotiff")
 
         self._terrain.urllib.request.urlopen = bad_opener
         scenario = _scenario()
-        problem = Problem(
-            job_id="job_audit_bad",
-            scenario=scenario,
-            objective="min_time",
-            seed=7,
-            time_limit_seconds=30,
+        result, _seen = self._solve(scenario, "job_audit_bad")
+        self.assertIsInstance(result, Solution)
+        assert isinstance(result, Solution)
+        self.assertEqual(result.mission_plan["dem_file"], "mono")
+        self.assertIn(
+            "temporary flat terrain; OpenTopography was not called",
+            result.limitations,
         )
-        with self.assertRaises(ValueError) as caught:
-            solve(problem, time.monotonic() + 30)
-        self.assertIn("TIFF", str(caught.exception))
-        self.assertNotIn("flat terrain", str(caught.exception).lower())
-        raw = {
-            "contract_version": "v0",
-            "job_id": "job_audit_bad",
-            "scenario": scenario,
-            "optimization": {"objective": "min_time", "time_limit_seconds": 30},
-            "seed": 7,
-        }
-        response = run(json.dumps(raw).encode("utf-8"))
-        self.assertEqual(response.outcome, "error")
-        self.assertIsNone(response.mission_plan)
+        self.assertEqual(self._calls, [])
 
-        self._calls.clear()
         self._terrain.urllib.request.urlopen = self._opener
         os.environ.pop("OPENTOPOGRAPHY_API_KEY", None)
         fresh = tempfile.mkdtemp(prefix="planes-audit-missing-")
         os.environ["PLANES_TERRAIN_CACHE_DIR"] = fresh
-        with self.assertRaises(ValueError) as missing:
-            solve(problem, time.monotonic() + 30)
-        self.assertIn("OPENTOPOGRAPHY_API_KEY", str(missing.exception))
+        missing, _seen = self._solve(scenario, "job_audit_missing")
+        self.assertIsInstance(missing, Solution)
+        assert isinstance(missing, Solution)
+        self.assertEqual(missing.mission_plan["dem_file"], "mono")
+        self.assertIn(
+            "temporary flat terrain; OpenTopography was not called",
+            missing.limitations,
+        )
         self.assertEqual(self._calls, [])
-        self.assertNotIn("flat", str(missing.exception).lower())
 
     def test_api_key_is_absent_from_logs_exceptions_and_cache_names(self) -> None:
         import planes.runtime.geo_mission as geo_mission
@@ -366,7 +351,7 @@ class StitchSeamContractTest(unittest.TestCase):
                 result, _seen = self._solve(_scenario(), "job_audit_key_log")
             self.assertIsInstance(result, Solution)
             assert isinstance(result, Solution)
-            self.assertTrue(self._calls)
+            self.assertEqual(self._calls, [])
 
             def boom(request, timeout=None):
                 raise urllib.error.HTTPError(
@@ -379,21 +364,16 @@ class StitchSeamContractTest(unittest.TestCase):
 
             self._terrain.urllib.request.urlopen = boom
             os.environ["PLANES_TERRAIN_CACHE_DIR"] = str(Path(self._cache) / "empty-cache")
-            problem = Problem(
-                job_id="job_audit_http",
-                scenario=_scenario(),
-                objective="min_time",
-                seed=7,
-                time_limit_seconds=30,
-            )
-            with self.assertRaises(ValueError) as caught:
-                solve(problem, time.monotonic() + 30)
+            refused, _seen = self._solve(_scenario(), "job_audit_http")
+            self.assertIsInstance(refused, Solution)
+            assert isinstance(refused, Solution)
+            self.assertEqual(self._calls, [])
             leaked = "\n".join(
                 [
-                    _exception_chain(caught.exception),
                     stderr.getvalue(),
                     "\n".join(recorded),
                     "\n".join(result.limitations),
+                    "\n".join(refused.limitations),
                     "\n".join(path.name for path in Path(self._cache).rglob("*")),
                 ]
             )
@@ -547,8 +527,6 @@ class StitchSeamContractTest(unittest.TestCase):
         self.assertFalse(hasattr(seen[0], "power_coeffs"))
 
     def test_area_tiff_and_heights_keep_degrees_metres_and_epsg4326(self) -> None:
-        import rasterio
-
         import planes.runtime.geo_mission as geo_mission
 
         geo_mission._core_symbols()
@@ -574,11 +552,10 @@ class StitchSeamContractTest(unittest.TestCase):
         self.assertEqual(mission.params.wind.direction_deg, 90.0)
         self.assertEqual(mission.obstacles[0].height_m, 0.0)
         self.assertEqual(mission.vpps[0].alt_m, 0.0)
-        dem_file = result.mission_plan["dem_file"]
-        with rasterio.open(dem_file) as dataset:
-            self.assertEqual(dataset.crs.to_string(), "EPSG:4326")
+        self.assertEqual(result.mission_plan["dem_file"], "mono")
+        self.assertFalse(mission.dem.is_empty())
         sample = mission.dem.h(55.752, 37.604)
-        self.assertTrue(math.isclose(sample, 120.0, abs_tol=1.0))
+        self.assertEqual(sample, 0.0)
         fwd, _inv = make_local_transformer(37.6, 55.75)
         east_m, _north_m = fwd.transform(37.601, 55.75)
         self.assertGreater(abs(east_m), 50.0)

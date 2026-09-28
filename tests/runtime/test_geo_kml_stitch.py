@@ -1,6 +1,6 @@
 """Survey and constraint KML reach the server, then the geo core.
 
-HTTP to OpenTopography is mocked. The same bbox is served from the cache.
+The envelope solves on a flat plane. OpenTopography is not called.
 """
 
 from __future__ import annotations
@@ -171,7 +171,8 @@ class GeoKmlStitchTest(unittest.TestCase):
             self.assertEqual(result.mission_plan["constraint_polygons"], [])
             self.assertEqual(result.mission_plan["obstacles"], [])
             self.assertTrue(result.mission_plan["routes"])
-            self.assertEqual(len(calls), 1)
+            self.assertEqual(calls, [])
+            self.assertEqual(result.mission_plan["dem_file"], "mono")
         finally:
             terrain.urllib.request.urlopen = original
             if previous_cache is None:
@@ -297,14 +298,12 @@ class GeoKmlStitchTest(unittest.TestCase):
             self.assertIsInstance(result, Solution)
             assert isinstance(result, Solution)
             self.assertEqual(result.method, "pipeline")
-            dem_file = result.mission_plan["dem_file"]
-            self.assertTrue(str(dem_file).endswith(".tif"))
-            self.assertTrue(Path(dem_file).is_file())
-            self.assertEqual(len(calls), 1)
-            self.assertIn("west=37.60000000", calls[0])
-            self.assertIn("south=55.75000000", calls[0])
-            self.assertIn("east=37.60800000", calls[0])
-            self.assertIn("north=55.75400000", calls[0])
+            self.assertEqual(result.mission_plan["dem_file"], "mono")
+            self.assertEqual(calls, [])
+            self.assertIn(
+                "temporary flat terrain; OpenTopography was not called",
+                result.limitations,
+            )
             self.assertNotIn("test-key-not-a-secret", "\n".join(result.limitations))
             polygons = result.mission_plan["constraint_polygons"]
             self.assertEqual(polygons[0]["name"], "Сектор А")
@@ -318,8 +317,8 @@ class GeoKmlStitchTest(unittest.TestCase):
                 )
             again = solve(problem, time.monotonic() + 60)
             self.assertIsInstance(again, Solution)
-            self.assertEqual(len(calls), 1)
-            self.assertEqual(again.mission_plan["dem_file"], dem_file)
+            self.assertEqual(calls, [])
+            self.assertEqual(again.mission_plan["dem_file"], "mono")
         finally:
             terrain.urllib.request.urlopen = original
             if previous_cache is None:
@@ -331,7 +330,7 @@ class GeoKmlStitchTest(unittest.TestCase):
             else:
                 os.environ["OPENTOPOGRAPHY_API_KEY"] = previous_key
 
-    def test_missing_api_key_is_an_explicit_error(self) -> None:
+    def test_missing_api_key_uses_the_flat_stub(self) -> None:
         import planes.integration.terrain.opentopography as terrain
 
         def opener(request, timeout=None):
@@ -360,17 +359,24 @@ class GeoKmlStitchTest(unittest.TestCase):
             "seed": 7,
         }
         try:
-            with self.assertRaises(ValueError) as caught:
-                solve(problem, time.monotonic() + 30)
-            self.assertIn("OPENTOPOGRAPHY_API_KEY", str(caught.exception))
-            self.assertNotIn("flat", str(caught.exception).lower())
+            result = solve(problem, time.monotonic() + 30)
+            self.assertIsInstance(result, Solution)
+            assert isinstance(result, Solution)
+            self.assertEqual(result.mission_plan["dem_file"], "mono")
+            self.assertIn(
+                "temporary flat terrain; OpenTopography was not called",
+                result.limitations,
+            )
             import json
 
             response = run(json.dumps(raw).encode("utf-8"))
-            self.assertEqual(response.outcome, "error")
-            self.assertIsNone(response.mission_plan)
+            self.assertEqual(response.outcome, "feasible")
+            self.assertEqual(response.mission_plan["dem_file"], "mono")
             self.assertTrue(
-                any("OPENTOPOGRAPHY_API_KEY" in item for item in response.solver_report.limitations)
+                any(
+                    item == "temporary flat terrain; OpenTopography was not called"
+                    for item in response.solver_report.limitations
+                )
             )
         finally:
             terrain.urllib.request.urlopen = original
@@ -383,7 +389,7 @@ class GeoKmlStitchTest(unittest.TestCase):
             else:
                 os.environ["OPENTOPOGRAPHY_API_KEY"] = previous_key
 
-    def test_invalid_raster_is_an_explicit_error(self) -> None:
+    def test_invalid_raster_uses_the_flat_stub(self) -> None:
         import planes.integration.terrain.opentopography as terrain
 
         def opener(request, timeout=None):
@@ -405,9 +411,14 @@ class GeoKmlStitchTest(unittest.TestCase):
             time_limit_seconds=30,
         )
         try:
-            with self.assertRaises(ValueError) as caught:
-                solve(problem, time.monotonic() + 30)
-            self.assertIn("TIFF", str(caught.exception))
+            result = solve(problem, time.monotonic() + 30)
+            self.assertIsInstance(result, Solution)
+            assert isinstance(result, Solution)
+            self.assertEqual(result.mission_plan["dem_file"], "mono")
+            self.assertIn(
+                "temporary flat terrain; OpenTopography was not called",
+                result.limitations,
+            )
         finally:
             terrain.urllib.request.urlopen = original
             if previous_cache is None:
@@ -418,6 +429,72 @@ class GeoKmlStitchTest(unittest.TestCase):
                 os.environ.pop("OPENTOPOGRAPHY_API_KEY", None)
             else:
                 os.environ["OPENTOPOGRAPHY_API_KEY"] = previous_key
+
+    def test_envelope_does_not_call_acquire_terrain_for_area(self) -> None:
+        import planes.integration.terrain as terrain_pkg
+        import planes.integration.terrain.opentopography as terrain
+        import planes.runtime.geo_mission as geo_mission
+
+        calls: list[str] = []
+
+        def acquire(*args: object, **kwargs: object) -> str:
+            del args, kwargs
+            calls.append("acquire_terrain_for_area")
+            raise AssertionError("acquire_terrain_for_area called")
+
+        originals = {
+            "module": terrain.acquire_terrain_for_area,
+            "package": terrain_pkg.acquire_terrain_for_area,
+        }
+        bound = getattr(geo_mission, "acquire_terrain_for_area", None)
+        terrain.acquire_terrain_for_area = acquire
+        terrain_pkg.acquire_terrain_for_area = acquire
+        if bound is not None:
+            geo_mission.acquire_terrain_for_area = acquire
+        previous_key = os.environ.pop("OPENTOPOGRAPHY_API_KEY", None)
+
+        def opener(request, timeout=None):
+            del request, timeout
+            raise AssertionError("OpenTopography was called")
+
+        original_open = terrain.urllib.request.urlopen
+        terrain.urllib.request.urlopen = opener
+        problem = Problem(
+            job_id="job_stitch_mono",
+            scenario=_scenario(),
+            objective="min_time",
+            seed=7,
+            time_limit_seconds=60,
+        )
+        try:
+            result = solve(problem, time.monotonic() + 60)
+        finally:
+            terrain.acquire_terrain_for_area = originals["module"]
+            terrain_pkg.acquire_terrain_for_area = originals["package"]
+            if bound is not None:
+                geo_mission.acquire_terrain_for_area = bound
+            terrain.urllib.request.urlopen = original_open
+            if previous_key is None:
+                os.environ.pop("OPENTOPOGRAPHY_API_KEY", None)
+            else:
+                os.environ["OPENTOPOGRAPHY_API_KEY"] = previous_key
+        self.assertEqual(calls, [])
+        self.assertIsInstance(result, Solution)
+        assert isinstance(result, Solution)
+        self.assertEqual(result.mission_plan["dem_file"], "mono")
+        self.assertFalse(Path(result.mission_plan["dem_file"]).is_absolute())
+        self.assertIn(
+            "temporary flat terrain; OpenTopography was not called",
+            result.limitations,
+        )
+        for route in result.mission_plan["routes"]:
+            points = route["waypoints"]
+            self.assertEqual(points[0]["alt_m"], 0.0)
+            self.assertEqual(points[-1]["alt_m"], 0.0)
+            survey = [point["alt_m"] for point in points if point["alt_m"] != 0.0]
+            self.assertTrue(survey)
+            self.assertTrue(all(math.isclose(alt, survey[0]) for alt in survey))
+            self.assertGreater(survey[0], 0.0)
 
 
 if __name__ == "__main__":

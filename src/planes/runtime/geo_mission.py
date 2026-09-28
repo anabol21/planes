@@ -19,10 +19,6 @@ from planes.integration.kml.constraints import (
     parse_constraint_polygons,
     parse_survey_polygon,
 )
-from planes.integration.terrain.opentopography import (
-    TerrainAcquisitionError,
-    acquire_terrain_for_area,
-)
 from planes.runtime.enumeration.outer import load_catalog
 from planes.runtime.logs import record
 from planes.runtime.solver import Problem
@@ -67,11 +63,32 @@ _TIME_LIMIT = "solver stopped at the time limit"
 _NOT_GLOBALLY_OPTIMAL = "heuristic result is not globally optimal"
 _NO_SPECTRUM = "no camera covers required spectrum"
 _FLAT_TERRAIN = "terrain raster is not a usable GeoTIFF; refusing flat terrain"
+_MONO_DEM_FILE = "mono"
+_MONO_LIMITATION = "temporary flat terrain; OpenTopography was not called"
+
+
+class _MonoRelief:
+    """One constant plane at 0 m. Not a file and not an empty raster."""
+
+    def h(self, lat: float, lon: float) -> float:
+        del lat, lon
+        return 0.0
+
+    def is_empty(self) -> bool:
+        return False
+
+    def h_max(self) -> float:
+        return 0.0
+
+    def h_min(self) -> float:
+        return 0.0
 
 
 def solve_envelope(problem: Problem, deadline: float) -> Solution | Infeasible | TimedOut:
-    """Parse the survey KML, cache COP30, and call the geo-core pipeline.
+    """Parse the survey KML and call the geo-core pipeline on a flat plane.
 
+    Ground is one constant plane at 0 m. OpenTopography is not called and no
+    GeoTIFF is read. Waypoint ``alt_m`` stays the camera AGL above that plane.
     A missing, null, or blank ``constraints_kml`` is an empty file: no
     constraint polygons and no invented no-fly zone. The survey KML stays
     required.
@@ -85,13 +102,13 @@ def solve_envelope(problem: Problem, deadline: float) -> Solution | Infeasible |
         raise ValueError("missing fields: scenario")
     survey_polygons = parse_survey_polygon(_text(scenario.get("survey_kml"), "survey_kml"))
     constraints = parse_constraint_polygons(_optional_text(scenario.get("constraints_kml")))
-    dem_path = _acquire_dem(survey_polygons)
-    dem = _load_geotiff(dem_path)
+    dem = _MonoRelief()
+    dem_file = _MONO_DEM_FILE
     mission, notes, boards = _mission(
         scenario,
         survey_polygons=survey_polygons,
         constraints=constraints,
-        dem_path=dem_path,
+        dem_file=dem_file,
         dem=dem,
     )
     if mission is None:
@@ -122,7 +139,7 @@ def solve_envelope(problem: Problem, deadline: float) -> Solution | Infeasible |
         lines = ("No valid candidates found", *notes)
         _log(problem.job_id, lines)
         return Infeasible(lines)
-    plan = _plan(candidate, mission, str(dem_path), constraints)
+    plan = _plan(candidate, mission, dem_file, constraints)
     criterion = mission.params.optimization_criterion.value
     if criterion == "min_time":
         objective_value = float(candidate.C_max_s)
@@ -131,7 +148,8 @@ def solve_envelope(problem: Problem, deadline: float) -> Solution | Infeasible |
     lines = (
         _NOT_GLOBALLY_OPTIMAL,
         "constraint altitude text is copied and not interpreted; polygons are obstacles",
-        f"dem_file: {dem_path}",
+        _MONO_LIMITATION,
+        f"dem_file: {dem_file}",
         *notes,
     )
     _log(problem.job_id, lines)
@@ -141,23 +159,6 @@ def solve_envelope(problem: Problem, deadline: float) -> Solution | Infeasible |
         objective_value=objective_value,
         limitations=lines,
     )
-
-
-def _acquire_dem(polygons: list[ConstraintPolygon]) -> Path:
-    coordinates = [
-        [[[lon, lat] for lon, lat in polygon.ring]]
-        for polygon in polygons
-    ]
-    if len(coordinates) == 1:
-        geometry = {"type": "Polygon", "coordinates": coordinates[0]}
-    else:
-        geometry = {"type": "MultiPolygon", "coordinates": coordinates}
-    try:
-        return Path(
-            acquire_terrain_for_area(geometry, survey_crs="EPSG:4326")
-        ).resolve()
-    except TerrainAcquisitionError as exc:
-        raise ValueError(str(exc)) from exc
 
 
 def _load_geotiff(path: Path) -> Any:
@@ -173,7 +174,7 @@ def _mission(
     *,
     survey_polygons: list[ConstraintPolygon],
     constraints: list[ConstraintPolygon],
-    dem_path: Path,
+    dem_file: str,
     dem: Any,
 ) -> tuple[Any | None, list[str], tuple[Any, ...]]:
     symbols = _core_symbols()
@@ -284,7 +285,7 @@ def _mission(
         for item in aerodromes
         if by_vpp[item["id"]]
     ]
-    params = _params(scenario, criterion_name, dem_path, symbols)
+    params = _params(scenario, criterion_name, dem_file, symbols)
     from planes.runtime.fields2cover_engine import BoardCamera, marked_number, optics
 
     aerodrome_by_id = {item["id"]: item for item in aerodromes}
@@ -336,7 +337,7 @@ def _mission(
     return mission, notes, tuple(boards)
 
 
-def _params(scenario: dict[str, Any], criterion_name: str, dem_path: Path, symbols: dict[str, Any]) -> Any:
+def _params(scenario: dict[str, Any], criterion_name: str, dem_file: str, symbols: dict[str, Any]) -> Any:
     Params = symbols["Params"]
     Wind = symbols["Wind"]
     Criterion = symbols["Criterion"]
@@ -364,7 +365,7 @@ def _params(scenario: dict[str, Any], criterion_name: str, dem_path: Path, symbo
         overlap_long=forward,
         angles_deg=[angle],
         attempts_max=1,
-        dem_file=str(dem_path),
+        dem_file=dem_file,
     )
 
 

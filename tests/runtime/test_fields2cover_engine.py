@@ -56,7 +56,6 @@ class Fields2CoverEngineTest(unittest.TestCase):
 
     def test_spectrum_miss_does_not_call_fields2cover(self) -> None:
         import planes.runtime.fields2cover_engine as engine
-        import planes.runtime.geo_mission as geo_mission
 
         calls: list[str] = []
 
@@ -65,11 +64,7 @@ class Fields2CoverEngineTest(unittest.TestCase):
             raise AssertionError("Fields2Cover called on a spectrum miss")
 
         original_import = engine._fields2cover
-        original_acquire = geo_mission._acquire_dem
-        original_load = geo_mission._load_geotiff
         engine._fields2cover = boom
-        geo_mission._acquire_dem = lambda polygons: Path("/tmp/planes-fields2cover-unused.tif")
-        geo_mission._load_geotiff = lambda path: _Dem(100.0)
         scenario = {
             "crs": "EPSG:4326",
             "criterion": "min_time",
@@ -107,8 +102,6 @@ class Fields2CoverEngineTest(unittest.TestCase):
             )
         finally:
             engine._fields2cover = original_import
-            geo_mission._acquire_dem = original_acquire
-            geo_mission._load_geotiff = original_load
         self.assertEqual(calls, [])
         self.assertIsInstance(result, Infeasible)
         assert isinstance(result, Infeasible)
