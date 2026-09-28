@@ -4,6 +4,11 @@
 Декомпозиция работает вдоль направления полос:
 перед декомпозицией полигон поворачивается на -angle,
 полосы генерируются при angle=0, потом поворачиваются обратно.
+
+ИСКЛЮЧЕНИЕ — fields2cover / auto с доступным F2C: Fields2Cover выбирает
+направление через ``SG_BruteForce.generateBestSwaths``. Полигон не
+поворачивается, ``angle_deg`` игнорируется. Нет F2C — fallback на
+trapezoid (тогда ``angle_deg`` снова имеет смысл).
 """
 
 from __future__ import annotations
@@ -12,7 +17,7 @@ from typing import Any
 
 import numpy as np
 from shapely.affinity import rotate
-from shapely.geometry import Polygon, shape
+from shapely.geometry import LineString, Polygon, shape
 
 from planner.geometry.swath import swaths_in_piece
 from planner.geometry.trapezoid import trapezoid_decomposition
@@ -20,6 +25,7 @@ from planner.geometry.triangulation import triangulation_decomposition
 from planner.io.dem import BaseDEM
 from planner.models import Area, Obstacle, Point, Swath, SwathSegment
 from planner.utils.geo import make_local_transformer
+from planner.utils.logging import log_warn
 
 
 SEGMENT_LEN_M = 30.0
@@ -378,6 +384,37 @@ def _compute_survey_time_energy(
 
 
 # ============================================================
+# Линии: Fields2Cover (auto angle) vs legacy
+# ============================================================
+
+def _generate_lines_f2c(
+    poly_m: Polygon,
+    spacing_m: float,
+    headland_width_m: float = 0.0,
+) -> list[LineString]:
+    """Unrotated metres polygon → swath lines. Angle is F2C-owned."""
+    from planner.geometry.f2c_backend import generate_swaths_f2c, is_available
+
+    if not is_available():
+        raise RuntimeError("fields2cover not available")
+    return generate_swaths_f2c(poly_m, spacing_m, headland_width_m)
+
+
+def _use_fields2cover(decomposition: str) -> bool:
+    if decomposition not in ("fields2cover", "auto"):
+        return False
+    from planner.geometry.f2c_backend import is_available
+
+    available = is_available()
+    if not available and decomposition == "fields2cover":
+        log_warn(
+            "geometry",
+            "fields2cover not available, falling back to trapezoid",
+        )
+    return available
+
+
+# ============================================================
 # Основная функция
 # ============================================================
 
@@ -398,8 +435,13 @@ def generate_swaths_for_area(
     mass_kg: float = 2.0,
     P_nominal_w: float = 300.0,
     obstacle_buffer_m: float = 20.0,
+    headland_width_m: float = 0.0,
 ) -> tuple[list[Swath], float]:
-    """Возвращает (swaths, h_agl_target)."""
+    """Возвращает (swaths, h_agl_target).
+
+    ``decomposition='fields2cover'`` (or ``auto`` when F2C is installed)
+    ignores ``angle_deg`` and calls ``generateBestSwaths``.
+    """
     cam = _camera_params_from_catalog(camera)
     geom_calc = compute_flight_and_swath(
         gsd_cm_per_px, cam, overlap_x, overlap_long,
@@ -428,73 +470,84 @@ def generate_swaths_for_area(
             obs_m = obs_m.buffer(obstacle_buffer_m)
         poly_m = poly_m.difference(obs_m)
 
-    # NEW: поворот для декомпозиции вдоль направления полос
-    cx, cy = poly_m.centroid.x, poly_m.centroid.y
-    poly_m_rot = rotate(poly_m, -angle_deg, origin=(cx, cy))
+    f2c_lines: list[LineString] | None = None
+    if _use_fields2cover(decomposition):
+        try:
+            f2c_lines = _generate_lines_f2c(poly_m, spacing_m, headland_width_m)
+        except Exception as exc:
+            log_warn(
+                "geometry",
+                f"F2C failed ({type(exc).__name__}: {exc}) — fallback on trapezoid",
+            )
+            f2c_lines = None
 
-    if decomposition == "triangulation":
-        pieces_rot = triangulation_decomposition(poly_m_rot)
+    raw_lines: list[LineString] = []
+    if f2c_lines:
+        # F2C already chose heading; do not rotate by request angle.
+        raw_lines = f2c_lines
     else:
-        pieces_rot = trapezoid_decomposition(poly_m_rot)
+        cx, cy = poly_m.centroid.x, poly_m.centroid.y
+        poly_m_rot = rotate(poly_m, -angle_deg, origin=(cx, cy))
+        if decomposition == "triangulation":
+            pieces_rot = triangulation_decomposition(poly_m_rot)
+        else:
+            pieces_rot = trapezoid_decomposition(poly_m_rot)
+        for piece in pieces_rot:
+            for line in swaths_in_piece(piece, angle_deg=0.0, spacing_m=spacing_m):
+                line_back = rotate(line, angle_deg, origin=(cx, cy))
+                if len(list(line_back.coords)) >= 2:
+                    raw_lines.append(line_back)
 
     # 1. Базовые полосы
     base_swaths: list[Swath] = []
     sid = 0
 
-    for piece in pieces_rot:
-        # В повёрнутой системе полосы идут при angle_deg=0
-        for line in swaths_in_piece(piece, angle_deg=0.0, spacing_m=spacing_m):
-            coords = list(line.coords)
-            if len(coords) < 2:
-                continue
+    for line in raw_lines:
+        coords_back = list(line.coords)
+        if len(coords_back) < 2:
+            continue
 
-            # Поворот полосы обратно на +angle
-            line_back = rotate(line, angle_deg, origin=(cx, cy))
-            coords_back = list(line_back.coords)
-            if len(coords_back) < 2:
-                continue
+        start_xy = coords_back[0]
+        end_xy = coords_back[-1]
+        length_m = float(line.length)
+        if length_m < 5.0:
+            continue
 
-            start_xy = coords_back[0]
-            end_xy = coords_back[-1]
-            length_m = float(line_back.length)
-            if length_m < 5.0:
-                continue
+        segments = _make_segments(
+            start_xy=start_xy,
+            end_xy=end_xy,
+            length_m=length_m,
+            h_agl_target=h_agl_target,
+            dem=dem,
+            inv=inv,
+        )
 
-            segments = _make_segments(
-                start_xy=start_xy,
-                end_xy=end_xy,
-                length_m=length_m,
-                h_agl_target=h_agl_target,
-                dem=dem,
-                inv=inv,
-            )
+        h_vals = [s.h_asl_m for s in segments]
+        dem_vals = [s.dem_m for s in segments]
 
-            h_vals = [s.h_asl_m for s in segments]
-            dem_vals = [s.dem_m for s in segments]
+        n_photos = int(np.ceil(length_m / max(photo_interval_m, 1.0))) + 1
 
-            n_photos = int(np.ceil(length_m / max(photo_interval_m, 1.0))) + 1
-
-            base_swaths.append(Swath(
-                id=f"{area.id}-s{sid}",
-                area_id=area.id,
-                start=Point(lat=segments[0].lat, lon=segments[0].lon,
-                            alt_m=segments[0].h_asl_m),
-                end=Point(lat=segments[-1].lat, lon=segments[-1].lon,
-                          alt_m=segments[-1].h_asl_m),
-                length_m=length_m,
-                h_agl_m=h_agl_target,
-                h_asl_m=float(np.mean(h_vals)),
-                segments=segments,
-                h_asl_entry_m=segments[0].h_asl_m,
-                h_asl_exit_m=segments[-1].h_asl_m,
-                h_agl_min_m=min(s.h_agl_m for s in segments),
-                dem_min_m=float(min(dem_vals)),
-                dem_max_m=float(max(dem_vals)),
-                n_photos=n_photos,
-                frame_length_m=frame_length_m,
-                photo_interval_m=photo_interval_m,
-            ))
-            sid += 1
+        base_swaths.append(Swath(
+            id=f"{area.id}-s{sid}",
+            area_id=area.id,
+            start=Point(lat=segments[0].lat, lon=segments[0].lon,
+                        alt_m=segments[0].h_asl_m),
+            end=Point(lat=segments[-1].lat, lon=segments[-1].lon,
+                      alt_m=segments[-1].h_asl_m),
+            length_m=length_m,
+            h_agl_m=h_agl_target,
+            h_asl_m=float(np.mean(h_vals)),
+            segments=segments,
+            h_asl_entry_m=segments[0].h_asl_m,
+            h_asl_exit_m=segments[-1].h_asl_m,
+            h_agl_min_m=min(s.h_agl_m for s in segments),
+            dem_min_m=float(min(dem_vals)),
+            dem_max_m=float(max(dem_vals)),
+            n_photos=n_photos,
+            frame_length_m=frame_length_m,
+            photo_interval_m=photo_interval_m,
+        ))
+        sid += 1
 
     # 2. Boustrophedon
     base_swaths = _apply_boustrophedon(base_swaths, fwd)

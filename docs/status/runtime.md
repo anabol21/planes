@@ -3,13 +3,15 @@ workstream: runtime
 owner: Misha
 task: MIS-001
 status: review
-updated: 2026-09-27
+updated: 2026-09-28
 checkpoint: 2026-09-27
-branch: test_merge
+branch: cursor/f2c-auto-strip-angle-d388
 contract_version: v0
 ---
 
 # Runtime status
+
+- `review`: INT-F2C-001 overlay — `geo_mission._params` no longer requires `survey.strip_direction_deg` and does not copy it into `angles_deg`. `fields2cover_engine.plan` uses `generateBestSwaths` when angles are empty; a leftover request heading is ignored. Wind, GSD, and overlaps stay required.
 
 - `review`: сшивка геоядра `724d1da` и тракта рельефа. Конверт с аэродромами и бортами вызывает `planner.solver.pipeline` скопированного ядра. У слушателя больше нет пути gibrid `meta`. Однокарточный `takeoff` + `uav` и любой другой сценарий, который не является внешним конвертом, поднимает `ValueError` до импорта gibrid: слушатель принимает только геоконверт. Пайплайн превращает это в `outcome=error`. `pads` и `uav_types` по-прежнему отклоняются. Исходы задания: `feasible`, `infeasible`, `timed_out`, `error`; план в `mission_plan`. Тексты KML съёмки и ограничений уходят на сервер. Ограничения разбирает `planes.integration.kml`, не оптимизатор. Полигоны ограничений становятся `Obstacle` с `height_m` 0. Рамка полигона съёмки запрашивает COP30; `Params.dem_file` — путь кэшированного GeoTIFF. Повтор той же рамки сеть не трогает. Нет ключа или негодный растр — явная ошибка, без плоского рельефа. Матрица справочника: `docs/architecture/FLEET_CATALOG_SWEEP.md`. Синтетические числа в `fleet_catalog.json` не добавлялись. `dem.py` и пакет `dem/` ядра на месте.
 

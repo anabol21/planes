@@ -1,9 +1,11 @@
 """Envelope adapter for the copied geo core.
 
 An envelope with aerodromes and boards becomes one ``MissionInput`` and one
-call of ``planner.solver.pipeline`` (``run_one_angle``, trapezoid by default,
-OR-Tools routing). ``solver.solve`` does not send any other scenario here.
-This module does not edit the planner body.
+call of ``planner.solver.pipeline``. The F2C path leaves ``angles_deg``
+empty: Fields2Cover picks the swath heading via ``generateBestSwaths``.
+A leftover ``survey.strip_direction_deg`` is ignored. Wind, GSD, and
+overlaps stay required. ``solver.solve`` does not send any other scenario
+here.
 """
 
 from __future__ import annotations
@@ -288,7 +290,8 @@ def _params(scenario: dict[str, Any], criterion_name: str, dem_path: Path, symbo
         raise ValueError("missing fields: survey")
     side = _fraction(survey.get("side_overlap"), "survey.side_overlap")
     forward = _fraction(survey.get("forward_overlap"), "survey.forward_overlap")
-    angle = _angle(survey.get("strip_direction_deg"), "survey.strip_direction_deg")
+    # survey.strip_direction_deg is ignored on the F2C path. Do not copy
+    # it into angles_deg; generateBestSwaths owns the heading.
     wind = scenario.get("wind")
     if not isinstance(wind, dict):
         raise ValueError("missing fields: wind")
@@ -296,23 +299,28 @@ def _params(scenario: dict[str, Any], criterion_name: str, dem_path: Path, symbo
     if isinstance(speed, bool) or not isinstance(speed, (int, float)) or speed < 0:
         raise ValueError("missing fields: wind.speed_ms")
     direction = _angle(wind.get("direction_deg"), "wind.direction_deg")
-    return Params(
-        gsd_cm_per_px=float(gsd),
-        wind=Wind(speed_mps=float(speed), direction_deg=direction),
-        optimization_criterion=Criterion(criterion_name),
-        overlap_x=side,
-        overlap_long=forward,
-        angles_deg=[angle],
-        attempts_max=1,
-        dem_file=str(dem_path),
-    )
+    kwargs: dict[str, Any] = {
+        "gsd_cm_per_px": float(gsd),
+        "wind": Wind(speed_mps=float(speed), direction_deg=direction),
+        "optimization_criterion": Criterion(criterion_name),
+        "overlap_x": side,
+        "overlap_long": forward,
+        "angles_deg": [],
+        "attempts_max": 1,
+        "dem_file": str(dem_path),
+    }
+    DecompositionMethod = symbols.get("DecompositionMethod")
+    if DecompositionMethod is not None:
+        kwargs["decomposition"] = DecompositionMethod.FIELDS2COVER
+    return Params(**kwargs)
 
 
 def _run_pipeline(mission: Any) -> Any | None:
     symbols = _core_symbols()
     counters = symbols["Counters"]()
     candidates = []
-    for theta in mission.params.angles_deg:
+    angles = symbols["angles_to_try"](mission)
+    for theta in angles:
         counters.reset_attempts()
         candidate = None
         for _ in range(mission.params.attempts_max):
@@ -379,6 +387,7 @@ def _core_symbols() -> dict[str, Any]:
         from planner.models import (
             Area,
             Criterion,
+            DecompositionMethod,
             MissionInput,
             Obstacle,
             Params,
@@ -388,7 +397,7 @@ def _core_symbols() -> dict[str, Any]:
             Wind,
         )
         from planner.solver.counters import Counters
-        from planner.solver.pipeline import run_one_angle, select_best
+        from planner.solver.pipeline import _angles_to_try, run_one_angle, select_best
     except ImportError as exc:
         raise ValueError(f"geo core import failed: {exc}") from exc
     cached = {
@@ -396,6 +405,7 @@ def _core_symbols() -> dict[str, Any]:
         "load_dem": load_dem,
         "Area": Area,
         "Criterion": Criterion,
+        "DecompositionMethod": DecompositionMethod,
         "MissionInput": MissionInput,
         "Obstacle": Obstacle,
         "Params": Params,
@@ -404,6 +414,7 @@ def _core_symbols() -> dict[str, Any]:
         "VPP": VPP,
         "Wind": Wind,
         "Counters": Counters,
+        "angles_to_try": _angles_to_try,
         "run_one_angle": run_one_angle,
         "select_best": select_best,
     }

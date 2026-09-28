@@ -3,13 +3,15 @@ workstream: web
 owner: Integration / Web
 task: WEB-002
 status: review
-updated: 2026-09-27
+updated: 2026-09-28
 checkpoint: 2026-09-22
-branch: frontend/WEB-002-on-test-merge
+branch: cursor/f2c-auto-strip-angle-d388
 contract_version: v0
 ---
 
 # Web status
+
+- INT-F2C-001: the form no longer has a strip-direction field and `scenario.ts` does not send `survey.strip_direction_deg`. GSD, overlaps, and wind stay on the form with the same defaults.
 
 On `test_merge` the form sends raw `survey_kml` and `constraints_kml`. The picture is `docs/architecture/STITCH_PICTURE.md`. The sentence below is the pre-stitch path on `main`.
 

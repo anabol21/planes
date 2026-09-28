@@ -9,7 +9,6 @@ import {
   DEFAULT_FORWARD_OVERLAP,
   DEFAULT_GSD_CM_PER_PX,
   DEFAULT_SIDE_OVERLAP,
-  DEFAULT_STRIP_DIRECTION_DEG,
   DEFAULT_TIME_LIMIT,
   MAX_TIME_LIMIT_SECONDS,
   addBoard,
@@ -138,7 +137,6 @@ function inputs(): ScenarioInputs {
     gsdCmPerPx: DEFAULT_GSD_CM_PER_PX,
     forwardOverlap: DEFAULT_FORWARD_OVERLAP,
     sideOverlap: DEFAULT_SIDE_OVERLAP,
-    stripDirectionDeg: DEFAULT_STRIP_DIRECTION_DEG,
     windSpeedMps: 3,
     windDirectionFromDeg: 270,
     surveyTask: kml("survey", "survey_task", SURVEY_KML),
@@ -213,7 +211,7 @@ describe("prototype scenario", () => {
       survey_kml: SURVEY_KML,
       constraints_kml: ZONE_KML,
       required_spectrum: "RGB",
-      survey: { forward_overlap: 0.7, side_overlap: 0.6, strip_direction_deg: 0 },
+      survey: { forward_overlap: 0.7, side_overlap: 0.6 },
       wind: { speed_ms: 3, direction_deg: 270 },
     });
     expect(scenario()).not.toHaveProperty("power_coeffs");
@@ -268,19 +266,18 @@ describe("prototype scenario", () => {
     expect(String(built.survey_kml)).toContain("South");
   });
 
-  it("writes GSD, overlaps, and strip direction from the form fields", () => {
+  it("writes GSD and overlaps from the form and does not send strip direction", () => {
     const custom = inputs();
     custom.gsdCmPerPx = 4.5;
     custom.forwardOverlap = 0.8;
     custom.sideOverlap = 0.5;
-    custom.stripDirectionDeg = 12;
     const built = buildPrototypeScenario(custom, "min_time", xmlParser());
     expect(built.gsd_cm_per_px).toBe(4.5);
     expect(built.survey).toEqual({
       forward_overlap: 0.8,
       side_overlap: 0.5,
-      strip_direction_deg: 12,
     });
+    expect(built.survey).not.toHaveProperty("strip_direction_deg");
     expect(built).not.toHaveProperty("power_coeffs");
   });
 

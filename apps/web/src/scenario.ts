@@ -38,7 +38,6 @@ export interface ScenarioInputs {
   gsdCmPerPx: number;
   forwardOverlap: number;
   sideOverlap: number;
-  stripDirectionDeg: number;
   windSpeedMps: number;
   windDirectionFromDeg: number | null;
   surveyTask: KmlFileRecord | null;
@@ -50,7 +49,6 @@ export const DEFAULT_AERODROME_LAT = 55.747;
 export const DEFAULT_GSD_CM_PER_PX = 3;
 export const DEFAULT_FORWARD_OVERLAP = 0.7;
 export const DEFAULT_SIDE_OVERLAP = 0.6;
-export const DEFAULT_STRIP_DIRECTION_DEG = 0;
 
 export const DEFAULT_AERODROMES: AerodromeInput[] = [
   { lon: DEFAULT_AERODROME_LON, lat: DEFAULT_AERODROME_LAT },
@@ -194,7 +192,6 @@ export function validateScenarioInputs(inputs: ScenarioInputs): void {
   if (inputs.sideOverlap < 0 || inputs.sideOverlap >= 1) {
     throw new Error("Перекрытие поперёк должно быть от 0 до 1, не включая 1.");
   }
-  requireFinite(inputs.stripDirectionDeg, "Направление полос");
   requireFinite(inputs.windSpeedMps, "Скорость ветра", 0);
   if (inputs.windDirectionFromDeg === null) {
     throw new Error("Укажите направление ветра от 0 до 360 градусов.");
@@ -280,7 +277,6 @@ export function buildPrototypeScenario(
   if (inputs.sideOverlap < 0 || inputs.sideOverlap >= 1) {
     throw new Error("Перекрытие поперёк должно быть от 0 до 1, не включая 1.");
   }
-  requireFinite(inputs.stripDirectionDeg, "Направление полос");
   surveyRing(inputs.surveyTask, parser);
   return {
     scenario_id: inputs.scenarioId.trim(),
@@ -299,7 +295,6 @@ export function buildPrototypeScenario(
     survey: {
       forward_overlap: inputs.forwardOverlap,
       side_overlap: inputs.sideOverlap,
-      strip_direction_deg: inputs.stripDirectionDeg,
     },
     survey_type: inputs.surveyType,
     wind: {

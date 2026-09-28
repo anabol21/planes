@@ -13,6 +13,7 @@ from planner.io.loaders import load_mission
 from planner.models import (
     Candidate,
     Criterion,
+    DecompositionMethod,
     MissionInput,
     Params,
     Point,
@@ -522,6 +523,40 @@ def run_one_angle(
 # Выбор лучшего, LNS
 # ============================================================
 
+def _uses_auto_f2c(mission: MissionInput) -> bool:
+    """True when Fields2Cover owns the swath heading."""
+    decomp = mission.params.decomposition
+    if decomp == DecompositionMethod.FIELDS2COVER:
+        return True
+    if decomp == DecompositionMethod.AUTO:
+        try:
+            from planner.geometry.f2c_backend import is_available
+        except ImportError:
+            return False
+        return bool(is_available())
+    return False
+
+
+def _angles_to_try(mission: MissionInput) -> list[float]:
+    """Angles for the planner loop.
+
+    On the Fields2Cover path the core calls ``generateBestSwaths`` and
+    ignores ``angles_deg`` / a leftover ``strip_direction_deg``. One dummy
+    ``0.0`` keeps ``run_one_angle``; ``generate.py`` does not treat it as a
+    hard heading. Trapezoid and triangulation still require a non-empty
+    list.
+    """
+    if _uses_auto_f2c(mission):
+        return [0.0]
+    angles = list(mission.params.angles_deg or [])
+    if not angles:
+        raise ValueError(
+            "angles_deg must be non-empty unless decomposition is "
+            "fields2cover or auto"
+        )
+    return angles
+
+
 def select_best(candidates: list[Candidate], criterion: Criterion) -> Candidate:
     if not candidates:
         raise ValueError("No candidates")
@@ -553,7 +588,8 @@ def run_mission(fixtures_dir: str | Path, output_dir: str | Path) -> Report:
     patience_left = patience
     best_metric: float | None = None
 
-    for theta in mission.params.angles_deg:
+    angles = _angles_to_try(mission)
+    for theta in angles:
         counters.reset_attempts()
         swaths_by_area, h_agl_by_area = _generate_all_swaths(mission, theta)
         last_swaths_by_id = {
@@ -646,7 +682,7 @@ def run_mission(fixtures_dir: str | Path, output_dir: str | Path) -> Report:
         optimization_criterion=mission.params.optimization_criterion.value,
         metrics=metrics,
         per_uav=list(per_uav.values()),
-        n_angles_tried=len(mission.params.angles_deg),
+        n_angles_tried=len(angles),
         n_candidates=len(candidates),
         lns_iterations=counters.lns_iter,
     )
