@@ -34,6 +34,8 @@ class PhysicsParams:
     T_parachute_s: float = 0.0
     P_const_w: float = 0.0
     T_charge_s: float = 0.0
+    max_wind_m_s: float | None = None  # None only for manually built legacy fixtures
+    max_horizontal_speed_m_s: float | None = None
 
 
 class PhysicsModel(ABC):

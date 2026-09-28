@@ -23,6 +23,7 @@ from planner.models import (
 )
 from planner.physics import build_physics_model, build_physics_params
 from planner.physics.base import PhysicsParams
+from planner.physics.factory import validate_wind_capability
 from planner.solver.assignment import assign_clusters_to_uavs
 from planner.solver.clustering import cluster_swaths
 from planner.solver.counters import Counters
@@ -50,17 +51,25 @@ class MissionContext:
 # Генерация полос
 # ============================================================
 
+def _validate_aircraft_capabilities(mission: MissionInput, catalog: object) -> None:
+    for uav in mission.uavs:
+        physics = build_physics_params(uav, catalog)
+        if ("reserve_fraction" in mission.params.model_fields_set and
+                mission.params.reserve_fraction != physics.reserve_fraction):
+            raise ValueError(f"aircraft {uav.model}: mission reserve override conflicts with catalog policy")
+        validate_wind_capability(physics, mission.params.wind.speed_mps)
+
+
 def _generate_all_swaths(
     mission: MissionInput,
     angle_deg: float,
 ) -> tuple[dict[str, list], dict[str, float]]:
     catalog = get_default_catalog()
     uav = mission.uavs[0]
+    _validate_aircraft_capabilities(mission, catalog)
     camera = catalog.get_camera(uav.camera_id)
 
-    pp = build_physics_params(
-        uav, catalog, reserve_fraction=mission.params.reserve_fraction
-    )
+    pp = build_physics_params(uav, catalog)
     model = build_physics_model(pp)
     P_nominal = model.power_w(pp.v_air_mps, mission.params.wind.speed_mps)
 
@@ -138,6 +147,7 @@ def _append_transition(
     inv,
     v_climb_mps: float = 5.0,
     v_ground_mps: float = 12.0,
+    v_descent_mps: float | None = None,
 ) -> None:
     if len(wps_xy) < 2:
         return
@@ -153,7 +163,11 @@ def _append_transition(
         return
 
     dh_total = h_to - h_from
-    max_slope = v_climb_mps / max(v_ground_mps, 0.5)
+    # Legacy direct calls may omit descent; live calls always pass catalog data.
+    vertical_rate = v_climb_mps if dh_total >= 0 else (
+        v_climb_mps if v_descent_mps is None else v_descent_mps
+    )
+    max_slope = vertical_rate / max(v_ground_mps, 0.5)
     max_dh_on_path = max_slope * total_d
 
     if abs(dh_total) <= max_dh_on_path:
@@ -189,6 +203,7 @@ def _compute_route_waypoints(
     safety_margin_m: float = 0.0,
     v_climb_mps: float = 5.0,
     v_ground_mps: float = 12.0,
+    v_descent_mps: float | None = None,
 ) -> tuple[list[Point], int]:
     vpp_xy = fwd.transform(vpp.lon, vpp.lat)
     waypoints: list[Point] = [
@@ -210,6 +225,7 @@ def _compute_route_waypoints(
         _append_transition(
             waypoints, wps, prev_h, h_entry, inv,
             v_climb_mps=v_climb_mps, v_ground_mps=v_ground_mps,
+            v_descent_mps=v_descent_mps,
         )
 
         if s.segments and len(s.segments) >= 2:
@@ -229,6 +245,7 @@ def _compute_route_waypoints(
     _append_transition(
         waypoints, wps, prev_h, vpp.alt_m, inv,
         v_climb_mps=v_climb_mps, v_ground_mps=v_ground_mps,
+        v_descent_mps=v_descent_mps,
     )
 
     n_raised = 0
@@ -357,6 +374,8 @@ def run_one_angle(
 ) -> Candidate | None:
     catalog = get_default_catalog()
 
+    # Validate every board before geometry/routing, including non-first aircraft.
+    _validate_aircraft_capabilities(mission, catalog)
     if swaths_by_area is None or h_agl_by_area is None:
         swaths_by_area, h_agl_by_area = _generate_all_swaths(mission, angle_deg)
 
@@ -374,9 +393,7 @@ def run_one_angle(
     physics_by_uav = {}
     P_nominal_by_uav: dict[str, float] = {}
     for uav in mission.uavs:
-        pp = build_physics_params(
-            uav, catalog, reserve_fraction=mission.params.reserve_fraction
-        )
+        pp = build_physics_params(uav, catalog)
         params_by_uav[uav.id] = pp
         model = build_physics_model(pp)
         physics_by_uav[uav.id] = model
@@ -431,6 +448,7 @@ def run_one_angle(
                 dem=mission.dem,
                 safety_margin_m=mission.params.safety_margin_m,
                 v_climb_mps=pp_current.v_climb_mps,
+                v_descent_mps=pp_current.v_descent_mps,
                 v_ground_mps=pp_current.v_air_mps,
             )
             if n_raised > 0:

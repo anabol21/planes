@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import sys
 import time
+import math
 from pathlib import Path
 from typing import Any
 
@@ -210,6 +211,9 @@ def _mission(
     if len({camera for _board, _model, camera in admitted}) > 1:
         notes.append("shared swath geometry uses the first admitted UAV camera; "
                      "heterogeneous per-camera coverage is not implemented")
+    if len({model for _board, model, _camera in admitted}) > 1:
+        notes.append("shared swath physics uses the first admitted UAV configuration; "
+                     "heterogeneous per-aircraft swath feasibility is not implemented")
 
     Area = symbols["Area"]
     Obstacle = symbols["Obstacle"]
@@ -273,6 +277,15 @@ def _mission(
         if by_vpp[item["id"]]
     ]
     params = _params(scenario, criterion_name, dem_path, symbols)
+    from planner.physics.factory import (build_physics_params, physics_provenance_notes,
+                                         validate_wind_capability)
+
+    for uav in uavs:
+        physics = build_physics_params(uav, catalog, strict=True)
+        validate_wind_capability(physics, params.wind.speed_mps)
+        for line in physics_provenance_notes(catalog.get_aircraft(uav.model)):
+            if line not in notes:
+                notes.append(line)
     mission = MissionInput(
         areas=areas,
         obstacles=obstacles,
@@ -301,7 +314,7 @@ def _params(scenario: dict[str, Any], criterion_name: str, dem_path: Path, symbo
     if not isinstance(wind, dict):
         raise ValueError("missing fields: wind")
     speed = wind.get("speed_ms")
-    if isinstance(speed, bool) or not isinstance(speed, (int, float)) or speed < 0:
+    if isinstance(speed, bool) or not isinstance(speed, (int, float)) or not math.isfinite(speed) or speed < 0:
         raise ValueError("missing fields: wind.speed_ms")
     direction = _angle(wind.get("direction_deg"), "wind.direction_deg")
     return Params(

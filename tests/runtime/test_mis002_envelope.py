@@ -570,11 +570,11 @@ class CatalogPipelineTest(unittest.TestCase):
             "job_ir_801",
             fake,
         )
-        self.assertEqual(seen, [(10.88, 8.704, 90, 4)])
+        self.assertEqual(seen, [(10.88, 8.704, 126.28, 4)])
         self.assertIsInstance(result, Solution)
         text = "\n".join(result.limitations)
         self.assertIn("pixel_pitch_um=17 um (estimate)", text)
-        self.assertIn("battery.energy_wh=90 Wh (estimate)", text)
+        self.assertNotIn("battery.energy_wh=90", text)
         self.assertIn("climb_m_s=4 m/s (estimate)", text)
         self.assertIn("sensor_width_mm=10.88 mm (calculation)", text)
         self.assertIn("sensor_height_mm=8.704 mm (calculation)", text)

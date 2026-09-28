@@ -1,15 +1,85 @@
 ---
 workstream: integration
 owner: Team
-task: CAT-001A
+task: CAT-001B
 status: review
 updated: 2026-09-28
 checkpoint: 2026-09-27
-branch: integration/CAT-001A-camera-geometry
+branch: integration/CAT-001B-uav-physics
 contract_version: v0
 ---
 
 # Integration status
+
+## CAT-001B - current UAV physics repair (review)
+
+Base: CAT-001A `f3973201e5e8d17ca5fab5377219eab136ac44c7`, target `dev`.
+Brief: `docs/workstreams/integration/CAT-001B.md`.
+
+- [x] Fetch and live flow verified: boards -> `_MODEL_IDS` -> model catalog ->
+  `physics.factory` -> rotor/fixed-wing -> geometry/routing/validation.
+- [x] Sources checked: committed mvp.pdf sections 6, 8, 12; official Gemini and
+  201 specifications; official 801 manual battery appendix (126.28 Wh replaces
+  unconfirmed 90 Wh estimate). No third physics catalog.
+- [x] Normalized marked numeric `aircraft.physics`, strict factory by default;
+  explicit legacy opt-in only. All3 selectable models resolve, absent fields fail.
+- [x] Battery IDs, units, finite values, mass/mode/speed semantics are validated;
+  aircraft reserve is authoritative. Conflicting explicit internal overrides reject.
+- [x] Separate phase rates drive takeoff/landing, existing swath calculations and
+  waypoint slope scalar. No routing/search/geometry/terrain algorithm change.
+- [x] Every admitted board wind gate; above capability -> whole mission v0 error,
+  no solver call. Direct model gate runs before geometry, including precomputed swaths.
+- [x] 801 official UAV battery126.28 Wh synchronized across all physical duplicates;
+  power formula/coefficients unchanged. Energy-only nominal endurance42.45 min,
+  advertised max40 min remains an independent ceiling. 201 MTOW is8.5, no payload add.
+- [x] Assumptions, sources, units and downstream consumers documented at
+  `src/planes/model/itog_model/mvp_optimizator/docs/CAT-001B-uav-physics.md`.
+  Estimated/synthetic/calculated physics reaches existing limitations/logs.
+- [x] CAT-001A cameras preserved byte-semantically in both JSON catalogs;
+  compatibility/spectra unchanged. Optimizer power formulas verified identical.
+- [x] Real-core smokes: Gemini+PF1B,201+R6,801+thermal yield plans with correct
+  configuration parameters and no legacy factory. Test-only GeoTIFF, no network.
+
+Next: independent review and Linux listener regression. No merge/deploy/self-approval.
+Evidence: `git fetch --all --prune`; remote CAT-001A SHA matches local base;
+code inspection of `geo_mission`, `physics/factory`, `rotor`, `fixedwing`, pipeline.
+Blockers: no implementation blocker; unconfirmed rates/power are explicit MVP
+assumptions (OPEN-003/008/012), not product passport. HTTP/lock tests require Linux.
+Synthetic: 201 descent2 m/s, rotor moving-flight minimum1 m/s, 201/801 ready-spare
+replacement downtime0 s. Gemini symmetric descent5 is repository estimate; 801
+descent0.5 is conservative whole-descent approximation of the manual final stage.
+Remaining noncritical payload limits remain null. Shared swaths still use first
+aircraft physics; this is now disclosed even when heterogeneous aircraft share a camera.
+Unchanged algorithms have known limitations: matrices count positive dh only;
+terrain/spline post-processing does not certify rate feasibility; route metric
+recomputation overwrites phase energy. See model notes, not repaired by this task.
+Interface impact: NO v0 CONTRACT CHANGE. Internal catalog meta1.2.0/physics v1,
+unchanged external IDs. Strict error behavior is intentional; legacy outer.py unchanged
+(801 battery metadata correction also reaches unused legacy sweep). No optimizer
+objective/routing/geometry/terrain/backend/frontend edits. Rollback: revert task commit.
+
+Verification (Python3.12.14 dependency-complete isolated CAT-001A env at
+`%TEMP%/planes-cat-001a-test-env/Scripts/python.exe`; production dependencies unchanged;
+`PYTHONPATH=src;src/planes/model/itog_model/mvp_optimizator/src`,
+`PYTHONDONTWRITEBYTECODE=1`, `PYTHONIOENCODING=utf-8`):
+
+- `python -m unittest tests.runtime.test_live_uav_physics tests.runtime.test_live_camera_geometry tests.runtime.test_fleet_catalog tests.runtime.test_mis002_envelope -q`
+  ->62 tests OK,10.662 s. Includes23 new physics tests and3 real-core scenarios.
+- `python -m unittest tests.runtime.test_geo_kml_stitch tests.runtime.test_stitch_audit_seams tests.runtime.test_mis002_moscow tests.runtime.test_mis002_winner -q`
+  ->31 tests OK,67.686 s, expected failures=1 (unchanged first-UAV geometry limitation).
+- `python -m pytest -p no:cacheprovider --assert=plain src/planes/model/itog_model/mvp_optimizator/tests -q`
+  ->11 passed,107.65 s, including both full model E2E tests. Only SWIG deprecation warnings.
+- `python scripts/validate_workspace.py` ->Workspace validation: PASS.
+- `python -m unittest discover -s tests/runtime -q` ->102 tests,72.854 s,
+  6 import errors (POSIX `fcntl` unavailable on Windows),1 expected failure,
+  ZERO assertion failures. Relevant non-POSIX suites above pass. No platform shim.
+- `git diff --check` ->exit0. JSON comparison against CAT-001A: both camera catalogs
+  and compatibility identical. `RotorPhysics.power_w`/`FixedWingPhysics.power_w`
+  method comparison ->PASS; protected code diff ->empty.
+- Initial new-test failures were fixture mistakes (Problem constructor, mock cache,
+  rounding and GSD outside existing safety/strip scale); repaired tests, no production
+  environment/geometry workaround. Manufacturer fetches encountered TLS/HTTP failures;
+  official indexed appendix excerpts confirm battery data, no TLS verification bypass.
 
 ## CAT-001A — current camera repair (review)
 

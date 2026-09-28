@@ -15,6 +15,8 @@ def gemini_params():
         mass_kg=2.0,
         v_air_mps=12.0,
         v_vert_mps=5.0,
+        v_climb_mps=5.0,
+        v_descent_mps=5.0,
         v_survey_mps=12.0,
         E_batt_wh=144.7,
         T_max_s=2400.0,

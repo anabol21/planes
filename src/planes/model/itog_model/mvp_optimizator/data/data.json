@@ -1,11 +1,12 @@
 {
   "meta": {
-    "version": "1.1.0",
+    "version": "1.2.0",
     "updated": "2026-09-28",
     "source_docs": [
       "Gemini_Specs_EN_RUS.pdf",
       "Geoscan_201_Manual.pdf",
       "Geoscan_801.pdf",
+      "https://download.geoscan.ru/site-files/801/Geoscan_801_Manual.pdf (pp82,88-90, verified 2026-09-28)",
       "mvp.pdf"
     ],
     "language": ["ru", "en"],
@@ -16,6 +17,140 @@
   "aircraft": {
     "gemini": {
       "id": "gemini",
+      "physics": {
+        "schema_version": 1,
+        "battery_id": "battery-gemini",
+        "power_model": "rotor_cubic",
+        "mass_semantics": "aircraft_with_battery_and_propellers",
+        "takeoff_mode": "vertical",
+        "landing_mode": "vertical",
+        "mass_kg": {
+          "value": 2,
+          "unit": "kg",
+          "mark": "passport",
+          "source": "https://www.geoscan.ru/ru/products/gemini (verified 2026-09-28); repository specs",
+          "note": "Weight includes battery and propellers; camera mass not additionally modeled."
+        },
+        "airspeed_m_s": {
+          "value": 12,
+          "unit": "m/s",
+          "mark": "estimate",
+          "source": "docs/mvp.pdf sections 6, 8, 12; data.json mvp_estimates",
+          "note": "MVP cruise: 0.8 * maximum horizontal speed (15 m/s)."
+        },
+        "survey_speed_m_s": {
+          "value": 12,
+          "unit": "m/s",
+          "mark": "estimate",
+          "source": "docs/mvp.pdf sections 6, 8, 12; data.json mvp_estimates",
+          "note": "Existing MVP uses survey speed = working airspeed, not maximum speed."
+        },
+        "max_horizontal_speed_m_s": {
+          "value": 15,
+          "unit": "m/s",
+          "mark": "passport",
+          "source": "https://www.geoscan.ru/ru/products/gemini (verified 2026-09-28); repository specs",
+          "note": "Maximum horizontal capability, not working survey speed."
+        },
+        "climb_m_s": {
+          "value": 5,
+          "unit": "m/s",
+          "mark": "passport",
+          "source": "https://www.geoscan.ru/ru/products/gemini (verified 2026-09-28); repository specs",
+          "note": "Vertical maximum used as MVP climb scalar; no detailed launch profile."
+        },
+        "descent_m_s": {
+          "value": 5,
+          "unit": "m/s",
+          "mark": "estimate",
+          "source": "docs/mvp.pdf sections 6, 8, 12; data.json mvp_estimates",
+          "note": "Repository section 6.2 explicitly assumes symmetric vertical ascent/descent; descent is an assumption, not independently confirmed passport."
+        },
+        "minimum_airspeed_m_s": {
+          "value": 1,
+          "unit": "m/s",
+          "mark": "synthetic",
+          "source": "CAT-001B makes existing factory moving-flight floor explicit",
+          "note": "Required by terrain splitting: numerical moving-flight lower bound, NOT rotor stall speed. No manufacturer bound; plausible MVP 0.5-2 m/s, choose existing 1 m/s to avoid changing terrain algorithm."
+        },
+        "flight_time_s": {
+          "value": 2400,
+          "unit": "s",
+          "mark": "calculation",
+          "source": "https://www.geoscan.ru/ru/products/gemini (verified 2026-09-28); repository specs",
+          "note": "40 min * 60; advertised maximum under favorable conditions."
+        },
+        "battery_energy_wh": {
+          "value": 144.7,
+          "unit": "Wh",
+          "mark": "passport",
+          "source": "https://www.geoscan.ru/ru/products/gemini (verified 2026-09-28); repository specs",
+          "note": "Manufacturer battery energy; deterministic aircraft configuration, not fallback."
+        },
+        "reserve_fraction": {
+          "value": 0.05,
+          "unit": "fraction",
+          "mark": "estimate",
+          "source": "docs/mvp.pdf sections 6, 8, 12; data.json mvp_estimates",
+          "note": "Existing MVP 5% reserve policy, not hardware specification."
+        },
+        "turn_time_s": {
+          "value": 5,
+          "unit": "s",
+          "mark": "estimate",
+          "source": "docs/mvp.pdf sections 6, 8, 12; data.json mvp_estimates",
+          "note": "Choose conservative 5 s from existing MVP alternatives [5,3,1]; fixed turn penalty."
+        },
+        "max_wind_m_s": {
+          "value": 10,
+          "unit": "m/s",
+          "mark": "passport",
+          "source": "https://www.geoscan.ru/ru/products/gemini (verified 2026-09-28); repository specs",
+          "note": "Hard wind capability ceiling; directional ground-speed physics remains separate."
+        },
+        "takeoff_overhead_s": {
+          "value": 0,
+          "unit": "s",
+          "mark": "estimate",
+          "source": "docs/mvp.pdf sections 6, 8, 12; data.json mvp_estimates",
+          "note": "Vertical launch has no additional fixed overhead in existing MVP; h/climb accounts for launch."
+        },
+        "landing_overhead_s": {
+          "value": 0,
+          "unit": "s",
+          "mark": "estimate",
+          "source": "docs/mvp.pdf sections 6, 8, 12; data.json mvp_estimates",
+          "note": "Vertical landing has no additional fixed overhead in existing MVP; h/descent accounts for landing."
+        },
+        "recharge_time_s": {
+          "value": 6300,
+          "unit": "s",
+          "mark": "calculation",
+          "source": "https://www.geoscan.ru/ru/products/gemini (verified 2026-09-28); repository specs",
+          "note": "105 min * 60, full-charge cycle."
+        },
+        "kh": {
+          "value": 90,
+          "unit": "W/kg",
+          "mark": "estimate",
+          "source": "docs/mvp.pdf sections 6, 8, 12; data.json mvp_estimates",
+          "note": "Repository base/hover coefficient, not manufacturer measured power."
+        },
+        "kv": {
+          "value": 0.02,
+          "unit": "W/(m/s)^3",
+          "mark": "estimate",
+          "source": "docs/mvp.pdf sections 6, 8, 12; data.json mvp_estimates",
+          "note": "Repository cubic airspeed coefficient; formula unchanged."
+        },
+        "kw": {
+          "value": 0.008,
+          "unit": "W/(kg*(m/s)^2)",
+          "mark": "estimate",
+          "source": "docs/mvp.pdf sections 6, 8, 12; data.json mvp_estimates",
+          "note": "Repository wind-loading coefficient; formula unchanged."
+        }
+      },
       "category": "aircraft",
       "model": "Geoscan Gemini",
       "aliases": ["Геоскан Гемини", "Geoscan Gemini", "Gemini", "Гемини"],
@@ -60,6 +195,133 @@
 
     "geoscan201": {
       "id": "geoscan201",
+      "physics": {
+        "schema_version": 1,
+        "battery_id": "battery-201",
+        "power_model": "constant",
+        "mass_semantics": "MTOW_including_payload",
+        "takeoff_mode": "catapult",
+        "landing_mode": "parachute",
+        "mass_kg": {
+          "value": 8.5,
+          "unit": "kg",
+          "mark": "passport",
+          "source": "https://download.geoscan.ru/site-files/201/Geoscan_201_Manual.pdf appendix p115 (verified 2026-09-28); repository specs",
+          "note": "MTOW includes payload; never add the 1.5 kg payload limit."
+        },
+        "airspeed_m_s": {
+          "value": 25,
+          "unit": "m/s",
+          "mark": "estimate",
+          "source": "docs/mvp.pdf sections 6, 8, 12; data.json mvp_estimates",
+          "note": "Chosen working speed within 64-130 km/h; not the exact midpoint."
+        },
+        "survey_speed_m_s": {
+          "value": 25,
+          "unit": "m/s",
+          "mark": "estimate",
+          "source": "docs/mvp.pdf sections 6, 8, 12; data.json mvp_estimates",
+          "note": "Existing MVP uses survey speed = working airspeed, not maximum speed."
+        },
+        "max_horizontal_speed_m_s": {
+          "value": 36.11111111111111,
+          "unit": "m/s",
+          "mark": "calculation",
+          "source": "https://download.geoscan.ru/site-files/201/Geoscan_201_Manual.pdf appendix p115 (verified 2026-09-28); repository specs",
+          "note": "Upper capability: 130 km/h / 3.6. Not solver cruise."
+        },
+        "climb_m_s": {
+          "value": 3,
+          "unit": "m/s",
+          "mark": "estimate",
+          "source": "docs/mvp.pdf sections 6, 8, 12; data.json mvp_estimates",
+          "note": "Repository unconfirmed climb estimate."
+        },
+        "descent_m_s": {
+          "value": 2,
+          "unit": "m/s",
+          "mark": "synthetic",
+          "source": "CAT-001B explicit MVP assumption",
+          "note": "Required for descent/landing timing; no confirmed scalar in repository/manufacturer excerpts. Plausible MVP range 1-5 m/s, choose conservative 2 m/s independently of 3 m/s climb. Not a measured parachute sink rate."
+        },
+        "minimum_airspeed_m_s": {
+          "value": 15,
+          "unit": "m/s",
+          "mark": "estimate",
+          "source": "docs/mvp.pdf sections 6, 8, 12; data.json mvp_estimates",
+          "note": "Repository stall estimate used as minimum controllable airspeed."
+        },
+        "stall_speed_m_s": {
+          "value": 15,
+          "unit": "m/s",
+          "mark": "estimate",
+          "source": "docs/mvp.pdf sections 6, 8, 12; data.json mvp_estimates",
+          "note": "Repository stall estimate; not the manufacturer's flight-speed lower limit."
+        },
+        "flight_time_s": {
+          "value": 10800,
+          "unit": "s",
+          "mark": "calculation",
+          "source": "https://download.geoscan.ru/site-files/201/Geoscan_201_Manual.pdf appendix p115 (verified 2026-09-28); repository specs",
+          "note": "180 min * 60; advertised maximum, not battery-guaranteed endurance."
+        },
+        "battery_energy_wh": {
+          "value": 740,
+          "unit": "Wh",
+          "mark": "calculation",
+          "source": "https://download.geoscan.ru/site-files/201/Geoscan_201_Manual.pdf appendix p115 (verified 2026-09-28); repository specs",
+          "note": "40 Ah * 18.5 V = 740 Wh (repository configuration, confirmed Russian manual p116). Older English manual p98 specifies a different 34 Ah battery; that variant is not selected."
+        },
+        "reserve_fraction": {
+          "value": 0.05,
+          "unit": "fraction",
+          "mark": "estimate",
+          "source": "docs/mvp.pdf sections 6, 8, 12; data.json mvp_estimates",
+          "note": "Existing MVP 5% reserve policy, not hardware specification."
+        },
+        "turn_time_s": {
+          "value": 13.823,
+          "unit": "s",
+          "mark": "calculation",
+          "source": "docs/mvp.pdf sections 6, 8, 12; data.json mvp_estimates",
+          "note": "180-degree turn approximation: pi * repository rounded radius 110 m / 25 m/s = 13.823 s. Radius/bank are MVP assumptions, not measured turn performance."
+        },
+        "max_wind_m_s": {
+          "value": 12,
+          "unit": "m/s",
+          "mark": "passport",
+          "source": "https://download.geoscan.ru/site-files/201/Geoscan_201_Manual.pdf appendix p115 (verified 2026-09-28); repository specs",
+          "note": "Hard wind capability ceiling; directional ground-speed physics remains separate."
+        },
+        "takeoff_overhead_s": {
+          "value": 10,
+          "unit": "s",
+          "mark": "estimate",
+          "source": "docs/mvp.pdf sections 6, 8, 12; data.json mvp_estimates",
+          "note": "Existing catapult allowance; ascent h/climb is added separately."
+        },
+        "landing_overhead_s": {
+          "value": 120,
+          "unit": "s",
+          "mark": "estimate",
+          "source": "docs/mvp.pdf sections 6, 8, 12; data.json mvp_estimates",
+          "note": "Existing parachute allowance plus independent h/descent approximation; no detailed deployment dynamics."
+        },
+        "recharge_time_s": {
+          "value": 0,
+          "unit": "s",
+          "mark": "synthetic",
+          "source": "CAT-001B explicit legacy spare-battery timing assumption",
+          "note": "Required by repeated-sortie timing; no confirmed cycle time. MVP assumes immediate replacement by precharged spare (0 s downtime, not instant battery charging). Nonnegative handling range 0-600 s; choose zero to preserve existing schedule. Spare logistics are not modeled."
+        },
+        "constant_power_w": {
+          "value": 220,
+          "unit": "W",
+          "mark": "estimate",
+          "source": "docs/mvp.pdf sections 6, 8, 12; data.json mvp_estimates",
+          "note": "Existing constant-flight-power approximation; 220 W motor rating is NOT a measured average. 740 Wh / 3 h = 246.67 W, so equality is not claimed."
+        }
+      },
       "category": "aircraft",
       "model": "Geoscan 201",
       "aliases": ["Геоскан 201", "Geoscan 201", "201", "Геоскан-201"],
@@ -118,6 +380,140 @@
 
     "geoscan801": {
       "id": "geoscan801",
+      "physics": {
+        "schema_version": 1,
+        "battery_id": "battery-801",
+        "power_model": "rotor_cubic",
+        "mass_semantics": "complete_aircraft_mass_including_integrated_equipment_MVP",
+        "takeoff_mode": "vertical",
+        "landing_mode": "vertical",
+        "mass_kg": {
+          "value": 1.5,
+          "unit": "kg",
+          "mark": "passport",
+          "source": "https://www.geoscan.ru/ru/products/geoscan801 and https://download.geoscan.ru/site-files/801/Geoscan_801_Manual.pdf pp88-90 (verified 2026-09-28)",
+          "note": "Manufacturer aircraft mass; exact component accounting is unspecified. MVP treats 1.5 kg as complete configuration, no added battery/camera mass."
+        },
+        "airspeed_m_s": {
+          "value": 12,
+          "unit": "m/s",
+          "mark": "estimate",
+          "source": "docs/mvp.pdf sections 6, 8, 12; data.json mvp_estimates",
+          "note": "MVP cruise: 0.8 * maximum horizontal speed (15 m/s)."
+        },
+        "survey_speed_m_s": {
+          "value": 12,
+          "unit": "m/s",
+          "mark": "estimate",
+          "source": "docs/mvp.pdf sections 6, 8, 12; data.json mvp_estimates",
+          "note": "Existing MVP uses survey speed = working airspeed, not maximum speed."
+        },
+        "max_horizontal_speed_m_s": {
+          "value": 15,
+          "unit": "m/s",
+          "mark": "passport",
+          "source": "https://www.geoscan.ru/ru/products/geoscan801 and https://download.geoscan.ru/site-files/801/Geoscan_801_Manual.pdf pp88-90 (verified 2026-09-28)",
+          "note": "Maximum horizontal capability, not working survey speed."
+        },
+        "climb_m_s": {
+          "value": 4,
+          "unit": "m/s",
+          "mark": "estimate",
+          "source": "docs/mvp.pdf sections 6, 8, 12; data.json mvp_estimates",
+          "note": "Repository unconfirmed climb estimate."
+        },
+        "descent_m_s": {
+          "value": 0.5,
+          "unit": "m/s",
+          "mark": "estimate",
+          "source": "https://download.geoscan.ru/site-files/801/Geoscan_801_Manual.pdf p82 (verified 2026-09-28)",
+          "note": "Conservative single-rate approximation using the slow 0.5 m/s manual landing stage (manual p82; 1 m/s from 10 to 3 m, 0.5 below 3 m). Applied to all descent because phased descent is out of scope; not a passport maximum."
+        },
+        "minimum_airspeed_m_s": {
+          "value": 1,
+          "unit": "m/s",
+          "mark": "synthetic",
+          "source": "CAT-001B makes existing factory moving-flight floor explicit",
+          "note": "Required by terrain splitting: numerical moving-flight lower bound, NOT rotor stall speed. No manufacturer bound; plausible MVP 0.5-2 m/s, choose existing 1 m/s to avoid changing terrain algorithm."
+        },
+        "flight_time_s": {
+          "value": 2400,
+          "unit": "s",
+          "mark": "calculation",
+          "source": "https://www.geoscan.ru/ru/products/geoscan801 and https://download.geoscan.ru/site-files/801/Geoscan_801_Manual.pdf pp88-90 (verified 2026-09-28)",
+          "note": "40 min * 60; advertised maximum under favorable conditions."
+        },
+        "battery_energy_wh": {
+          "value": 126.28,
+          "unit": "Wh",
+          "mark": "passport",
+          "source": "https://www.geoscan.ru/ru/products/geoscan801 and https://download.geoscan.ru/site-files/801/Geoscan_801_Manual.pdf pp88-90 (verified 2026-09-28)",
+          "note": "Manufacturer UAV battery (NOT controller battery): 126.28 Wh, 15.4 V, 8200 mAh, manual p90; replaces unconfirmed repository 90 Wh estimate."
+        },
+        "reserve_fraction": {
+          "value": 0.05,
+          "unit": "fraction",
+          "mark": "estimate",
+          "source": "docs/mvp.pdf sections 6, 8, 12; data.json mvp_estimates",
+          "note": "Existing MVP 5% reserve policy, not hardware specification."
+        },
+        "turn_time_s": {
+          "value": 5,
+          "unit": "s",
+          "mark": "estimate",
+          "source": "docs/mvp.pdf sections 6, 8, 12; data.json mvp_estimates",
+          "note": "Choose conservative 5 s from existing MVP alternatives [5,3,1]; fixed turn penalty."
+        },
+        "max_wind_m_s": {
+          "value": 10,
+          "unit": "m/s",
+          "mark": "passport",
+          "source": "https://www.geoscan.ru/ru/products/geoscan801 and https://download.geoscan.ru/site-files/801/Geoscan_801_Manual.pdf pp88-90 (verified 2026-09-28)",
+          "note": "Hard wind capability ceiling; directional ground-speed physics remains separate."
+        },
+        "takeoff_overhead_s": {
+          "value": 0,
+          "unit": "s",
+          "mark": "estimate",
+          "source": "docs/mvp.pdf sections 6, 8, 12; data.json mvp_estimates",
+          "note": "Vertical launch has no additional fixed overhead in existing MVP; h/climb accounts for launch."
+        },
+        "landing_overhead_s": {
+          "value": 0,
+          "unit": "s",
+          "mark": "estimate",
+          "source": "docs/mvp.pdf sections 6, 8, 12; data.json mvp_estimates",
+          "note": "Vertical landing has no additional fixed overhead in existing MVP; h/descent accounts for landing."
+        },
+        "recharge_time_s": {
+          "value": 0,
+          "unit": "s",
+          "mark": "synthetic",
+          "source": "CAT-001B explicit legacy spare-battery timing assumption",
+          "note": "Required by repeated-sortie timing; no confirmed cycle time. MVP assumes immediate replacement by precharged spare (0 s downtime, not instant battery charging). Nonnegative handling range 0-600 s; choose zero to preserve existing schedule. Spare logistics are not modeled."
+        },
+        "kh": {
+          "value": 90,
+          "unit": "W/kg",
+          "mark": "estimate",
+          "source": "docs/mvp.pdf sections 6, 8, 12; data.json mvp_estimates",
+          "note": "Repository base/hover coefficient, not manufacturer measured power."
+        },
+        "kv": {
+          "value": 0.02,
+          "unit": "W/(m/s)^3",
+          "mark": "estimate",
+          "source": "docs/mvp.pdf sections 6, 8, 12; data.json mvp_estimates",
+          "note": "Repository cubic airspeed coefficient; formula unchanged."
+        },
+        "kw": {
+          "value": 0.008,
+          "unit": "W/(kg*(m/s)^2)",
+          "mark": "estimate",
+          "source": "docs/mvp.pdf sections 6, 8, 12; data.json mvp_estimates",
+          "note": "Repository wind-loading coefficient; formula unchanged."
+        }
+      },
       "category": "aircraft",
       "model": "Geoscan 801",
       "aliases": ["Геоскан 801", "Geoscan 801", "801", "Геоскан-801"],
@@ -140,8 +536,8 @@
         },
         "power": {
           "battery": "with heating, -20 to +40 °C",
-          "battery_energy_wh": 90,
-          "battery_energy_note": "оценка из 40 мин при ~135 Вт"
+          "battery_energy_wh": 126.28,
+          "battery_energy_note": "CAT-001B: official UAV battery 126.28 Wh (15.4 V, 8200 mAh); Geoscan_801_Manual.pdf p90. Replaces old 90 Wh estimate."
         },
         "sensors": {
           "gnss": "gnss-801",
@@ -692,6 +1088,9 @@
       "v_air_mps": 12,
       "v_air_note": "оценка (0,8 · 15)",
       "v_vert_mps": 5,
+      "v_climb_mps": 5,
+      "v_descent_mps": 5,
+      "v_descent_note": "Repository symmetric vertical MVP assumption, estimate not passport",
       "v_survey_mps": 12,
       "k_h": 90.0,
       "k_v": 0.02,
@@ -704,6 +1103,9 @@
       "v_air_mps": 12,
       "v_air_note": "оценка",
       "v_vert_mps": 4,
+      "v_climb_mps": 4,
+      "v_descent_mps": 0.5,
+      "v_descent_note": "Conservative single descent rate from manual p82 slow landing stage; estimate",
       "v_vert_note": "оценка",
       "v_survey_mps": 12,
       "k_h": 90.0,
@@ -712,22 +1114,28 @@
       "t_turn_s": [5, 3, 1],
       "power_model": "P = k_h * m + k_v * v^3 + k_w * |w|^2 * m",
       "reserve_fraction": 0.05,
-      "battery_energy_wh": 90,
+      "battery_energy_wh": 126.28,
+      "battery_energy_note": "Official UAV battery, Geoscan_801_Manual.pdf p90, replaces repository 90 Wh estimate",
       "camera_resolution": "4000x3000"
     },
     "geoscan201": {
       "v_air_mps": 25,
-      "v_air_note": "середина диапазона 18–36 м/с",
+      "v_air_note": "Chosen working 25 m/s within 64-130 km/h, not exact midpoint",
       "v_stall_mps": 15,
       "v_stall_note": "оценка",
       "v_climb_mps": 3,
       "v_climb_note": "оценка",
+      "v_vert_mps": 3,
+      "v_descent_mps": 2,
+      "v_descent_note": "CAT-001B explicit synthetic MVP descent scalar, independent of climb",
+      "t_turn_s": 13.823,
+      "t_turn_note": "pi * rounded repository turn_radius_m 110 / v_air_mps 25",
       "v_survey_mps": 25,
       "turn_radius_m": 110,
       "turn_radius_note": "расчёт при v = 25, φ = 30°",
       "bank_angle_deg": 30,
       "power_const_w": 220,
-      "power_const_note": "оценка из 180 мин при батарее 740 Вт·ч",
+      "power_const_note": "220 W constant-flight-power MVP estimate, not equality with 740 Wh / 3 h = 246.67 W or measured motor draw",
       "T_catapult_s": 10,
       "T_catapult_note": "оценка",
       "T_parachute_s": 120,
@@ -900,8 +1308,11 @@
       "for": ["geoscan801"],
       "specs": {
         "power": {
-          "energy_wh": 90,
-          "energy_note": "оценка из 40 мин при ~135 Вт"
+          "type": "Li-Po",
+          "nominal_voltage": "15.4 V",
+          "capacity": "8200 mAh",
+          "energy_wh": 126.28,
+          "energy_note": "passport: https://download.geoscan.ru/site-files/801/Geoscan_801_Manual.pdf p90, verified 2026-09-28; 15.4 V * 8.2 Ah = 126.28 Wh. Replaces old 90 Wh estimate."
         },
         "environment": {
           "operating_temperature": "-20 to +40 °C"

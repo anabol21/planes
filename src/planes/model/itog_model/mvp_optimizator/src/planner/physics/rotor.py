@@ -24,10 +24,10 @@ class RotorPhysics(PhysicsModel):
         return max(v_air_mps - wind_mps, 1.0)
 
     def takeoff_time_s(self, h_agl_m: float) -> float:
-        return h_agl_m / self.p.v_vert_mps
+        return self.p.T_catapult_s + h_agl_m / self.p.v_climb_mps
 
     def landing_time_s(self, h_agl_m: float) -> float:
-        return self.takeoff_time_s(h_agl_m)
+        return self.p.T_parachute_s + h_agl_m / self.p.v_descent_mps
 
     def takeoff_energy_wh(self, h_agl_m: float) -> float:
         t_s = self.takeoff_time_s(h_agl_m)
@@ -36,4 +36,4 @@ class RotorPhysics(PhysicsModel):
         return p_w * t_s / 3600.0
 
     def landing_energy_wh(self, h_agl_m: float) -> float:
-        return self.takeoff_energy_wh(h_agl_m)
+        return self.p.k_h * self.p.mass_kg * self.landing_time_s(h_agl_m) / 3600.0

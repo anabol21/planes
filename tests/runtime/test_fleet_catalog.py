@@ -105,11 +105,13 @@ class FleetCatalogTest(unittest.TestCase):
         self.assertEqual(gemini["power_coeffs"]["kh"]["value"], 90)
         self.assertEqual(gemini["turn_time_s"][0]["value"], 5)
         self.assertIsNone(gemini["payload_mass_kg"])
-        self.assertIsNone(gemini["descent_m_s"])
+        self.assertEqual(gemini["descent_m_s"]["value"], 5)
+        self.assertEqual(gemini["descent_m_s"]["mark"], "estimate")
 
     def test_201_estimates_and_calculated_energy(self) -> None:
         model = _by_id(_load()["uav_models"])["geoscan-201"]
-        self.assertEqual(model["airspeed_m_s"], {"value": 25, "mark": "estimate", "note": "середина диапазона 18–36 м/с"})
+        self.assertEqual(model["airspeed_m_s"]["value"], 25)
+        self.assertEqual(model["airspeed_m_s"]["mark"], "estimate")
         self.assertTrue(_marked(model["climb_m_s"], "estimate"))
         self.assertEqual(model["climb_m_s"]["value"], 3)
         self.assertTrue(_marked(model["battery"]["energy_wh"], "calculation"))
@@ -122,7 +124,8 @@ class FleetCatalogTest(unittest.TestCase):
         self.assertEqual(model["parachute_time_s"]["value"], 120)
         self.assertEqual(model["takeoff"], "catapult")
         self.assertEqual(model["landing"], "parachute")
-        self.assertIsNone(model["descent_m_s"])
+        self.assertEqual(model["descent_m_s"]["value"], 2)
+        self.assertEqual(model["descent_m_s"]["mark"], "synthetic")
         self.assertNotIn("power_coeffs", model)
         self.assertNotIn("turn_time_s", model)
 
@@ -132,14 +135,15 @@ class FleetCatalogTest(unittest.TestCase):
         self.assertEqual(model["mass_kg"]["value"], 1.5)
         self.assertEqual(model["airspeed_m_s"]["value"], 15)
         self.assertEqual(model["airspeed_m_s"]["mark"], "passport")
-        self.assertEqual(model["climb_m_s"], {"value": 4, "mark": "estimate"})
-        self.assertEqual(model["battery"]["energy_wh"]["value"], 90)
-        self.assertEqual(model["battery"]["energy_wh"]["mark"], "estimate")
+        self.assertEqual(model["climb_m_s"]["value"], 4)
+        self.assertEqual(model["climb_m_s"]["mark"], "estimate")
+        self.assertEqual(model["battery"]["energy_wh"]["value"], 126.28)
+        self.assertEqual(model["battery"]["energy_wh"]["mark"], "passport")
         self.assertEqual(model["flight_time_s"]["value"], 2400)
         self.assertIsNone(model["payload_mass_kg"])
-        self.assertIsNone(model["descent_m_s"])
-        self.assertIsNone(model["takeoff"])
-        self.assertIsNone(model["landing"])
+        self.assertEqual(model["descent_m_s"]["value"], 0.5)
+        self.assertEqual(model["takeoff"], "vertical")
+        self.assertEqual(model["landing"], "vertical")
 
     def test_derived_optics_keep_their_marks(self) -> None:
         cameras = _by_id(_load()["cameras"])

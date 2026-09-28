@@ -18,10 +18,10 @@ class FixedWingPhysics(PhysicsModel):
         return max(v_air_mps - wind_mps, self.p.v_stall_mps)
 
     def takeoff_time_s(self, h_agl_m: float) -> float:
-        return self.p.T_catapult_s + h_agl_m / max(self.p.v_vert_mps, 1.0)
+        return self.p.T_catapult_s + h_agl_m / self.p.v_climb_mps
 
     def landing_time_s(self, h_agl_m: float) -> float:
-        return self.p.T_parachute_s + h_agl_m / max(self.p.v_vert_mps, 1.0)
+        return self.p.T_parachute_s + h_agl_m / self.p.v_descent_mps
 
     def takeoff_energy_wh(self, h_agl_m: float) -> float:
         return 0.0  # катапульта — внешняя
