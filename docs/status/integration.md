@@ -1,15 +1,17 @@
 ---
 workstream: integration
 owner: Team
-task: INT-F2C-001
-status: review
+task: INT-F2C-002
+status: in_progress
 updated: 2026-09-28
 checkpoint: 2026-09-28
-branch: cursor/f2c-auto-strip-angle-d388
+branch: cursor/live-grisha-f2c-iso-fc7a
 contract_version: v0
 ---
 
 # Integration status
+
+- `in_progress`: INT-F2C-002 — live isolated Grisha+F2C contour landed in git on top of INT-F2C-001. Default `solver._solve_outer` is `grisha_f2c_bridge` → `tools/f2c_iso/` worker (`generateBestSwaths`, `strip_direction_deg` ignored). Rollback: `PLANES_SOLVE_BACKEND=legacy_fields2cover` → `geo_mission.solve_envelope`. Paths via `PLANES_F2C_WORKER` / `PLANES_F2C_CLIENT` / `PLANES_GRISHA_ROOT` (default `/opt/planes-grisha-f2c`). Optional GeoTIFF `dem_file` sets ASL; `mission_time_s` stays 2D. CAT-001C catalog at `catalog/fleet_catalog.json` (speed / reserve / optics; battery Wh not used for packing). This is pack/split F2C, not full mvp LNS. Doc: `docs/live-grisha-f2c-iso.md`. Brief: `docs/workstreams/integration/INT-F2C-002.md`.
 
 - `review`: INT-F2C-001 — Fields2Cover owns strip heading. Frontend no longer sends `survey.strip_direction_deg`. `geo_mission._params` leaves `angles_deg` empty and sets `decomposition=fields2cover`. `f2c_backend` / `generate.py` / `fields2cover_engine` call `generateBestSwaths` (`OBJ_NSwathModified` | `OBJ_NSwath` | `OBJ_SwathLength`). A leftover `strip_direction_deg` is ignored. Contract: `docs/f2c-input-contract.md`. Brief: `docs/workstreams/integration/INT-F2C-001.md`.
 
@@ -21,15 +23,17 @@ Live path on `main`: form `127.0.0.1:5173`, API `127.0.0.1:8000`, worker `--engi
 
 ## Completed
 
+- [x] INT-F2C-002 sources: `grisha_f2c_bridge.py`, isolated tools under `tools/f2c_iso/`, CAT-001C `catalog/fleet_catalog.json`, live path doc.
 - [x] INT-F2C-001 contract: required GSD / overlaps / wind; ignored `strip_direction_deg`; auto heading via `generateBestSwaths`. Doc `docs/f2c-input-contract.md`.
 
 ## In progress
 
-- [x] INT-F2C-001 verification on this branch (unit + web tests).
+- [ ] INT-F2C-002 verification (bridge/client/catalog unit tests + workspace validate) and PR to `main`.
+- [x] INT-F2C-001 verification on the parent branch (unit + web tests).
 
 ## Next action
 
-Mikhail / Grisha / Ruslan review of PR #11. Do not deploy or restart the live listener from this branch.
+Open PR to `main` including INT-F2C-001 + INT-F2C-002. Merge if checks allow. Do not deploy or restart the live listener from this branch.
 
 ## Completed (prior)
 
@@ -106,6 +110,7 @@ Review the stitch on `cursor/geo-core-kml-stitch`. The listener on `main` is sti
 
 ## Interface changes and downstream impact
 
+- No change under `src/planes/contracts/**`. Live default backend is `grisha_f2c_iso` (isolated pack/split F2C). Consumers that still need `geo_mission.solve_envelope` must set `PLANES_SOLVE_BACKEND=legacy_fields2cover`. Worker/client paths are env-overridable; deploy default root is `/opt/planes-grisha-f2c`. Iso catalog is `catalog/fleet_catalog.json` (CAT-001C). `mission_time_s` remains 2D even when `dem_file` sets ASL.
 - No change under `src/planes/contracts/**`. Scenario v0 still carries survey/wind inside `scenario`. `survey.strip_direction_deg` is no longer required and is ignored on the F2C path. `Params.angles_deg` may be empty when `decomposition` is `fields2cover` or `auto`. Auto-angle can change mission times versus fixtures that forced heading `0`.
 - No change under `src/planes/contracts/**`.
 - The job scenario on this branch carries `survey_kml` and `constraints_kml`. The browser no longer sends parsed `area`, `zone_constraints`, or `obstacles` for this tract. Constraint polygons reach the geo core as obstacles because `MissionInput` has no separate no-fly type. Altitude text is copied, not interpreted. Terrain acquisition sets `Params.dem_file`. A missing `OPENTOPOGRAPHY_API_KEY` or an invalid raster fails the job; flat terrain is not a fallback.

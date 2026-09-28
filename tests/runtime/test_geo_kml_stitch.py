@@ -20,6 +20,15 @@ from planes.runtime.pipeline import run
 from planes.runtime.solver import Problem, Solution, solve
 
 
+def setUpModule() -> None:
+    """Stitch tests exercise geo_mission, not the isolated F2C worker."""
+    os.environ["PLANES_SOLVE_BACKEND"] = "legacy_fields2cover"
+
+
+def tearDownModule() -> None:
+    os.environ.pop("PLANES_SOLVE_BACKEND", None)
+
+
 _FIXTURES = Path(__file__).resolve().parent / "fixtures"
 _SURVEY = (_FIXTURES / "stitch_survey.kml").read_text(encoding="utf-8")
 _CONSTRAINTS = (_FIXTURES / "stitch_constraints.kml").read_text(encoding="utf-8")
