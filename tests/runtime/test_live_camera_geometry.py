@@ -32,6 +32,7 @@ EXPECTED = {
     "riebo-r6": (35.9, 24, 40, 9552, 6386),
     "rx1rm2": (35.9, 24, 35, 7952, 5304),
     "rx1rm3": (35.7, 23.8, 35, 9504, 6336),
+    "zv-e10": (23.5, 15.6, 16, 6000, 4000),
     "801-visible-4-35": (6.17, 4.55, 4.35, 4000, 3000),
     "801-visible-16": (6.17, 4.55, 16, 4000, 3000),
     "801-thermal": (10.88, 8.704, 9.1, 640, 512),
@@ -58,11 +59,7 @@ class LiveCameraGeometryTest(unittest.TestCase):
                 camera = self.catalog.get_camera(internal)
                 self.assertEqual(camera["id"], internal)
                 self.assertIn("geometry", camera)
-                if internal == "zv-e10":
-                    with self.assertRaisesRegex(ValueError, "selected mission lens"):
-                        geo_mission._translate_camera(external, self.catalog)
-                else:
-                    self.assertEqual(geo_mission._translate_camera(external, self.catalog), internal)
+                self.assertEqual(geo_mission._translate_camera(external, self.catalog), internal)
 
     def test_every_compatibility_pair_builds_or_explicitly_rejects(self):
         for edge in self.fleet["compatibility"]:
@@ -79,16 +76,12 @@ class LiveCameraGeometryTest(unittest.TestCase):
                 scenario["boards"] = [_board("board", edge["uav_model_id"], external)]
                 kwargs = dict(survey_polygons=parse_survey_polygon(_SURVEY), constraints=[],
                               dem_path=Path("synthetic-test.tif"), dem=FlatDEM())
-                if internal == "zv-e10":
-                    with self.assertRaisesRegex(ValueError, "external camera sony-zv-e10"):
-                        geo_mission._mission(scenario, **kwargs)
-                else:
-                    mission, notes = geo_mission._mission(scenario, **kwargs)
-                    self.assertEqual(mission.uavs[0].camera_id, internal)
-                    self.assertEqual(len(mission.uavs), 1)
-                    camera_params_from_catalog(record)
-                    if any(record["geometry"][f]["mark"] != "passport" for f in FIELDS):
-                        self.assertTrue(any(f"camera {internal}" in n for n in notes))
+                mission, notes = geo_mission._mission(scenario, **kwargs)
+                self.assertEqual(mission.uavs[0].camera_id, internal)
+                self.assertEqual(len(mission.uavs), 1)
+                camera_params_from_catalog(record)
+                if any(record["geometry"][f]["mark"] != "passport" for f in FIELDS):
+                    self.assertTrue(any(f"camera {internal}" in n for n in notes))
 
     def test_all_geometry_parameters_are_camera_specific(self):
         for internal, expected in EXPECTED.items():
@@ -149,12 +142,16 @@ class LiveCameraGeometryTest(unittest.TestCase):
             self.assertEqual(params["res_w_px"], round(math.sqrt(mp*1e6*35.9/24)))
             self.assertEqual(params["res_h_px"], round(math.sqrt(mp*1e6*24/35.9)))
 
-    def test_unknown_ambiguous_and_lensless_cameras_never_get_defaults(self):
+    def test_unknown_and_ambiguous_cameras_never_get_defaults(self):
         for camera in ({}, {"id": "unknown"}, self.catalog.get_camera("umc-r10c"),
-                       self.catalog.get_camera("801-visible"), self.catalog.get_camera("zv-e10")):
+                       self.catalog.get_camera("801-visible")):
             with self.subTest(camera=camera.get("id")):
                 with self.assertRaisesRegex(ValueError, "invalid geometry"):
                     _camera_params_from_catalog(camera)
+        camera = copy.deepcopy(self.catalog.get_camera("zv-e10"))
+        del camera["geometry"]["focal_length_mm"]
+        with self.assertRaisesRegex(ValueError, "focal_length_mm"):
+            _camera_params_from_catalog(camera)
 
     def test_missing_and_invalid_numeric_fields_fail_without_text_fallback(self):
         for field in ("sensor_width_mm", "focal_length_mm", "image_width_px", "image_height_px"):
@@ -205,29 +202,23 @@ class LiveCameraGeometryTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "physical sensor"):
             _camera_params_from_catalog(camera)
 
-    def test_invalid_second_camera_is_not_hidden_by_first_uav_geometry(self):
+    def test_selectable_second_camera_is_validated_without_changing_shared_geometry(self):
         scenario = _scenario()
-        scenario["boards"].append(_board("blocked", "geoscan-201", "sony-zv-e10"))
-        with self.assertRaisesRegex(ValueError, "selected mission lens"):
-            geo_mission._mission(scenario, survey_polygons=parse_survey_polygon(_SURVEY),
-                                 constraints=[], dem_path=Path("synthetic-test.tif"), dem=FlatDEM())
+        scenario["boards"].append(_board("zv", "geoscan-201", "sony-zv-e10"))
+        mission, _ = geo_mission._mission(
+            scenario, survey_polygons=parse_survey_polygon(_SURVEY),
+            constraints=[], dem_path=Path("synthetic-test.tif"), dem=FlatDEM())
+        self.assertEqual(len(mission.uavs), 2)
+        self.assertEqual(mission.uavs[1].camera_id, "zv-e10")
 
-    def test_lensless_camera_returns_v0_error_without_a_solver_call(self):
-        from planes.runtime.pipeline import run
-
+    def test_zv_e10_explicit_lens_builds_a_mission(self):
         scenario = _scenario()
         scenario["boards"] = [_board("body", "geoscan-201", "sony-zv-e10")]
-        request = {"contract_version": "v0", "job_id": "camera_lens_gap", "scenario": scenario,
-                   "optimization": {"objective": "min_time", "time_limit_seconds": 30}, "seed": 7}
-        with patch.object(geo_mission, "_acquire_dem", return_value=Path("synthetic-test.tif")), \
-             patch.object(geo_mission, "_load_geotiff", return_value=FlatDEM()), \
-             patch.object(geo_mission, "_run_pipeline") as solver:
-            response = run(json.dumps(request).encode("utf-8"))
-        solver.assert_not_called()
-        self.assertEqual(response.contract_version, "v0")
-        self.assertEqual(response.outcome, "error")
-        self.assertIsNone(response.mission_plan)
-        self.assertIn("selected mission lens", "\n".join(response.solver_report.limitations))
+        mission, notes = geo_mission._mission(
+            scenario, survey_polygons=parse_survey_polygon(_SURVEY), constraints=[],
+            dem_path=Path("synthetic-test.tif"), dem=FlatDEM())
+        self.assertEqual(mission.uavs[0].camera_id, "zv-e10")
+        self.assertTrue(any("camera zv-e10" in note for note in notes))
 
     def test_existing_survey_types_remain_unchanged(self):
         for spectrum, model, camera, survey_type in (

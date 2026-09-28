@@ -104,7 +104,9 @@ class FleetCatalogTest(unittest.TestCase):
         self.assertEqual(gemini["battery"]["energy_wh"]["value"], 144.7)
         self.assertEqual(gemini["power_coeffs"]["kh"]["value"], 90)
         self.assertEqual(gemini["turn_time_s"][0]["value"], 5)
-        self.assertIsNone(gemini["payload_mass_kg"])
+        self.assertEqual(gemini["payload_mass_kg"]["value"], 0.5)
+        self.assertEqual(gemini["payload_mass_kg"]["mark"], "synthetic")
+        self.assertTrue(gemini["payload_mass_kg"]["note"])
         self.assertEqual(gemini["descent_m_s"]["value"], 5)
         self.assertEqual(gemini["descent_m_s"]["mark"], "estimate")
 
@@ -140,7 +142,7 @@ class FleetCatalogTest(unittest.TestCase):
         self.assertEqual(model["battery"]["energy_wh"]["value"], 126.28)
         self.assertEqual(model["battery"]["energy_wh"]["mark"], "passport")
         self.assertEqual(model["flight_time_s"]["value"], 2400)
-        self.assertIsNone(model["payload_mass_kg"])
+        self.assertEqual(model["payload_mass_kg"]["status"], "not_applicable")
         self.assertEqual(model["descent_m_s"]["value"], 0.5)
         self.assertEqual(model["takeoff"], "vertical")
         self.assertEqual(model["landing"], "vertical")
@@ -171,9 +173,12 @@ class FleetCatalogTest(unittest.TestCase):
             self.assertTrue(_marked(camera["image_width_px"], "estimate"))
             self.assertEqual(camera["gaps"], [])
         zv = cameras["sony-zv-e10"]
-        self.assertIsNone(zv["focal_length_mm"])
-        self.assertEqual(zv["gaps"], ["focal_length_mm"])
-        self.assertIn("selected mission lens", zv["live_geometry_error"])
+        self.assertEqual(zv["focal_length_mm"]["value"], 16)
+        self.assertEqual(zv["focal_length_mm"]["mark"], "synthetic")
+        self.assertIn("not a body focal length", zv["focal_length_mm"]["note"])
+        self.assertEqual(zv["image_width_px"]["mark"], "passport")
+        self.assertEqual(zv["image_height_px"]["mark"], "passport")
+        self.assertEqual(zv["gaps"], [])
         visible = cameras["geoscan-801-visible-4-35"]
         self.assertEqual(visible["sensor_width_mm"]["value"], 6.17)
         self.assertEqual(visible["sensor_height_mm"]["value"], 4.55)
@@ -188,6 +193,8 @@ class FleetCatalogTest(unittest.TestCase):
         self.assertEqual(thermal["sensor_height_mm"]["value"], 8.704)
         self.assertTrue(_marked(thermal["sensor_width_mm"], "calculation"))
         self.assertIn("17 um", thermal["sensor_width_mm"]["note"])
+        self.assertEqual(thermal["spectral_range_um"]["value"], [8, 14])
+        self.assertEqual(thermal["spectral_range_um"]["mark"], "passport")
 
 
 if __name__ == "__main__":

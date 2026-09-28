@@ -1,15 +1,33 @@
 ---
 workstream: integration
 owner: Team
-task: CAT-001B
+task: CAT-001C
 status: review
 updated: 2026-09-28
 checkpoint: 2026-09-27
-branch: integration/CAT-001B-uav-physics
+branch: integration/CAT-001C-full-fleet-catalog
 contract_version: v0
 ---
 
 # Integration status
+
+## CAT-001C — final selectable fleet catalog completion (review)
+
+- [x] Remote baseline verified at CAT-001B `c8ce7c834576e4262e26c26b20539141f6d4c7e3`; `git fetch --all --prune` completed; isolated feature branch created.
+- [x] Pre-change recursive scan: Gemini and 801 payload null/gaps; ZV-E10 focal null/gap; 11 null bands values; model ZV-E10 unsupported reason plus two nonselectable ambiguous aliases. 3 UAVs, 12 cameras, 13 edges.
+- [x] Resolve Gemini payload as marked synthetic metadata (not solver mass); 201 1.5 kg passport capacity remains distinct from 8.5 kg MTOW; 801 additional payload explicitly N/A for fixed integrated configuration.
+- [x] ZV-E10 receives Sony-verified 23.5 × 15.6 mm sensor and 6000 × 4000 px still frame, plus explicit 16 mm synthetic mission-lens configuration; all 12 selectable cameras now parse and all 13 pairs construct.
+- [x] Runtime bands are explicit empty lists with not-applicable note where no discrete centres apply; Pollux centres remain; 801 thermal 8–14 µm passport range is separate metadata.
+- [x] Battery chemistry, nominal voltage, capacity and energy normalized in model/runtime metadata without replacing legacy fields; consistency tests added.
+- [x] Recursive completeness, cross-catalog and every-pair regressions added; final fleet table documented in `src/planes/model/itog_model/mvp_optimizator/docs/CAT-001C-full-fleet-catalog.md`.
+- [x] Final scan: 3 UAVs, 12 cameras, 13 edges; unexplained nulls 0, nonempty gaps 0, blocked selectable cameras 0, missing physics 0, missing geometry 0.
+
+Next: commit this coherent CAT-001C change set and push only its feature branch for independent review; do not merge/deploy.
+Evidence: `python -m unittest tests.runtime.test_fleet_catalog tests.runtime.test_live_fleet_completeness tests.runtime.test_live_camera_geometry tests.runtime.test_live_uav_physics tests.runtime.test_mis002_envelope -q` → 67 OK; `python -m unittest tests.runtime.test_geo_kml_stitch tests.runtime.test_stitch_audit_seams -q` → 23 OK (expected failures=1); model `pytest .../tests -q` → 11 passed; workspace validator PASS; `git diff --check` exit 0. No public interface changes.
+Blockers: none after disk space recovered. CAT-001A first-UAV shared-geometry behavior and CAT-001B energy/terrain approximations remain out of scope.
+Interface impact: NO v0 CONTRACT CHANGE; catalog metadata only. Rollback: revert CAT-001C commit.
+
+## Prior CAT-001B status (review)
 
 ## CAT-001B - current UAV physics repair (review)
 

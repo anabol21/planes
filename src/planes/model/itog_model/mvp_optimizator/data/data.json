@@ -153,6 +153,9 @@
       },
       "category": "aircraft",
       "model": "Geoscan Gemini",
+      "catalog_metadata": {
+        "payload_mass_kg": {"value":0.5,"unit":"kg","mark":"synthetic","source":"CAT-001C MVP assumption; https://www.geoscan.ru/ru/products/gemini publishes no additional payload scalar. Historical Geoscan seminar: https://www.geoscan.ru/themes/geoscan/assets/seminary/geoscan-weekend-2019/%D0%9A%D0%BB%D0%B5%D1%81%D1%82%D0%BE%D0%B2.%D0%9C%D0%B0%D1%80%D0%BA%D1%88%D0%B5%D0%B9%D0%B4%D0%B5%D1%80%D0%B8%D1%8F.pdf lists a different configuration.","note":"Conservative metadata only, not a certified limit. Assumed plausible range 0.25–2.0 kg; choose 0.5 kg for MVP. Not added to solver mass. Revalidate before operational load planning."}
+      },
       "aliases": ["Геоскан Гемини", "Geoscan Gemini", "Gemini", "Гемини"],
       "specs": {
         "general": {
@@ -324,6 +327,9 @@
       },
       "category": "aircraft",
       "model": "Geoscan 201",
+      "catalog_metadata": {
+        "payload_mass_kg": {"value":1.5,"unit":"kg","mark":"passport","source":"Geoscan 201 Russian manual p115; existing CAT-001B source note.","note":"Maximum payload capability. Solver mass 8.5 kg is MTOW including payload; never add this capacity to mass_kg."}
+      },
       "aliases": ["Геоскан 201", "Geoscan 201", "201", "Геоскан-201"],
       "specs": {
         "general": {
@@ -516,6 +522,9 @@
       },
       "category": "aircraft",
       "model": "Geoscan 801",
+      "catalog_metadata": {
+        "payload_mass_kg": {"status":"not_applicable","unit":"kg","semantics":"additional_payload_capacity_for_fixed_integrated_camera_configuration","source":"https://www.geoscan.ru/ru/products/geoscan801 (verified 2026-09-28); CAT-001B aircraft mass semantics","note":"This selectable 801 entry is the integrated visible/thermal-camera configuration. The 1.5 kg published mass is treated as complete maximum takeoff mass; no separate user payload is represented or added by the live model."}
+      },
       "aliases": ["Геоскан 801", "Geoscan 801", "801", "Геоскан-801"],
       "specs": {
         "general": {
@@ -896,12 +905,13 @@
     "zv-e10": {
       "id": "zv-e10",
       "geometry": {
-        "source": "Existing body sensor specs; frame from docs/cameras.pdf p.1 and docs/mvp.pdf p.13.",
+        "source": "https://www.sony.com/electronics/support/e-mount-body-zv-e-series/zv-e10/specifications (verified 2026-09-28); Sony APS-C sensor and maximum still-image frame.",
         "sensor_width_mm": {"value":23.5,"mark":"passport"},
         "sensor_height_mm": {"value":15.6,"mark":"passport"},
-        "image_width_px": {"value":6000,"mark":"estimate","note":"Repository frame specification; body alone does not define mission focal."},
-        "image_height_px": {"value":4000,"mark":"estimate","note":"Repository frame specification; body alone does not define mission focal."},
-        "unsupported_reason": "ZV-E10 body has no selected mission lens/focal_length_mm; repository range 16-50 mm is not a fixed configuration."
+        "focal_length_mm": {"value":16,"unit":"mm","mark":"synthetic","source":"CAT-001C explicit mission-lens assumption; Sony official ZV-E10 specifications document E-mount and E PZ 16–50 mm OSS lens configuration.","note":"Sony E PZ 16–50 mm OSS at 16 mm wide end. Installed Geoscan 201 lens is not confirmed; assume 16–50 mm and choose 16 mm for a wide survey field of view. Lens focal is configuration, not body property."},
+        "image_width_px": {"value":6000,"unit":"px","mark":"passport","source":"https://www.sony.com/electronics/support/e-mount-body-zv-e-series/zv-e10/specifications (verified 2026-09-28)","note":"Maximum still-image L size, 3:2: 6000 × 4000 pixels."},
+        "image_height_px": {"value":4000,"unit":"px","mark":"passport","source":"https://www.sony.com/electronics/support/e-mount-body-zv-e-series/zv-e10/specifications (verified 2026-09-28)","note":"Maximum still-image L size, 3:2: 6000 × 4000 pixels."},
+        "lens_configuration": "Sony E PZ 16–50 mm OSS at 16 mm; CAT-001C assumed configuration, installed Geoscan lens not confirmed."
       },
       "category": "camera",
       "model": "Sony ZV-E10",
@@ -910,7 +920,7 @@
       "specs": {
         "general": {
           "type": "digital",
-          "max_resolution": "24.3 MP",
+          "max_resolution": "24.2 MP",
           "sensor": "APS-C (23.5 × 15.6 mm)"
         },
         "performance": {
@@ -1060,6 +1070,7 @@
       },
       "category": "camera",
       "model": "Geoscan 801 thermal camera",
+      "spectral_range_um": {"value":[8,14],"unit":"µm","mark":"passport","source":"https://www.geoscan.ru/ru/products/geoscan801 (verified 2026-09-28)","note":"Manufacturer-published infrared observation range; separate from discrete spectral band centres."},
       "aliases": ["801 thermal", "тепловизор 801", "Тепловизионная камера 801"],
       "for": ["geoscan801"],
       "specs": {
@@ -1266,6 +1277,10 @@
       "for": ["gemini"],
       "specs": {
         "power": {
+          "chemistry": "Li-Ion",
+          "nominal_voltage_v": {"value":21.6,"unit":"V","mark":"passport","source":"https://www.geoscan.ru/ru/products/gemini (verified 2026-09-28)","note":"Manufacturer battery specification."},
+          "capacity_ah": {"value":6.7,"unit":"Ah","mark":"passport","source":"https://www.geoscan.ru/ru/products/gemini (verified 2026-09-28)","note":"Converted from 6700 mAh."},
+          "energy_wh_numeric": {"value":144.7,"unit":"Wh","mark":"passport","source":"https://www.geoscan.ru/ru/products/gemini (verified 2026-09-28)","note":"Manufacturer-declared energy; nominal V × capacity = 144.72 Wh, rounded to 144.7 Wh."},
           "type": "Li-Ion",
           "voltage": "21.6 V",
           "capacity": "6700 mAh",
@@ -1284,6 +1299,10 @@
       "for": ["geoscan201"],
       "specs": {
         "power": {
+          "chemistry": "LiPo 5S",
+          "nominal_voltage_v": {"value":18.5,"unit":"V","mark":"passport","source":"Geoscan 201 Russian manual p116; committed selected-battery specification.","note":"Nominal pack voltage for selected 40 Ah battery."},
+          "capacity_ah": {"value":40,"unit":"Ah","mark":"passport","source":"Geoscan 201 Russian manual p116; committed selected-battery specification.","note":"Converted from 40,000 mAh."},
+          "energy_wh_numeric": {"value":740,"unit":"Wh","mark":"calculation","source":"Geoscan 201 Russian manual p116; committed selected-battery specification.","note":"40 Ah × 18.5 V = 740 Wh."},
           "type": "5S LiPo",
           "capacity": "40,000 mAh",
           "nominal_voltage": "18.5 V",
@@ -1308,6 +1327,10 @@
       "for": ["geoscan801"],
       "specs": {
         "power": {
+          "chemistry": "Li-Po",
+          "nominal_voltage_v": {"value":15.4,"unit":"V","mark":"passport","source":"https://download.geoscan.ru/site-files/801/Geoscan_801_Manual.pdf p90 (verified 2026-09-28)","note":"Manufacturer nominal flight-battery voltage; not the controller battery."},
+          "capacity_ah": {"value":8.2,"unit":"Ah","mark":"passport","source":"https://download.geoscan.ru/site-files/801/Geoscan_801_Manual.pdf p90 (verified 2026-09-28)","note":"Converted from 8200 mAh."},
+          "energy_wh_numeric": {"value":126.28,"unit":"Wh","mark":"passport","source":"https://download.geoscan.ru/site-files/801/Geoscan_801_Manual.pdf p90 (verified 2026-09-28)","note":"15.4 V × 8.2 Ah = 126.28 Wh."},
           "type": "Li-Po",
           "nominal_voltage": "15.4 V",
           "capacity": "8200 mAh",
