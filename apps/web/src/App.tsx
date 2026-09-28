@@ -131,30 +131,42 @@ function SolverSummary({ report }: { report: JsonObject }) {
   );
 }
 
-function MissionPlanSummary({ plan }: { plan: MissionPlan }) {
-  const assignments = Array.isArray(plan.routes)
-    ? plan.routes
-    : Array.isArray(plan.sorties)
-      ? plan.sorties
-      : null;
-  const explicitAssignments = assignments?.flatMap((sortie, index) => {
-    if (typeof sortie !== "object" || sortie === null || Array.isArray(sortie)) return [];
-    const item = sortie as JsonObject;
-    const uavId = readString(item.uav_id) ?? readString(item.aircraft_id);
-    return uavId ? [{ key: `${uavId}-${index}`, uavId }] : [];
-  }) ?? [];
+function diagnosticCodes(report: JsonObject): string[] {
+  return getLimitations(report)
+    .map((item) => item.split(":", 1)[0])
+    .filter((code) => /^PHYS-[A-Z0-9-]+$/.test(code));
+}
+
+function objectiveMetric(plan: MissionPlan): { label: string; value: string } {
+  const criterion = readString(plan.criterion);
+  const mission = plan.mission;
+  const record = typeof mission === "object" && mission !== null && !Array.isArray(mission)
+    ? mission as JsonObject
+    : null;
+  if (criterion === "min_flight_hours") {
+    const total = record ? readNumber(record.total_flight_time_s) : null;
+    return { label: "Суммарный налёт", value: total === null ? "—" : `${total.toFixed(2)} с` };
+  }
+  const cmax = record ? readNumber(record.mission_time_s) : null;
+  return { label: "C_max", value: cmax === null ? "—" : `${cmax.toFixed(2)} с` };
+}
+
+function MissionSummary({ result }: { result: Exclude<JobResult, { state: "failed" }> }) {
+  const plan = result.mission_plan;
+  const routes = plan?.routes ?? [];
+  const uavCount = new Set(routes.map((route) => route.uav_id)).size;
+  const metric = plan ? objectiveMetric(plan) : { label: "C_max", value: "—" };
+  const codes = diagnosticCodes(result.solver_report);
   return (
     <div className="result-section mission-summary">
       <h3>План миссии</h3>
-      <div className="mission-summary-grid">
-        <div><strong>{assignments ? assignments.length : "—"}</strong><span>полётных заданий</span></div>
-        <p>План показан без браузерных расчётов. Привязка к БВС отображается только при наличии явного идентификатора в ответе backend.</p>
-      </div>
-      {explicitAssignments.length > 0 && (
-        <ul className="assignment-list">
-          {explicitAssignments.map((assignment) => <li key={assignment.key}>Задание backend: <strong>{assignment.uavId}</strong></li>)}
-        </ul>
-      )}
+      <dl className="result-facts">
+        <div><dt>Исход</dt><dd>{result.outcome}</dd></div>
+        <div><dt>БВС</dt><dd>{uavCount}</dd></div>
+        <div><dt>Вылеты</dt><dd>{routes.length}</dd></div>
+        <div><dt>{metric.label}</dt><dd>{metric.value}</dd></div>
+        <div><dt>Коды</dt><dd>{codes.length ? codes.join(", ") : "нет"}</dd></div>
+      </dl>
     </div>
   );
 }
@@ -187,7 +199,7 @@ export function ResultPanel({ result }: { result: JobResult }) {
         <div className="result-section error-detail"><h3>Сообщение вычислительного контура</h3><p>{failureMessage(result.error)}</p></div>
       ) : (
         <>
-          {result.mission_plan && <MissionPlanSummary plan={result.mission_plan} />}
+          <MissionSummary result={result} />
           {result.state === "completed" && result.outcome === "feasible" && result.mission_plan && (
             <div className="result-section mission-map-section">
               <div className="mission-map-heading">

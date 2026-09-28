@@ -15,6 +15,26 @@ import { ResultPanel } from "./App";
 afterEach(cleanup);
 
 describe("ResultPanel mission map gating", () => {
+  it("summarizes the solver metric without a backend assignment list", () => {
+    const result = {
+      ...fixture,
+      mission_plan: {
+        ...fixture.mission_plan,
+        criterion: "min_time",
+        mission: { mission_time_s: 120.5, total_flight_time_s: 400 },
+      },
+      solver_report: {
+        ...fixture.solver_report,
+        limitations: ["PHYS-DEM: Рельеф отсутствует или нечисловой"],
+      },
+    };
+    render(<ResultPanel result={result as JobResult} />);
+    expect(screen.getByText("C_max")).toBeTruthy();
+    expect(screen.getByText("120.50 с")).toBeTruthy();
+    expect(screen.getByText("PHYS-DEM")).toBeTruthy();
+    expect(screen.queryByText(/Задание backend/)).toBeNull();
+  });
+
   it("shows a physical diagnostic code", () => {
     const result = {
       ...fixture,

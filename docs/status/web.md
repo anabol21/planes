@@ -11,6 +11,8 @@ contract_version: v0
 
 # Web status
 
+WRAP-001, сводка и карта. Список «Задание backend» снят. Панель показывает исход, число БВС, число вылетов, метрику, которую солвер уже вернул (`C_max` как `mission_time_s` при `min_time`, суммарный налёт как `total_flight_time_s` при `min_flight_hours`), и коды `PHYS-*`. На карте рисуются только участки маршрута внутри полигонов съёмки, один цвет на `uav_id`. Веер транзитов не рисуется. `mission_plan` в ответе не переписывается. Сырой JSON остаётся свёрнутым. Это отображение, не новый расчёт маршрута.
+
 WRAP-001, шаг 2, заблокирован на слушателе. Поле «Направление полос» убрано из формы. `buildPrototypeScenario` больше не требует угол и не кладёт `survey.strip_direction_deg`. Ноль не подставляется. Слушатель `geo_mission._params` по-прежнему читает `survey.strip_direction_deg` через `_angle` и отклоняет конверт без этого ключа. Ядро не патчилось. Это не требование заказчика: направление полос было полем формы.
 
 On `test_merge` the form sends raw `survey_kml` and `constraints_kml`. The picture is `docs/architecture/STITCH_PICTURE.md`. The sentence below is the pre-stitch path on `main`.
