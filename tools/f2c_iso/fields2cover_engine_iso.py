@@ -10,10 +10,29 @@ not full mvp LNS/assignment.
 from __future__ import annotations
 
 import math
+import sys
 import time
 from contextvars import ContextVar, Token
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
+
+_ISO_SRC = Path(__file__).resolve().parent / "iso_src"
+if str(_ISO_SRC) not in sys.path:
+    sys.path.insert(0, str(_ISO_SRC))
+
+from wave_b import (  # noqa: E402
+    CoverageInfeasible,
+    Pad as WavePad,
+    PackedSortie,
+    Swath as WaveSwath,
+    apply_recharge_timeline,
+    makespan_s,
+    pack_board,
+    recharge_gap_s,
+    resolve_separation,
+    total_flight_time_s,
+)
 
 FIELDS2COVER_VERSION = "2.1.0"
 _LAT_M_PER_DEG = 110540.0
@@ -37,12 +56,19 @@ class BoardCamera:
     speed_m_s: float
     spacing_m: float
     h_agl_m: float
+    recharge_time_s: float = 0.0
 
 
 @dataclass(frozen=True)
 class EngineContext:
     deadline: float
     boards: tuple[BoardCamera, ...]
+    pads: tuple[Any, ...] = ()
+    allow_recharge: bool = True
+    allow_foreign_landing: bool = True
+    allow_foreign_takeoff: bool = False
+    min_separation_m: float = 50.0
+    time_window_s: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -132,10 +158,13 @@ def plan(mission: Any) -> Any | None:
     if not polygons:
         return None
     groups = _groups(ctx.boards)
-    routes: list[Any] = []
-    durations: list[float] = []
+    packed: list[PackedSortie] = []
+    pack_notes: list[str] = []
+    uncovered_total = 0
     have_route = False
     chosen_theta: float | None = None
+    pads, pad_geo = _wave_pads(ctx, lon0, lat0)
+    board_by_id = {board.uav_id: board for board in ctx.boards}
     for spacing_m, boards in groups:
         _ensure_budget(have_route)
         swaths, theta = _swaths(polygons, spacing_m, angle_deg)
@@ -150,40 +179,96 @@ def plan(mission: Any) -> Any | None:
             _ensure_budget(have_route)
             if not block:
                 continue
-            aero_xy = _project(board.lon, board.lat, lon0, lat0)
-            for flight_index, sortie in enumerate(
-                _pack(aero_xy, block, board.endurance_s, board.speed_m_s),
-                start=1,
-            ):
-                _ensure_budget(have_route)
-                duration = _duration(aero_xy, sortie, board.speed_m_s)
-                routes.append(
-                    _route(
-                        mission,
-                        board,
-                        flight_index,
-                        sortie,
-                        duration,
-                        lon0,
-                        lat0,
-                        holes,
-                    )
-                )
-                durations.append(duration)
-                have_route = True
-    if not routes:
+            result = pack_board(
+                uav_id=board.uav_id,
+                swaths=[
+                    WaveSwath(item.start, item.end, item.length_m) for item in block
+                ],
+                pads=pads,
+                home_pad_id=board.vpp_id,
+                endurance_s=board.endurance_s,
+                speed_m_s=board.speed_m_s,
+                allow_foreign_landing=ctx.allow_foreign_landing,
+                allow_foreign_takeoff=ctx.allow_foreign_takeoff,
+                allow_recharge=ctx.allow_recharge,
+            )
+            pack_notes.extend(result.limitations)
+            uncovered_total += len(result.uncovered)
+            packed.extend(result.sorties)
+            have_route = have_route or bool(result.sorties)
+    if uncovered_total:
+        if ctx.allow_recharge:
+            reason = (
+                f"uncovered swaths={uncovered_total}: a swath exceeds endurance "
+                "even with recharge and best pads"
+            )
+        else:
+            reason = (
+                f"allow_recharge=false: uncovered swaths={uncovered_total} "
+                "(coverage needs more than one sortie under endurance)"
+            )
+        raise CoverageInfeasible(
+            reason,
+            uncovered=uncovered_total,
+            limitations=(reason, *pack_notes),
+        )
+    if not packed:
         return None
+    recharge_by_uav = {board.uav_id: board.recharge_time_s for board in ctx.boards}
+    apply_recharge_timeline(packed, recharge_by_uav)
+    speed_by_uav = {board.uav_id: board.speed_m_s for board in ctx.boards}
+    packed, n_conflicts, sep_delay, sep_notes = resolve_separation(
+        packed,
+        speed_by_uav,
+        ctx.min_separation_m,
+        ctx.time_window_s,
+    )
+    routes: list[Any] = []
+    flight_index_by_uav: dict[str, int] = {}
+    for sortie in packed:
+        _ensure_budget(True)
+        board = board_by_id[sortie.uav_id]
+        flight_index_by_uav[sortie.uav_id] = flight_index_by_uav.get(sortie.uav_id, 0) + 1
+        takeoff = _pad_geo(pad_geo, sortie.takeoff_pad_id, board)
+        landing = _pad_geo(pad_geo, sortie.landing_pad_id, board)
+        routes.append(
+            _route(
+                mission,
+                board,
+                flight_index_by_uav[sortie.uav_id],
+                [_SwathEnds(item.start, item.end, item.length_m) for item in sortie.swaths],
+                float(sortie.flight_time_s),
+                lon0,
+                lat0,
+                holes,
+                takeoff=takeoff,
+                landing=landing,
+                start_time_s=float(sortie.start_time_s),
+                recharge_before_s=float(sortie.recharge_before_s),
+            )
+        )
     Candidate, _, _ = _models()
     used = {route.uav_id for route in routes}
     theta_out = float(chosen_theta if chosen_theta is not None else (angle_deg if angle_deg is not None else 0.0))
+    extra = (
+        *pack_notes,
+        *sep_notes,
+        f"wave_b conflicts_seen={n_conflicts} separation_delay_s={sep_delay:.1f}",
+        "wave_b: mission_time_s is Cmax including recharge gaps and separation delays; "
+        "total_flight_time_s is airborne time only",
+    )
     return Candidate(
         theta_deg=theta_out,
-        C_max_s=max(durations),
-        flight_hours_s=sum(durations),
+        C_max_s=makespan_s(packed),
+        flight_hours_s=total_flight_time_s(packed),
         energy_total_wh=0.0,
         n_uavs_used=len(used),
         routes=routes,
         decomposition_method="fields2cover",
+        recharge_gap_s=recharge_gap_s(packed),
+        separation_delay_s=float(sep_delay),
+        uncovered_swath_count=0,
+        extra_limitations=extra,
     )
 
 
@@ -424,6 +509,43 @@ def _length(aero_xy: tuple[float, float], swaths: list[_SwathEnds]) -> float:
     return total
 
 
+def _wave_pads(
+    ctx: EngineContext,
+    lon0: float,
+    lat0: float,
+) -> tuple[list[WavePad], dict[str, tuple[float, float, float]]]:
+    """Return local-metre pads and ``id -> (lat, lon, unused)`` geo lookup."""
+    raw = list(ctx.pads) if ctx.pads else []
+    if not raw:
+        seen: dict[str, BoardCamera] = {}
+        for board in ctx.boards:
+            seen.setdefault(board.vpp_id, board)
+        raw = [
+            type("Pad", (), {"id": board.vpp_id, "lat": board.lat, "lon": board.lon})()
+            for board in seen.values()
+        ]
+    pads: list[WavePad] = []
+    geo: dict[str, tuple[float, float, float]] = {}
+    for item in raw:
+        pad_id = str(item.id)
+        lat = float(item.lat)
+        lon = float(item.lon)
+        pads.append(WavePad(pad_id, _project(lon, lat, lon0, lat0)))
+        geo[pad_id] = (lat, lon, 0.0)
+    return pads, geo
+
+
+def _pad_geo(
+    geo: dict[str, tuple[float, float, float]],
+    pad_id: str,
+    board: BoardCamera,
+) -> Any:
+    if pad_id in geo:
+        lat, lon, _ = geo[pad_id]
+        return type("PadGeo", (), {"id": pad_id, "lat": lat, "lon": lon})()
+    return type("PadGeo", (), {"id": board.vpp_id, "lat": board.lat, "lon": board.lon})()
+
+
 def _route(
     mission: Any,
     board: BoardCamera,
@@ -433,31 +555,41 @@ def _route(
     lon0: float,
     lat0: float,
     holes: list[Any],
+    takeoff: Any | None = None,
+    landing: Any | None = None,
+    start_time_s: float = 0.0,
+    recharge_before_s: float = 0.0,
 ) -> Any:
     _, Point, Route = _models()
-    ground = _ground(mission.dem, board.lat, board.lon)
-    aero_xy = _project(board.lon, board.lat, lon0, lat0)
+    takeoff = takeoff or type("PadGeo", (), {"id": board.vpp_id, "lat": board.lat, "lon": board.lon})()
+    landing = landing or takeoff
+    takeoff_ground = _ground(mission.dem, float(takeoff.lat), float(takeoff.lon))
+    landing_ground = _ground(mission.dem, float(landing.lat), float(landing.lon))
+    takeoff_xy = _project(float(takeoff.lon), float(takeoff.lat), lon0, lat0)
+    landing_xy = _project(float(landing.lon), float(landing.lat), lon0, lat0)
     # "swath" points are sampled. "link" points copy a neighbouring sample so a
     # hole bypass does not add terrain reads away from the swath ends.
-    samples: list[tuple[str, tuple[float, float]]] = [("ground", aero_xy)]
-    cursor = aero_xy
+    samples: list[tuple[str, tuple[float, float]]] = [("ground", takeoff_xy)]
+    cursor = takeoff_xy
     for swath in sortie:
         samples.extend(("link", point) for point in _avoid(cursor, swath.start, holes)[1:-1])
         samples.append(("swath", swath.start))
         samples.append(("swath", swath.end))
         cursor = swath.end
-    samples.extend(("link", point) for point in _avoid(cursor, aero_xy, holes)[1:-1])
-    samples.append(("ground", aero_xy))
+    samples.extend(("link", point) for point in _avoid(cursor, landing_xy, holes)[1:-1])
+    samples.append(("ground", landing_xy))
     altitudes: list[float | None] = []
     for kind, (x, y) in samples:
-        if kind == "ground":
-            altitudes.append(ground)
+        if kind == "ground" and (x, y) == takeoff_xy and not altitudes:
+            altitudes.append(takeoff_ground)
+        elif kind == "ground":
+            altitudes.append(landing_ground)
         elif kind == "swath":
             lat, lon = _unproject(x, y, lon0, lat0)
             altitudes.append(_ground(mission.dem, lat, lon) + board.h_agl_m)
         else:
             altitudes.append(None)
-    upcoming = ground
+    upcoming = landing_ground
     for index in range(len(altitudes) - 1, -1, -1):
         if altitudes[index] is None:
             altitudes[index] = upcoming
@@ -466,19 +598,23 @@ def _route(
     waypoints = []
     for (kind, (x, y)), alt in zip(samples, altitudes):
         del kind
-        if (x, y) == aero_xy and not waypoints:
-            lat, lon = board.lat, board.lon
-        elif (x, y) == aero_xy and len(waypoints) == len(samples) - 1:
-            lat, lon = board.lat, board.lon
+        if (x, y) == takeoff_xy and not waypoints:
+            lat, lon = float(takeoff.lat), float(takeoff.lon)
+        elif (x, y) == landing_xy and len(waypoints) == len(samples) - 1:
+            lat, lon = float(landing.lat), float(landing.lon)
         else:
             lat, lon = _unproject(x, y, lon0, lat0)
         waypoints.append(Point(lat=lat, lon=lon, alt_m=float(alt)))
     return Route(
         uav_id=board.uav_id,
         flight_index=flight_index,
-        vpp_id=board.vpp_id,
+        vpp_id=str(takeoff.id),
         T_total_s=duration_s,
         waypoints=waypoints,
+        takeoff_vpp_id=str(takeoff.id),
+        landing_vpp_id=str(landing.id),
+        start_time_s=float(start_time_s),
+        recharge_before_s=float(recharge_before_s),
     )
 
 
@@ -600,6 +736,10 @@ class Route:
     vpp_id: str
     T_total_s: float
     waypoints: list
+    takeoff_vpp_id: str = ""
+    landing_vpp_id: str = ""
+    start_time_s: float = 0.0
+    recharge_before_s: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -611,6 +751,10 @@ class Candidate:
     n_uavs_used: int
     routes: list
     decomposition_method: str
+    recharge_gap_s: float = 0.0
+    separation_delay_s: float = 0.0
+    uncovered_swath_count: int = 0
+    extra_limitations: tuple[str, ...] = ()
 
 
 def _models() -> tuple[Any, Any, Any]:
