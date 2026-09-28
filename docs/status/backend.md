@@ -2,7 +2,7 @@
 workstream: backend
 owner: Ruslan
 task: WRAP-001
-status: in_progress
+status: review
 updated: 2026-09-28
 checkpoint: 2026-09-23
 branch: cursor/backend-10mib-body-limit-2a72
@@ -11,7 +11,7 @@ contract_version: v0
 
 # Backend status
 
-- `in_progress`: WRAP-001 — local `POST /jobs` body ceiling raised from `1_000_000` bytes to `10 * 1024 * 1024` (`MAX_BODY_BYTES`). Empty/non-positive `Content-Length` is still rejected; the payload must still be a JSON object. Runtime listener `MAX_BODY_BYTES` (32 MiB) is unchanged. Covers `REQ-PROD-001` (web submit) and large KML inputs `REQ-IN-003`, `REQ-IN-005`, `REQ-IN-006`. Limit size itself is a team operational choice under `OPEN-021`, not a customer number. `OPEN-001` remains open.
+- `review`: WRAP-001 — local `POST /jobs` body ceiling raised from `1_000_000` bytes to `10 * 1024 * 1024` (`MAX_BODY_BYTES` = 10485760). Empty/non-positive `Content-Length` is still rejected; the payload must still be a JSON object. Runtime listener `MAX_BODY_BYTES` (32 MiB) is unchanged. Covers `REQ-PROD-001` (web submit) and large KML inputs `REQ-IN-003`, `REQ-IN-005`, `REQ-IN-006`. Limit size itself is a team operational choice under `OPEN-021`, not a customer number. `OPEN-001` remains open.
 - `planned`: RUS-002 — рельеф из отдельного KML местности в матрицы `precompute`. Бриф: `docs/workstreams/model/RUS-002.md`.
 
 On `test_merge` the backend Python is unchanged. The scenario snapshot carries raw `survey_kml` and `constraints_kml`. The stitched listener path is `docs/architecture/STITCH_PICTURE.md`. The rest of this paragraph is the pre-stitch path on `main`.
@@ -32,18 +32,25 @@ Live path on `main`: the form at `127.0.0.1:5173` sends `aerodromes` and `boards
 - [x] Added the backend-owned `RuntimeOptimizationEngine` conversion wrapper around the unchanged runtime adapter.
 - [x] Added explicit worker selection through `--engine fake|runtime`, defaulting to the existing fake.
 - [x] Added deterministic runtime conversion and lifecycle tests using an injected adapter stub.
+- [x] WRAP-001: raised local API `MAX_BODY_BYTES` to `10 * 1024 * 1024` and added body-size tests.
 
 ## In progress
 
-- [ ] WRAP-001: raise local API `MAX_BODY_BYTES` to 10 MiB and prove the old 1 MB ceiling no longer rejects a valid submit.
 - [ ] Independent review and agreement on the future shared JSON contract/fixtures.
 
 ## Next action
 
-Run `python -m unittest discover -s tests/backend -v` and the focused body-size cases, then hand off the PR against `wrap/WRAP-001-shell-around-core`. Runtime compute listener stays at 32 MiB.
+Reviewer on WRAP-001: confirm PR https://github.com/anabol21/planes/pull/14. Runtime compute listener stays at 32 MiB. A web submit with files under 10 MiB should no longer fail for body size.
 
 ## Evidence
 
+- WRAP-001 body limit: commit `a13b6b51b281c830753798425688fd5b25643b67` on `cursor/backend-10mib-body-limit-2a72`.
+- `python3 -m compileall -q src/planes/backend tests/backend` — passed (exit 0).
+- `PYTHONPATH=src python3 -m unittest discover -s tests/backend -v` — passed, 36 tests, `OK` (`Ran 36 tests in 0.996s`). New cases: `test_empty_request_body_returns_400`, `test_request_body_over_ten_mib_returns_400`, `test_request_body_over_old_megabyte_ceiling_is_accepted`, `test_non_object_json_returns_400`.
+- `PYTHONPATH=src python3 -c "from planes.backend.api import MAX_BODY_BYTES; print(MAX_BODY_BYTES)"` — `10485760`.
+- `python3 scripts/validate_workspace.py` — `Workspace validation: PASS`.
+- `git diff --check` — passed (exit 0).
+- PR: https://github.com/anabol21/planes/pull/14 against `wrap/WRAP-001-shell-around-core`.
 - Task brief: `docs/workstreams/backend/RUS-001.md`.
 - `python -m compileall -q src/planes/backend tests/backend` — passed (exit 0).
 - `python -m unittest discover -s tests/backend -v` — passed, 20 tests, `OK`.
