@@ -53,6 +53,8 @@ Review the unique-limitations landing on `cursor/dedupe-limitations-829a`. The I
 
 ## Evidence
 
+- Command: `PYTHONPATH=src python3 -m unittest tests.runtime.test_limitations -v`
+- Result: `Ran 5 tests in 0.001s` / `OK`. Identical endurance/uncovered-swath lines collapse to first-seen order; `uncovered swaths=N: …` and `uncovered_swaths=N` stay distinct; `make_response`, `parse_response`, `annotate_result`, and `pipeline.judge` emit the unique list.
 - Command: `PYTHONPATH=src python3 -m unittest discover -s tests/runtime -v`
 - Result: `Ran 90 tests in 66.983s` / `FAILED (failures=9)`. Interpreter is the project venv, Python 3.11.13. The nine failures are the same geo-core assertions on base `aac3d69`: `test_bbox_requests_terrain_and_the_plan_avoids_constraints`, five `test_core_does_not_invent_optics_for_ambiguous_or_blank_cameras` cases, two `test_distinct_fleet_focals_stay_distinct_on_the_mission` cases, and `test_joint_swath_height_does_not_follow_board_order`. Those assertions were not weakened. One-card tests expect `ValueError` and the text that the listener only accepts the geo envelope.
 - Stitch command: `PYTHONPATH=src python3 -m unittest tests.runtime.test_geo_kml_stitch -v`

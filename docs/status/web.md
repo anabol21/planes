@@ -57,6 +57,7 @@ step after this landing.
 
 ### Evidence
 
+- WRAP-001 unique limitations: `pnpm exec vitest run src/ResultPanel.test.tsx` from `apps/web` — 1 file, 7 tests, passed. Repeated endurance/uncovered-swath strings render once; distinct lines stay. `pnpm exec tsc --noEmit` from `apps/web` — exit 0.
 - Task brief: `docs/workstreams/web/WEB-002.md`.
 - Source: `apps/web/src/MissionMap.tsx`, `apps/web/src/missionMapData.ts`, and typed additions in
   `apps/web/src/types.ts`.
