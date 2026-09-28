@@ -4,7 +4,7 @@ owner: Team
 task: CAT-001C
 status: review
 updated: 2026-09-28
-checkpoint: 2026-09-27
+checkpoint: 2026-09-28
 branch: integration/CAT-001C-full-fleet-catalog
 contract_version: v0
 ---
@@ -21,9 +21,10 @@ contract_version: v0
 - [x] Battery chemistry, nominal voltage, capacity and energy normalized in model/runtime metadata without replacing legacy fields; consistency tests added.
 - [x] Recursive completeness, cross-catalog and every-pair regressions added; final fleet table documented in `src/planes/model/itog_model/mvp_optimizator/docs/CAT-001C-full-fleet-catalog.md`.
 - [x] Final scan: 3 UAVs, 12 cameras, 13 edges; unexplained nulls 0, nonempty gaps 0, blocked selectable cameras 0, missing physics 0, missing geometry 0.
+- [x] Implementation committed as `2efac9a1bb33ffc6e8555d518db21f0ab9787a55`, pushed to `origin/integration/CAT-001C-full-fleet-catalog`; remote SHA verified and working tree clean.
 
-Next: commit this coherent CAT-001C change set and push only its feature branch for independent review; do not merge/deploy.
-Evidence: `python -m unittest tests.runtime.test_fleet_catalog tests.runtime.test_live_fleet_completeness tests.runtime.test_live_camera_geometry tests.runtime.test_live_uav_physics tests.runtime.test_mis002_envelope -q` → 67 OK; `python -m unittest tests.runtime.test_geo_kml_stitch tests.runtime.test_stitch_audit_seams -q` → 23 OK (expected failures=1); model `pytest .../tests -q` → 11 passed; workspace validator PASS; `git diff --check` exit 0. No public interface changes.
+Next: independent review on the pushed feature branch; no merge/deploy as part of CAT-001C.
+Evidence: `python -m unittest tests.runtime.test_fleet_catalog tests.runtime.test_live_fleet_completeness tests.runtime.test_live_camera_geometry tests.runtime.test_live_uav_physics tests.runtime.test_mis002_envelope -q` → 67 OK; `python -m unittest tests.runtime.test_geo_kml_stitch tests.runtime.test_stitch_audit_seams -q` → 23 OK (expected failures=1); model `pytest .../tests -q` → 11 passed; workspace validator PASS; `git diff --check` exit 0; remote branch SHA matches implementation commit before this status checkpoint. No public interface changes.
 Blockers: none after disk space recovered. CAT-001A first-UAV shared-geometry behavior and CAT-001B energy/terrain approximations remain out of scope.
 Interface impact: NO v0 CONTRACT CHANGE; catalog metadata only. Rollback: revert CAT-001C commit.
 
