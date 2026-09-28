@@ -2,7 +2,7 @@
 workstream: integration
 owner: Team
 task: INT-F2C-003
-status: in_progress
+status: review
 updated: 2026-09-28
 checkpoint: 2026-09-28
 branch: cursor/wave-b-solver-patches-c76b
@@ -11,7 +11,7 @@ contract_version: v0
 
 # Integration status
 
-- `in_progress`: INT-F2C-003 — Wave B on the live isolated Grisha+F2C path (`tools/f2c_iso/iso_src/wave_b.py`). B1 foreign landing (first takeoff stays home unless `allow_foreign_takeoff`). B2 catalog/board `recharge_time_s` in `mission_time_s`; `allow_recharge=false` is infeasible with uncovered. B3 horizontal space–time buffer with reverse/delay heuristic. Rollback `PLANES_SOLVE_BACKEND=legacy_fields2cover` unchanged. Not 3D overfly, not certified traffic, not Wh packing. Covers `REQ-IN-001`, `REQ-IN-007`, `REQ-PLAN-002`, `REQ-PLAN-006`, `REQ-OUT-004`, `REQ-OUT-005`, `REQ-OPT-001`. Depends on `OPEN-008`, `OPEN-011`, `OPEN-013`, `OPEN-015`. Brief: `docs/workstreams/integration/INT-F2C-003.md`.
+- `review`: INT-F2C-003 — Wave B on the live isolated Grisha+F2C path (`tools/f2c_iso/iso_src/wave_b.py`). B1 foreign landing (first takeoff stays home unless `allow_foreign_takeoff`). B2 catalog/board `recharge_time_s` in `mission_time_s`; `allow_recharge=false` is infeasible with uncovered. B3 horizontal space–time buffer with reverse/delay heuristic. Rollback `PLANES_SOLVE_BACKEND=legacy_fields2cover` unchanged. Not 3D overfly, not certified traffic, not Wh packing. Covers `REQ-IN-001`, `REQ-IN-007`, `REQ-PLAN-002`, `REQ-PLAN-006`, `REQ-OUT-004`, `REQ-OUT-005`, `REQ-OPT-001`. Depends on `OPEN-008`, `OPEN-011`, `OPEN-013`, `OPEN-015`. Brief: `docs/workstreams/integration/INT-F2C-003.md`.
 
 - `review`: INT-F2C-002 — live isolated Grisha+F2C contour landed in git on top of INT-F2C-001. Default `solver._solve_outer` is `grisha_f2c_bridge` → `tools/f2c_iso/` worker (`generateBestSwaths`, `strip_direction_deg` ignored). Rollback: `PLANES_SOLVE_BACKEND=legacy_fields2cover` → `geo_mission.solve_envelope`. Paths via `PLANES_F2C_WORKER` / `PLANES_F2C_CLIENT` / `PLANES_GRISHA_ROOT` (default `/opt/planes-grisha-f2c`). Optional GeoTIFF `dem_file` sets ASL; `mission_time_s` stays 2D. CAT-001C catalog at `catalog/fleet_catalog.json` (speed / reserve / optics; battery Wh not used for packing). This is pack/split F2C, not full mvp LNS. Doc: `docs/live-grisha-f2c-iso.md`. Brief: `docs/workstreams/integration/INT-F2C-002.md`.
 
@@ -30,13 +30,13 @@ Live path on `main`: form `127.0.0.1:5173`, API `127.0.0.1:8000`, worker `--engi
 
 ## In progress
 
-- [ ] INT-F2C-003 Wave B unit tests and PR to `main`.
+- [x] INT-F2C-003 Wave B unit tests and PR to `main`.
 - [x] INT-F2C-002 verification (bridge/client/catalog unit tests + workspace validate) and PR to `main`.
 - [x] INT-F2C-001 verification on the parent branch (unit + web tests).
 
 ## Next action
 
-Verify `tests/runtime/test_wave_b_iso.py` plus existing iso/bridge tests. Open PR to `main`. Do not deploy or restart the live listener from this branch.
+Review/merge PR #13 into `main` if checks allow. Do not deploy or restart the live listener from this branch. Experiments should set Wave B flags on the v0 `scenario` (see `docs/live-grisha-f2c-iso.md`).
 
 ## Completed (prior)
 
@@ -62,6 +62,13 @@ Verify `tests/runtime/test_wave_b_iso.py` plus existing iso/bridge tests. Open P
 Review the stitch on `cursor/geo-core-kml-stitch`. The listener on `main` is still the enumeration path in `docs/architecture/agent-brief-runtime.md`. This branch does not deploy it. The three-terminal fake-worker smoke remains the earlier DEMO-001 check.
 
 ## Evidence
+
+- Command: `PYTHONPATH=src:tests/runtime python3 -m unittest tests.runtime.test_wave_b_iso tests.runtime.test_grisha_f2c_bridge tests.runtime.test_f2c_iso_client -v`
+- Result: `Ran 23 tests in 0.043s` / `OK`. Interpreter `/usr/bin/python3` 3.12. Wave B tests use synthetic metre geometry and do not import fields2cover. B1 lands on the closer foreign pad and keeps first takeoff at home unless `allow_foreign_takeoff`. B2 inserts a 100 s charge gap into makespan and leaves leftover swaths when `allow_recharge=false`. B3 detects identical tracks and delays the later UAV until clean. Rollback still maps `legacy_fields2cover` to `geo_mission`. Isolated worker self-check was not run: embed venv / fields2cover 2.1.0 is not in this environment.
+- Command: `python3 scripts/validate_workspace.py`
+- Result: `Workspace validation: PASS`.
+- PR: https://github.com/anabol21/planes/pull/13
+- Commit: recorded at handoff.
 
 - Command: `PYTHONPATH=src:tests/runtime python3 -m unittest tests.runtime.test_grisha_f2c_bridge tests.runtime.test_f2c_iso_client tests.runtime.test_cat001c_catalog tests.runtime.test_f2c_input_contract tests.model.test_f2c_auto_angle tests.runtime.test_solver tests.runtime.test_mis002_winner tests.runtime.test_fleet_catalog -v`
 - Result: 45 tests OK for iso/bridge/catalog + INT-F2C-001 + solver rejection + winner + runtime catalog. The one remaining error is pre-existing `test_run_accepts_seed_without_files` (`ortools` not installed here). Isolated worker self-check was not run: embed venv / fields2cover 2.1.0 is not in this environment.

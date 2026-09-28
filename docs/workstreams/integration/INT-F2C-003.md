@@ -3,7 +3,7 @@ task: INT-F2C-003
 owner: Integration
 branch: cursor/wave-b-solver-patches-c76b
 target: main
-status: in_progress
+status: review
 checkpoint: 2026-09-28
 contract_version: v0
 allowed_paths:

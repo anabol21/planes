@@ -2,7 +2,7 @@
 workstream: runtime
 owner: Misha
 task: INT-F2C-003
-status: in_progress
+status: review
 updated: 2026-09-28
 checkpoint: 2026-09-28
 branch: cursor/wave-b-solver-patches-c76b
@@ -11,7 +11,7 @@ contract_version: v0
 
 # Runtime status
 
-- `in_progress`: INT-F2C-003 overlay — isolated F2C packer (`tools/f2c_iso/iso_src/wave_b.py`) may land on a foreign pad, inserts `recharge_time_s` into `mission_time_s`, and delays a later UAV for a horizontal buffer. `PLANES_SOLVE_BACKEND=legacy_fields2cover` is unchanged. Scenario flags: `allow_recharge` / `power.allow_recharge`, `recharge_time_s`, `allow_foreign_landing`, `allow_foreign_takeoff`, `min_separation_m`. Default first takeoff stays the board home pad.
+- `review`: INT-F2C-003 overlay — isolated F2C packer (`tools/f2c_iso/iso_src/wave_b.py`) may land on a foreign pad, inserts `recharge_time_s` into `mission_time_s`, and delays a later UAV for a horizontal buffer. `PLANES_SOLVE_BACKEND=legacy_fields2cover` is unchanged. Scenario flags: `allow_recharge` / `power.allow_recharge`, `recharge_time_s`, `allow_foreign_landing`, `allow_foreign_takeoff`, `min_separation_m`. Default first takeoff stays the board home pad.
 
 - `review`: INT-F2C-002 overlay — live envelope default is isolated F2C (`grisha_f2c_bridge` / `tools/f2c_iso`). `PLANES_SOLVE_BACKEND=legacy_fields2cover` keeps `geo_mission.solve_envelope`. Worker isolation: clean PYTHONPATH, no Grisha sitecustomize. DEM GeoTIFF hook is ASL-only; duration stays 2D. Not full mvp LNS.
 
@@ -49,6 +49,12 @@ contract_version: v0
 INT-F2C-003: keep rollback `PLANES_SOLVE_BACKEND=legacy_fields2cover`. Wave B lives only on the isolated worker. Experiments set flags on the v0 `scenario` object; see `docs/live-grisha-f2c-iso.md`.
 
 ## Evidence
+
+- Command: `PYTHONPATH=src:tests/runtime python3 -m unittest tests.runtime.test_wave_b_iso tests.runtime.test_grisha_f2c_bridge tests.runtime.test_f2c_iso_client -v`
+- Result: `Ran 23 tests in 0.043s` / `OK`. Wave B packer tested without fields2cover. Rollback `legacy_fields2cover` still calls `geo_mission`.
+- Command: `python3 scripts/validate_workspace.py`
+- Result: `Workspace validation: PASS`.
+- PR: https://github.com/anabol21/planes/pull/13
 
 - Command: `PYTHONPATH=src python3 -m unittest discover -s tests/runtime -v`
 - Result: `Ran 90 tests in 66.983s` / `FAILED (failures=9)`. Interpreter is the project venv, Python 3.11.13. The nine failures are the same geo-core assertions on base `aac3d69`: `test_bbox_requests_terrain_and_the_plan_avoids_constraints`, five `test_core_does_not_invent_optics_for_ambiguous_or_blank_cameras` cases, two `test_distinct_fleet_focals_stay_distinct_on_the_mission` cases, and `test_joint_swath_height_does_not_follow_board_order`. Those assertions were not weakened. One-card tests expect `ValueError` and the text that the listener only accepts the geo envelope.

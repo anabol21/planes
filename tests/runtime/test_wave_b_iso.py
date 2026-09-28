@@ -6,19 +6,28 @@ Loads ``tools/f2c_iso/iso_src/wave_b.py`` directly. No fields2cover embed.
 from __future__ import annotations
 
 import importlib.util
+import sys
 import unittest
 from pathlib import Path
 
 from support import REPO
 
 
-def _load_wave_b():
-    path = REPO / "tools" / "f2c_iso" / "iso_src" / "wave_b.py"
-    spec = importlib.util.spec_from_file_location("wave_b_under_test", path)
+def _load_module(name: str, path: Path):
+    spec = importlib.util.spec_from_file_location(name, path)
     assert spec is not None and spec.loader is not None
     mod = importlib.util.module_from_spec(spec)
+    # Python 3.12 dataclasses look up sys.modules[cls.__module__].
+    sys.modules[name] = mod
     spec.loader.exec_module(mod)
     return mod
+
+
+def _load_wave_b():
+    return _load_module(
+        "wave_b_under_test",
+        REPO / "tools" / "f2c_iso" / "iso_src" / "wave_b.py",
+    )
 
 
 class FlagParseTest(unittest.TestCase):
@@ -133,8 +142,8 @@ class RechargeTest(unittest.TestCase):
     def setUp(self) -> None:
         self.wb = _load_wave_b()
         self.home = self.wb.Pad("home", (0.0, 0.0))
-        # Two long swaths: each sortie is takeoff + 80m + land ≈ 160m / 10 = 16s
-        # plus the swath itself. Endurance 20s fits one swath, not two.
+        # Two nearby swaths. One home-return sortie is ~17–19 s at 10 m/s;
+        # both in one sortie exceed ~20 s. Endurance 19.5 splits them.
         self.swaths = [
             self.wb.Swath((80.0, 0.0), (80.0, 10.0), 10.0),
             self.wb.Swath((90.0, 0.0), (90.0, 10.0), 10.0),
@@ -146,7 +155,7 @@ class RechargeTest(unittest.TestCase):
             self.swaths,
             [self.home],
             "home",
-            endurance_s=18.0,
+            endurance_s=19.5,
             speed_m_s=10.0,
             allow_recharge=True,
         )
@@ -167,7 +176,7 @@ class RechargeTest(unittest.TestCase):
             self.swaths,
             [self.home],
             "home",
-            endurance_s=18.0,
+            endurance_s=19.5,
             speed_m_s=10.0,
             allow_recharge=False,
         )
@@ -253,10 +262,7 @@ class SeparationTest(unittest.TestCase):
 class EngineImportTest(unittest.TestCase):
     def test_iso_engine_imports_without_fields2cover(self) -> None:
         path = REPO / "tools" / "f2c_iso" / "fields2cover_engine_iso.py"
-        spec = importlib.util.spec_from_file_location("fields2cover_engine_iso_under_test", path)
-        assert spec is not None and spec.loader is not None
-        mod = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(mod)
+        mod = _load_module("fields2cover_engine_iso_under_test", path)
         board = mod.BoardCamera(
             uav_id="b",
             vpp_id="home",
