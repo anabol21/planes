@@ -1,7 +1,7 @@
 {
   "meta": {
     "version": "1.1.0",
-    "updated": "2026-09-25",
+    "updated": "2026-09-28",
     "source_docs": [
       "Gemini_Specs_EN_RUS.pdf",
       "Geoscan_201_Manual.pdf",
@@ -42,14 +42,14 @@
         },
         "sensors": {
           "gnss": "ublox-zed-f9p",
-          "cameras": ["pf1b", "pollux", "umc-r10c"]
+          "cameras": ["pf1b", "pollux", "umc-r10c", "umc-r10c-16", "umc-r10c-20"]
         },
         "comms": {
           "radio_modems": ["868-mhz-gemini", "2.4-ghz-gemini"]
         }
       },
       "related": {
-        "cameras": ["pf1b", "pollux", "umc-r10c"],
+        "cameras": ["pf1b", "pollux", "umc-r10c", "umc-r10c-16", "umc-r10c-20"],
         "gnss": ["ublox-zed-f9p"],
         "radio_modems": ["868-mhz-gemini", "2.4-ghz-gemini"],
         "batteries": ["battery-gemini"],
@@ -145,7 +145,7 @@
         },
         "sensors": {
           "gnss": "gnss-801",
-          "cameras": ["801-visible", "801-thermal"]
+          "cameras": ["801-visible", "801-visible-4-35", "801-visible-16", "801-thermal"]
         },
         "comms": {
           "radio": "801-radio",
@@ -156,7 +156,7 @@
         }
       },
       "related": {
-        "cameras": ["801-visible", "801-thermal"],
+        "cameras": ["801-visible", "801-visible-4-35", "801-visible-16", "801-thermal"],
         "gnss": ["gnss-801"],
         "radio_modems": ["801-radio"],
         "batteries": ["battery-801"],
@@ -170,6 +170,14 @@
   "cameras": {
     "pf1b": {
       "id": "pf1b",
+      "geometry": {
+        "source": "Existing model specs; docs/mvp.pdf pp.12-13; docs/cameras.pdf p.1 (Gemini specification summary).",
+        "sensor_width_mm": {"value":23.5,"mark":"passport"},
+        "sensor_height_mm": {"value":15.6,"mark":"passport"},
+        "focal_length_mm": {"value":20,"mark":"passport"},
+        "image_width_px": {"value":6000,"mark":"passport"},
+        "image_height_px": {"value":4000,"mark":"passport"}
+      },
       "category": "camera",
       "model": "Geoscan PF1B",
       "aliases": ["PF1B", "Геоскан PF1B", "Geoscan PF1B"],
@@ -190,8 +198,111 @@
       }
     },
 
+    "umc-r10c-16": {
+      "id": "umc-r10c-16",
+      "category": "camera",
+      "model": "Sony UMC-R10C 16 mm",
+      "aliases": [
+        "umc-r10c-16"
+      ],
+      "for": [
+        "gemini"
+      ],
+      "specs": {
+        "general": {
+          "type": "digital",
+          "sensor_size": "APS-C (23.2 × 15.4 mm)",
+          "max_resolution": "5456 × 3632"
+        },
+        "performance": {
+          "focal_length": "16 mm"
+        }
+      },
+      "notes": "Данные оценочные, в PDF ТТХ отсутствуют. Optional camera for Gemini, separate from PF1B.",
+      "geometry": {
+        "source": "docs/cameras.pdf p.1 and docs/mvp.pdf p.13; body plus explicitly selected 16 mm lens.",
+        "sensor_width_mm": {
+          "value": 23.2,
+          "mark": "estimate",
+          "note": "Repository estimate; UMC passport not present in committed manufacturer PDFs. Explicit 16 mm mission configuration."
+        },
+        "sensor_height_mm": {
+          "value": 15.4,
+          "mark": "estimate",
+          "note": "Repository estimate; UMC passport not present in committed manufacturer PDFs. Explicit 16 mm mission configuration."
+        },
+        "focal_length_mm": {
+          "value": 16,
+          "mark": "estimate",
+          "note": "Repository estimate; UMC passport not present in committed manufacturer PDFs. Explicit 16 mm mission configuration."
+        },
+        "image_width_px": {
+          "value": 5456,
+          "mark": "estimate",
+          "note": "Repository estimate; UMC passport not present in committed manufacturer PDFs. Explicit 16 mm mission configuration."
+        },
+        "image_height_px": {
+          "value": 3632,
+          "mark": "estimate",
+          "note": "Repository estimate; UMC passport not present in committed manufacturer PDFs. Explicit 16 mm mission configuration."
+        }
+      }
+    },
+
+    "umc-r10c-20": {
+      "id": "umc-r10c-20",
+      "category": "camera",
+      "model": "Sony UMC-R10C 20 mm",
+      "aliases": [
+        "umc-r10c-20"
+      ],
+      "for": [
+        "gemini"
+      ],
+      "specs": {
+        "general": {
+          "type": "digital",
+          "sensor_size": "APS-C (23.2 × 15.4 mm)",
+          "max_resolution": "5456 × 3632"
+        },
+        "performance": {
+          "focal_length": "20 mm"
+        }
+      },
+      "notes": "Данные оценочные, в PDF ТТХ отсутствуют. Optional camera for Gemini, separate from PF1B.",
+      "geometry": {
+        "source": "docs/cameras.pdf p.1 and docs/mvp.pdf p.13; body plus explicitly selected 20 mm lens.",
+        "sensor_width_mm": {
+          "value": 23.2,
+          "mark": "estimate",
+          "note": "Repository estimate; UMC passport not present in committed manufacturer PDFs. Explicit 20 mm mission configuration."
+        },
+        "sensor_height_mm": {
+          "value": 15.4,
+          "mark": "estimate",
+          "note": "Repository estimate; UMC passport not present in committed manufacturer PDFs. Explicit 20 mm mission configuration."
+        },
+        "focal_length_mm": {
+          "value": 20,
+          "mark": "estimate",
+          "note": "Repository estimate; UMC passport not present in committed manufacturer PDFs. Explicit 20 mm mission configuration."
+        },
+        "image_width_px": {
+          "value": 5456,
+          "mark": "estimate",
+          "note": "Repository estimate; UMC passport not present in committed manufacturer PDFs. Explicit 20 mm mission configuration."
+        },
+        "image_height_px": {
+          "value": 3632,
+          "mark": "estimate",
+          "note": "Repository estimate; UMC passport not present in committed manufacturer PDFs. Explicit 20 mm mission configuration."
+        }
+      }
+    },
+
     "umc-r10c": {
       "id": "umc-r10c",
+      "geometry": {"unsupported_reason": "Ambiguous body record: select umc-r10c-16 or umc-r10c-20."},
       "category": "camera",
       "model": "Sony UMC-R10C",
       "aliases": ["UMC-R10C", "Sony UMC-R10C"],
@@ -211,6 +322,14 @@
 
     "pollux": {
       "id": "pollux",
+      "geometry": {
+        "source": "Existing model specs; docs/mvp.pdf pp.12-13.",
+        "sensor_width_mm": {"value":5.04,"mark":"calculation","note":"6.3 mm diagonal and 1440:1080 aspect: width = 6.3 * 4/5 = 5.04 mm."},
+        "sensor_height_mm": {"value":3.78,"mark":"calculation","note":"6.3 mm diagonal and 1440:1080 aspect: height = 6.3 * 3/5 = 3.78 mm."},
+        "focal_length_mm": {"value":8,"mark":"passport"},
+        "image_width_px": {"value":1440,"mark":"passport"},
+        "image_height_px": {"value":1080,"mark":"passport"}
+      },
       "category": "camera",
       "model": "Geoscan Pollux",
       "aliases": ["Pollux", "Поллукс", "Геоскан Pollux", "Мультиспектральная камера Геоскан Pollux"],
@@ -249,6 +368,14 @@
 
     "riebo-r4": {
       "id": "riebo-r4",
+      "geometry": {
+        "source": "Existing model specs (45 MP, 35.9 x 24 mm, 40 mm); existing fleet sensor-aspect derivation.",
+        "sensor_width_mm": {"value":35.9,"mark":"passport"},
+        "sensor_height_mm": {"value":24,"mark":"passport"},
+        "focal_length_mm": {"value":40,"mark":"passport"},
+        "image_width_px": {"value":8204,"mark":"calculation","note":"W = round(sqrt(45e6 * 35.9/24)) = 8204; square-pixel assumption. Chosen existing fleet derivation; PDF approx 8192 differs."},
+        "image_height_px": {"value":5485,"mark":"calculation","note":"H = round(sqrt(45e6 * 24/35.9)) = 5485; square-pixel assumption. PDF approx 5464 differs; not passport."}
+      },
       "category": "camera",
       "model": "Riebo R4",
       "aliases": ["Riebo R4", "R4"],
@@ -277,6 +404,14 @@
 
     "riebo-r6": {
       "id": "riebo-r6",
+      "geometry": {
+        "source": "Existing model specs (61 MP, 35.9 x 24 mm, 40 mm); existing fleet sensor-aspect derivation.",
+        "sensor_width_mm": {"value":35.9,"mark":"passport"},
+        "sensor_height_mm": {"value":24,"mark":"passport"},
+        "focal_length_mm": {"value":40,"mark":"passport"},
+        "image_width_px": {"value":9552,"mark":"calculation","note":"W = round(sqrt(61e6 * 35.9/24)) = 9552; square-pixel assumption; not passport."},
+        "image_height_px": {"value":6386,"mark":"calculation","note":"H = round(sqrt(61e6 * 24/35.9)) = 6386; chosen existing fleet sensor-aspect derivation. PDF approx 6368 differs; not passport."}
+      },
       "category": "camera",
       "model": "Riebo R6",
       "aliases": ["Riebo R6", "R6"],
@@ -305,6 +440,14 @@
 
     "rx1rm3": {
       "id": "rx1rm3",
+      "geometry": {
+        "source": "Sensor conflict resolved 2026-09-28 with https://www.sony.co.uk/electronics/cyber-shot-compact-cameras/dsc-rx1rm3/specifications ; lens/pixels from repository docs/cameras.pdf p.1 and docs/mvp.pdf p.13.",
+        "sensor_width_mm": {"value":35.7,"mark":"passport","note":"Official Sony sensor width supersedes conflicting 35.9 mm in old model/mvp.pdf; cameras.pdf has 35.7 mm."},
+        "sensor_height_mm": {"value":23.8,"mark":"passport","note":"Official Sony sensor height supersedes conflicting 24 mm in old model/mvp.pdf; cameras.pdf has 23.8 mm."},
+        "focal_length_mm": {"value":35,"mark":"estimate","note":"35 mm fixed lens from repository summaries."},
+        "image_width_px": {"value":9504,"mark":"estimate","note":"9504 px from repository estimated camera table; not MP substituted for width."},
+        "image_height_px": {"value":6336,"mark":"estimate","note":"6336 px from repository estimated camera table."}
+      },
       "category": "camera",
       "model": "Sony DSC-RX1RM3",
       "aliases": ["DSC-RX1RM3", "RX1RM3", "Sony RX1RM3"],
@@ -313,7 +456,7 @@
         "general": {
           "type": "digital",
           "max_resolution": "61 MP",
-          "sensor": "full-frame CMOS Extmor R (35.9 × 24 mm)"
+          "sensor": "full-frame CMOS Exmor R (35.7 × 23.8 mm)"
         },
         "performance": {
           "shutter": "central",
@@ -326,6 +469,14 @@
 
     "rx1rm2": {
       "id": "rx1rm2",
+      "geometry": {
+        "source": "Sensor from existing model specs and docs/mvp.pdf p.12; lens/pixels from docs/cameras.pdf p.1 and docs/mvp.pdf p.13.",
+        "sensor_width_mm": {"value":35.9,"mark":"passport"},
+        "sensor_height_mm": {"value":24,"mark":"passport"},
+        "focal_length_mm": {"value":35,"mark":"estimate","note":"35 mm fixed lens from repository camera summaries; no new manufacturer verification."},
+        "image_width_px": {"value":7952,"mark":"estimate","note":"7952 px is the repository table estimate, not computed from marketing 43.6 MP and not passport."},
+        "image_height_px": {"value":5304,"mark":"estimate","note":"5304 px is the repository table estimate for approx 42.4 MP effective image, not passport."}
+      },
       "category": "camera",
       "model": "Sony DSC-RX1RM2",
       "aliases": ["DSC-RX1RM2", "RX1RM2", "Sony RX1RM2"],
@@ -348,6 +499,14 @@
 
     "zv-e10": {
       "id": "zv-e10",
+      "geometry": {
+        "source": "Existing body sensor specs; frame from docs/cameras.pdf p.1 and docs/mvp.pdf p.13.",
+        "sensor_width_mm": {"value":23.5,"mark":"passport"},
+        "sensor_height_mm": {"value":15.6,"mark":"passport"},
+        "image_width_px": {"value":6000,"mark":"estimate","note":"Repository frame specification; body alone does not define mission focal."},
+        "image_height_px": {"value":4000,"mark":"estimate","note":"Repository frame specification; body alone does not define mission focal."},
+        "unsupported_reason": "ZV-E10 body has no selected mission lens/focal_length_mm; repository range 16-50 mm is not a fixed configuration."
+      },
       "category": "camera",
       "model": "Sony ZV-E10",
       "aliases": ["ZV-E10", "Sony ZV-E10"],
@@ -368,8 +527,113 @@
       "notes": "Used with manual focus, ISO Auto, daylight white balance."
     },
 
+    "801-visible-4-35": {
+      "id": "801-visible-4-35",
+      "category": "camera",
+      "model": "Geoscan 801 visible camera 4.35 mm",
+      "aliases": [
+        "801-visible-4-35"
+      ],
+      "for": [
+        "geoscan801"
+      ],
+      "specs": {
+        "general": {
+          "type": "digital video",
+          "sensor": "1/2.3\", 12 MP",
+          "resolution": "4000 × 3000 (оценка, 4:3)"
+        },
+        "performance": {
+          "wide_angle_lens": "F=4.35 mm",
+          "narrow_angle_lens": "F=16 mm",
+          "hybrid_zoom": "up to 12x",
+          "focal_length": "4.35 mm"
+        }
+      },
+      "geometry": {
+        "source": "Lens from existing model specs; approximate sensor/frame from docs/cameras.pdf p.1 and docs/mvp.pdf p.13.",
+        "sensor_width_mm": {
+          "value": 6.17,
+          "mark": "estimate",
+          "note": "Approx 6.17 mm from repository nominal 1/2.3 optical-format estimate; NOT a direct inch conversion or exact measured sensor."
+        },
+        "sensor_height_mm": {
+          "value": 4.55,
+          "mark": "estimate",
+          "note": "Approx 4.55 mm from repository optical-format estimate; physical height not used by current geometry."
+        },
+        "focal_length_mm": {
+          "value": 4.35,
+          "mark": "passport"
+        },
+        "image_width_px": {
+          "value": 4000,
+          "mark": "estimate",
+          "note": "4000 px repository 12 MP 4:3 frame estimate."
+        },
+        "image_height_px": {
+          "value": 3000,
+          "mark": "estimate",
+          "note": "3000 px repository 12 MP 4:3 frame estimate."
+        }
+      }
+    },
+
+    "801-visible-16": {
+      "id": "801-visible-16",
+      "category": "camera",
+      "model": "Geoscan 801 visible camera 16 mm",
+      "aliases": [
+        "801-visible-16"
+      ],
+      "for": [
+        "geoscan801"
+      ],
+      "specs": {
+        "general": {
+          "type": "digital video",
+          "sensor": "1/2.3\", 12 MP",
+          "resolution": "4000 × 3000 (оценка, 4:3)"
+        },
+        "performance": {
+          "wide_angle_lens": "F=4.35 mm",
+          "narrow_angle_lens": "F=16 mm",
+          "hybrid_zoom": "up to 12x",
+          "focal_length": "16 mm"
+        }
+      },
+      "geometry": {
+        "source": "Lens from existing model specs; approximate sensor/frame from docs/cameras.pdf p.1 and docs/mvp.pdf p.13.",
+        "sensor_width_mm": {
+          "value": 6.17,
+          "mark": "estimate",
+          "note": "Approx 6.17 mm from repository nominal 1/2.3 optical-format estimate; NOT a direct inch conversion or exact measured sensor."
+        },
+        "sensor_height_mm": {
+          "value": 4.55,
+          "mark": "estimate",
+          "note": "Approx 4.55 mm from repository optical-format estimate; physical height not used by current geometry."
+        },
+        "focal_length_mm": {
+          "value": 16,
+          "mark": "passport"
+        },
+        "image_width_px": {
+          "value": 4000,
+          "mark": "estimate",
+          "note": "4000 px repository 12 MP 4:3 frame estimate."
+        },
+        "image_height_px": {
+          "value": 3000,
+          "mark": "estimate",
+          "note": "3000 px repository 12 MP 4:3 frame estimate."
+        }
+      }
+    },
+
     "801-visible": {
       "id": "801-visible",
+      "geometry": {"unsupported_reason": "Ambiguous optical configuration: select 801-visible-4-35 or 801-visible-16."},
       "category": "camera",
       "model": "Geoscan 801 visible camera",
       "aliases": ["801 visible", "камера видимого спектра 801"],
@@ -390,6 +654,14 @@
 
     "801-thermal": {
       "id": "801-thermal",
+      "geometry": {
+        "source": "Existing model specs; docs/cameras.pdf pp.1-2; physical dimensions use the repository's assumed 17 um pitch.",
+        "sensor_width_mm": {"value":10.88,"mark":"calculation","note":"640 px * 17 um / 1000 = 10.88 mm. 17 um is a repository typical-class estimate, not confirmed sensor passport."},
+        "sensor_height_mm": {"value":8.704,"mark":"calculation","note":"512 px * 17 um / 1000 = 8.704 mm. Conditional calculation using estimated pitch, not pixel counts as mm."},
+        "focal_length_mm": {"value":9.1,"mark":"passport"},
+        "image_width_px": {"value":640,"mark":"passport"},
+        "image_height_px": {"value":512,"mark":"passport"}
+      },
       "category": "camera",
       "model": "Geoscan 801 thermal camera",
       "aliases": ["801 thermal", "тепловизор 801", "Тепловизионная камера 801"],
@@ -397,7 +669,8 @@
       "specs": {
         "general": {
           "type": "thermal",
-          "sensor": "640x512",
+          "resolution": "640x512 px",
+          "sensor_size": "10.88 x 8.704 mm",
           "pixel_pitch_um": 17,
           "pixel_pitch_note": "типовое для класса 640 × 512"
         },
@@ -952,6 +1225,8 @@
     "pf1b": "pf1b",
     "геоскан pf1b": "pf1b",
     "umc-r10c": "umc-r10c",
+    "umc-r10c-16": "umc-r10c-16",
+    "umc-r10c-20": "umc-r10c-20",
     "sony umc-r10c": "umc-r10c",
     "pollux": "pollux",
     "поллукс": "pollux",
@@ -967,6 +1242,8 @@
     "zv-e10": "zv-e10",
     "sony zv-e10": "zv-e10",
     "801 visible": "801-visible",
+    "801-visible-4-35": "801-visible-4-35",
+    "801-visible-16": "801-visible-16",
     "801 thermal": "801-thermal",
     "тепловизор 801": "801-thermal",
 

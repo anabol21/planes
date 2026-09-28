@@ -14,6 +14,7 @@ import numpy as np
 from shapely.affinity import rotate
 from shapely.geometry import Polygon, shape
 
+from planner.camera import camera_params_from_catalog
 from planner.geometry.swath import swaths_in_piece
 from planner.geometry.trapezoid import trapezoid_decomposition
 from planner.geometry.triangulation import triangulation_decomposition
@@ -31,47 +32,7 @@ G = 9.81
 # ============================================================
 
 def _camera_params_from_catalog(camera: dict[str, Any]) -> dict[str, float]:
-    specs = camera.get("specs", {})
-    general = specs.get("general", {})
-    perf = specs.get("performance", {})
-
-    res_raw = general.get("max_resolution") or general.get("resolution") or "6000x4000"
-    res_w, res_h = 6000, 4000
-    if "x" in str(res_raw).lower():
-        parts = str(res_raw).lower().split("x")
-        try:
-            res_w = int(parts[0].strip())
-            res_h = int(parts[1].strip().split()[0])
-        except (ValueError, IndexError):
-            pass
-
-    sensor_raw = general.get("sensor_size") or general.get("sensor") or "23.5x15.6"
-    sensor_w_mm, sensor_h_mm = 23.5, 15.6
-    for sep in ("×", "x"):
-        if sep in str(sensor_raw):
-            parts = str(sensor_raw).split(sep)
-            try:
-                sensor_w_mm = float(parts[0].strip().split()[-1])
-                sensor_h_mm = float(parts[1].strip().split()[0])
-                break
-            except (ValueError, IndexError):
-                continue
-
-    focal_raw = perf.get("focal_length", "20")
-    focal_mm = 20.0
-    if focal_raw:
-        try:
-            focal_mm = float(str(focal_raw).split()[0])
-        except (ValueError, IndexError):
-            pass
-
-    return {
-        "sensor_w_mm": sensor_w_mm,
-        "sensor_h_mm": sensor_h_mm,
-        "res_w_px": res_w,
-        "res_h_px": res_h,
-        "focal_mm": focal_mm,
-    }
+    return camera_params_from_catalog(camera)
 
 
 def compute_flight_and_swath(

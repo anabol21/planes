@@ -254,9 +254,7 @@ class EnvelopeFilterTest(unittest.TestCase):
         skip = outcome.skips[0]
         self.assertEqual(skip.model_id, "geoscan-201")
         self.assertEqual(skip.camera_id, "sony-zv-e10")
-        self.assertIn("focal_length_mm", skip.missing)
-        self.assertIn("image_width_px", skip.missing)
-        self.assertIn("image_height_px", skip.missing)
+        self.assertEqual(skip.missing, ("focal_length_mm",))
 
         mixed = [
             _board("БВС 1", "geoscan-201", "sony-zv-e10", "аэродром 1", 1),
@@ -575,7 +573,7 @@ class CatalogPipelineTest(unittest.TestCase):
         self.assertEqual(seen, [(10.88, 8.704, 90, 4)])
         self.assertIsInstance(result, Solution)
         text = "\n".join(result.limitations)
-        self.assertIn("pixel_pitch_um=17 um (calculation)", text)
+        self.assertIn("pixel_pitch_um=17 um (estimate)", text)
         self.assertIn("battery.energy_wh=90 Wh (estimate)", text)
         self.assertIn("climb_m_s=4 m/s (estimate)", text)
         self.assertIn("sensor_width_mm=10.88 mm (calculation)", text)
@@ -658,7 +656,7 @@ class CatalogPipelineTest(unittest.TestCase):
         self.assertEqual(outcome.mismatches, ())
         self.assertEqual(outcome.skips, ())
 
-    def test_incomplete_optics_name_the_gap_and_still_log(self) -> None:
+    def test_repaired_optics_run_and_remaining_lens_gap_is_logged(self) -> None:
         profile = _profile()
         boards = [
             _board("БВС 1", "geoscan-201", "sony-zv-e10", "аэродром 1", 1),
@@ -679,10 +677,13 @@ class CatalogPipelineTest(unittest.TestCase):
             "job_gaps",
             fake,
         )
-        self.assertEqual(called, [])
-        self.assertIsInstance(result, Infeasible)
+        # Catalog repair also enables these four records on the unused legacy sweep.
+        # ZV-E10 still skips because a body is not a fixed mission lens.
+        self.assertEqual(len(called), 4)
+        self.assertEqual([data.camera.focal_length_mm for data in called], [35, 35, 4.35, 16])
+        self.assertIsInstance(result, Solution)
         text = "\n".join(result.limitations)
-        self.assertIn("no runnable board", text)
+        self.assertNotIn("no runnable board", text)
         for camera_id in ("sony-zv-e10", "sony-dsc-rx1rm2", "sony-dsc-rx1rm3"):
             self.assertIn(camera_id, text)
             self.assertIn("focal_length_mm", text)
@@ -692,7 +693,7 @@ class CatalogPipelineTest(unittest.TestCase):
         self.assertIn("image_width_px=4000 px (estimate)", text)
         self.assertIn("battery.energy_wh=740 Wh (calculation)", text)
         self.assertIn("90 / 0.02 / 0.008", text)
-        self.assertNotIn("apply_turn_to_base=false is a fixed core default", text)
+        self.assertIn("apply_turn_to_base=false is a fixed core default", text)
         self.assertIn(text, stderr)
         self.assertIn(text, logged)
 

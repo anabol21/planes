@@ -1,15 +1,88 @@
 ---
 workstream: integration
 owner: Team
-task: DEMO-001
+task: CAT-001A
 status: review
-updated: 2026-09-27
+updated: 2026-09-28
 checkpoint: 2026-09-27
-branch: test_merge
+branch: integration/CAT-001A-camera-geometry
 contract_version: v0
 ---
 
 # Integration status
+
+## CAT-001A — current camera repair (review)
+
+Base `origin/main` `2debdd97d04fd2c0e1bf974bef256c69cd49da3f`, target `dev`.
+Brief: `docs/workstreams/integration/CAT-001A.md`. Physical configurations, sources,
+formulas and limitations: `src/planes/model/itog_model/mvp_optimizator/docs/CAT-001A-camera-geometry.md`.
+
+Completed:
+
+- [x] Verified live envelope: runtime `geo_mission` -> model catalog -> camera parser
+  -> existing `compute_flight_and_swath`. The listener has no legacy gibrid solve path.
+- [x] All 12 selectable external camera IDs map to explicit model records. UMC 16/20
+  and 801 visible 4.35/16 are distinct. Eleven configurations resolve; the 13 runtime
+  compatibility edges contain 12 resolving pairs and one explicit ZV-E10 rejection.
+- [x] Model numeric `geometry` is authoritative; no generic defaults. Pollux and
+  thermal physical sizes are calculated; Riebo existing sensor-aspect derivation is
+  reproduced. RX lens/pixel estimates and 801 visible optical-format estimates are
+  explicit. RX1RM3 sensor conflict was resolved using official Sony specifications.
+- [x] Runtime camera metadata values/marks are synchronized. Thermal's assumed
+  17 um pitch is `estimate`, not a fictitious passport or calculation input.
+- [x] Every admitted camera is validated, even on a non-first UAV. ZV-E10 fails with
+  lens-configuration text, `outcome=error`, no plan and no solver call. No invented focal.
+- [x] Provenance and heterogeneous first-camera limitation reach existing limitations/logs.
+- [x] Deterministic tests verify optics, all pairs, finite/positive values, integer
+  pixels, malformed data rejection, geometry effects and unchanged survey types.
+- [x] Semantic/AST baseline comparison proves aircraft physics, batteries,
+  `mvp_estimates`, spectra, compatibility and all geometry functions except the parser
+  wrapper unchanged. Optimizer/pipeline/routing/terrain/backend/frontend/contracts
+  have no changes. Runtime legacy implementation is unchanged; camera metadata also
+  enables repaired RX/801 records if that unused sweep is explicitly called.
+
+In progress / next action:
+
+- [ ] Independent team review and Linux listener regression before any merge/deploy.
+- [ ] Define a concrete ZV-E10 mission lens in a later catalog task if required.
+  No main/dev merge or listener deploy is part of this repair.
+
+Evidence (isolated Python 3.12.14 env in `%TEMP%/planes-cat-001a-test-env`; no production
+requirements change; `PYTHONPATH=src;src/planes/model/itog_model/mvp_optimizator/src`,
+`PYTHONDONTWRITEBYTECODE=1`, `PYTHONIOENCODING=utf-8`):
+
+- `python -m unittest tests.runtime.test_fleet_catalog tests.runtime.test_live_camera_geometry -q`
+  -> 23 tests, OK (final camera parser and spectrum/v0 rejection checks).
+- `python -m unittest tests.runtime.test_geo_kml_stitch tests.runtime.test_stitch_audit_seams -v`
+  -> 23 tests, OK (expected failures=1), 68.087s. Original order-independence assertion
+  remains as expectedFailure because CAT-001A explicitly excludes heterogeneous planner
+  redesign. A separate passing characterization test verifies first-UAV selection.
+- `python -m unittest tests.runtime.test_mis002_envelope tests.runtime.test_mis002_moscow tests.runtime.test_mis002_winner -v`
+  -> 24 tests, OK. Only obsolete catalog expectations changed; no legacy code repair.
+- `python -m pytest -p no:cacheprovider --assert=plain src/planes/model/itog_model/mvp_optimizator/tests/unit/test_geometry.py -q`
+  -> 5 passed.
+- Same pytest command against `src/planes/model/itog_model/mvp_optimizator/tests`
+  -> 11 passed, 107.28s (includes both full pipeline tests).
+- `python -m unittest discover -s tests/runtime -q`
+  -> 76 tests, 6 import errors (`fcntl` unavailable on Windows), 1 expected failure,
+  ZERO assertion failures. This broader run preceded the last three independently
+  passing camera validation/v0/spectrum tests. No production platform workaround.
+- `python scripts/validate_workspace.py` -> Workspace validation: PASS.
+- `git diff --check` -> exit 0. Baseline JSON/AST comparison -> PASS.
+- Initial sandbox-only runs could not create temp TIFF/SQLite/pytest files
+  (WinError 112 / WinError 5); successful runs above used approved unsandboxed testing.
+
+Blockers / decisions: no remaining camera implementation blocker. ZV-E10 intentionally
+requires a lens decision. Exact 801 visible active sensor and thermal pitch remain
+marked repository assumptions, not validated hardware passport. Full HTTP/lock tests
+need Linux `fcntl`. CAT-001B owns UAV endurance/power, vertical-speed and max-wind issues.
+
+Interface impact: NO v0 CONTRACT CHANGE. Four new internal camera configurations,
+unchanged external IDs/compatibility/spectra. Complete validated data or explicit error;
+first-UAV shared geometry remains a documented limitation. No deployment, merge or
+self-approval. Rollback: revert CAT-001A commit, no database/schema migration.
+
+## Earlier DEMO-001 / stitch history (not the current camera repair)
 
 - `review`: сшивка на `cursor/geo-core-kml-stitch`. Тракт рельефа скопирован из `origin/integration/TER-GRI-001` (`src/planes/integration/terrain/`, `opentopography.py`). Разбор KML съёмки и ограничений — `src/planes/integration/kml/`. Браузер отправляет тексты `survey_kml` и `constraints_kml`; третья загрузка препятствий снята. Полигоны ограничений идут в ядро как препятствия: у `MissionInput` отдельного типа запретной зоны нет. Высотный текст копируется и не толкуется. Ключ OpenTopography и скачанные растры в git не входят.
 

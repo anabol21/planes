@@ -39,20 +39,19 @@ _MODEL_IDS = {
     "geoscan-201": "geoscan201",
     "geoscan-801": "geoscan801",
 }
-# Fleet camera ids that ``data/data.json`` search_index names, including the
-# two UMC focals and the two 801 visible focals, which share one core id each.
+# External IDs map to physical model configurations, not camera-body aliases.
 _CAMERA_IDS = {
     "geoscan-pf1b": "pf1b",
-    "sony-umc-r10c-16": "umc-r10c",
-    "sony-umc-r10c-20": "umc-r10c",
+    "sony-umc-r10c-16": "umc-r10c-16",
+    "sony-umc-r10c-20": "umc-r10c-20",
     "geoscan-pollux": "pollux",
     "riebo-r4": "riebo-r4",
     "riebo-r6": "riebo-r6",
     "sony-dsc-rx1rm2": "rx1rm2",
     "sony-dsc-rx1rm3": "rx1rm3",
     "sony-zv-e10": "zv-e10",
-    "geoscan-801-visible-4-35": "801-visible",
-    "geoscan-801-visible-16": "801-visible",
+    "geoscan-801-visible-4-35": "801-visible-4-35",
+    "geoscan-801-visible-16": "801-visible-16",
     "geoscan-801-thermal": "801-thermal",
 }
 _SURVEY_TYPES = {
@@ -195,6 +194,11 @@ def _mission(
             continue
         core_model = _translate_model(model_id, catalog)
         core_camera = _translate_camera(camera_id, catalog)
+        from planner.camera import camera_provenance_notes
+
+        for line in camera_provenance_notes(catalog.get_camera(core_camera)):
+            if line not in notes:
+                notes.append(line)
         admitted.append((board, core_model, core_camera))
     if not admitted:
         if notes:
@@ -202,6 +206,10 @@ def _mission(
         else:
             notes.append("no runnable board")
         return None, notes
+
+    if len({camera for _board, _model, camera in admitted}) > 1:
+        notes.append("shared swath geometry uses the first admitted UAV camera; "
+                     "heterogeneous per-camera coverage is not implemented")
 
     Area = symbols["Area"]
     Obstacle = symbols["Obstacle"]
@@ -427,9 +435,15 @@ def _translate_camera(camera_id: str, catalog: Any) -> str:
     if mapped is None:
         raise ValueError(f"unknown camera: {camera_id}")
     try:
-        catalog.get_camera(mapped)
+        camera = catalog.get_camera(mapped)
     except KeyError as exc:
         raise ValueError(f"geo core has no camera {mapped}") from exc
+    from planner.camera import camera_params_from_catalog
+
+    try:
+        camera_params_from_catalog(camera)
+    except ValueError as exc:
+        raise ValueError(f"external camera {camera_id}: {exc}") from exc
     return mapped
 
 

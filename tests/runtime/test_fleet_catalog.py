@@ -147,33 +147,43 @@ class FleetCatalogTest(unittest.TestCase):
         for field in _OPTIC:
             self.assertTrue(_marked(pf1b[field], "passport"), field)
         pollux = cameras["geoscan-pollux"]
-        self.assertEqual(pollux["sensor_width_mm"], {"value": 5.04, "mark": "calculation"})
-        self.assertEqual(pollux["sensor_height_mm"], {"value": 3.78, "mark": "calculation"})
-        self.assertIn("6.3 mm", pollux["source"])
+        self.assertEqual(pollux["sensor_width_mm"]["value"], 5.04)
+        self.assertEqual(pollux["sensor_height_mm"]["value"], 3.78)
+        self.assertTrue(_marked(pollux["sensor_width_mm"], "calculation"))
+        self.assertIn("6.3 mm", pollux["sensor_width_mm"]["note"])
         self.assertEqual([band["value"] for band in pollux["bands"]], [470, 560, 668, 720, 840])
-        self.assertEqual(cameras["riebo-r4"]["image_width_px"], {"value": 8204, "mark": "calculation"})
-        self.assertEqual(cameras["riebo-r4"]["image_height_px"], {"value": 5485, "mark": "calculation"})
-        self.assertEqual(cameras["riebo-r6"]["image_width_px"], {"value": 9552, "mark": "calculation"})
-        self.assertEqual(cameras["riebo-r6"]["image_height_px"], {"value": 6386, "mark": "calculation"})
+        for camera_id, width, height in (("riebo-r4", 8204, 5485), ("riebo-r6", 9552, 6386)):
+            self.assertEqual(cameras[camera_id]["image_width_px"]["value"], width)
+            self.assertEqual(cameras[camera_id]["image_height_px"]["value"], height)
+            self.assertTrue(_marked(cameras[camera_id]["image_width_px"], "calculation"))
+            self.assertTrue(cameras[camera_id]["image_width_px"]["note"])
         umc = cameras["sony-umc-r10c-16"]
-        self.assertEqual(umc["focal_length_mm"], {"value": 16, "mark": "estimate"})
+        self.assertEqual(umc["focal_length_mm"]["value"], 16)
+        self.assertTrue(_marked(umc["focal_length_mm"], "estimate"))
         self.assertEqual(cameras["sony-umc-r10c-20"]["focal_length_mm"]["value"], 20)
-        for camera_id in ("sony-dsc-rx1rm2", "sony-dsc-rx1rm3", "sony-zv-e10"):
+        for camera_id in ("sony-dsc-rx1rm2", "sony-dsc-rx1rm3"):
             camera = cameras[camera_id]
-            self.assertIsNone(camera["focal_length_mm"])
-            self.assertIsNone(camera["image_width_px"])
-            self.assertIn("focal_length_mm", camera["gaps"])
+            self.assertEqual(camera["focal_length_mm"]["value"], 35)
+            self.assertTrue(_marked(camera["image_width_px"], "estimate"))
+            self.assertEqual(camera["gaps"], [])
+        zv = cameras["sony-zv-e10"]
+        self.assertIsNone(zv["focal_length_mm"])
+        self.assertEqual(zv["gaps"], ["focal_length_mm"])
+        self.assertIn("selected mission lens", zv["live_geometry_error"])
         visible = cameras["geoscan-801-visible-4-35"]
-        self.assertIsNone(visible["sensor_width_mm"])
-        self.assertIsNone(visible["sensor_height_mm"])
-        self.assertIn("1/2.3", visible["source"])
+        self.assertEqual(visible["sensor_width_mm"]["value"], 6.17)
+        self.assertEqual(visible["sensor_height_mm"]["value"], 4.55)
+        self.assertTrue(_marked(visible["sensor_width_mm"], "estimate"))
+        self.assertIn("1/2.3", visible["sensor_width_mm"]["note"])
         self.assertEqual(visible["image_width_px"]["mark"], "estimate")
         thermal = cameras["geoscan-801-thermal"]
         self.assertEqual(thermal["spectra"], ["infrared"])
-        self.assertEqual(thermal["pixel_pitch_um"], {"value": 17, "mark": "calculation", "note": "типовое для класса 640 × 512"})
-        self.assertEqual(thermal["sensor_width_mm"], {"value": 10.88, "mark": "calculation"})
-        self.assertEqual(thermal["sensor_height_mm"], {"value": 8.704, "mark": "calculation"})
-        self.assertIn("8–14", thermal["source"])
+        self.assertEqual(thermal["pixel_pitch_um"]["value"], 17)
+        self.assertTrue(_marked(thermal["pixel_pitch_um"], "estimate"))
+        self.assertEqual(thermal["sensor_width_mm"]["value"], 10.88)
+        self.assertEqual(thermal["sensor_height_mm"]["value"], 8.704)
+        self.assertTrue(_marked(thermal["sensor_width_mm"], "calculation"))
+        self.assertIn("17 um", thermal["sensor_width_mm"]["note"])
 
 
 if __name__ == "__main__":
