@@ -261,7 +261,10 @@ class StitchSeamContractTest(unittest.TestCase):
 
     def test_constraint_altitude_text_is_not_a_height(self) -> None:
         scenario = _scenario()
-        scenario["constraints_kml"] = _FAR_CONSTRAINTS
+        scenario["constraints_kml"] = _FAR_CONSTRAINTS.replace(
+            "10.000,10.000,800 10.100,10.000,800 10.100,10.100,800 10.000,10.100,800 10.000,10.000,800",
+            "37.602,55.751,800 37.604,55.751,800 37.604,55.752,800 37.602,55.752,800 37.602,55.751,800",
+        )
         result, seen = self._solve(scenario, "job_audit_alt")
         self.assertIsInstance(result, Solution)
         assert isinstance(result, Solution)
@@ -273,7 +276,7 @@ class StitchSeamContractTest(unittest.TestCase):
         self.assertNotIn(800, [value for point in parsed["ring"] for value in point])
         self.assertTrue(all(len(point) == 2 for point in parsed["ring"]))
 
-    def test_terrain_bbox_is_the_survey_only(self) -> None:
+    def test_terrain_bbox_uses_survey_and_aerodrome_not_constraints(self) -> None:
         scenario = _scenario()
         scenario["constraints_kml"] = _FAR_CONSTRAINTS
         scenario["aerodromes"] = [{"id": "аэродром 1", "lat": 10.05, "lon": 10.05}]
@@ -281,8 +284,8 @@ class StitchSeamContractTest(unittest.TestCase):
         self.assertIsInstance(result, Solution)
         self.assertEqual(len(self._calls), 1)
         query = self._calls[0]
-        self.assertIn("west=37.60000000", query)
-        self.assertIn("south=55.75000000", query)
+        self.assertIn("west=10.05000000", query)
+        self.assertIn("south=10.05000000", query)
         self.assertIn("east=37.60800000", query)
         self.assertIn("north=55.75400000", query)
         self.assertNotIn("west=10.00000000", query)

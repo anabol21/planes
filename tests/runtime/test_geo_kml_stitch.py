@@ -302,7 +302,7 @@ class GeoKmlStitchTest(unittest.TestCase):
             self.assertTrue(Path(dem_file).is_file())
             self.assertEqual(len(calls), 1)
             self.assertIn("west=37.60000000", calls[0])
-            self.assertIn("south=55.75000000", calls[0])
+            self.assertIn("south=55.74800000", calls[0])
             self.assertIn("east=37.60800000", calls[0])
             self.assertIn("north=55.75400000", calls[0])
             self.assertNotIn("test-key-not-a-secret", "\n".join(result.limitations))

@@ -16,8 +16,16 @@ from typing import Any
 
 from planes.integration.kml.constraints import (
     ConstraintPolygon,
+    parse_constraint_points,
     parse_constraint_polygons,
     parse_survey_polygon,
+)
+from planes.runtime.interest_box import (
+    InterestRectangle,
+    clip_constraint_points,
+    clip_constraint_polygons,
+    interest_rectangle,
+    rectangle_geometry,
 )
 from planes.integration.terrain.opentopography import (
     TerrainAcquisitionError,
@@ -84,8 +92,19 @@ def solve_envelope(problem: Problem, deadline: float) -> Solution | Infeasible |
     if not isinstance(scenario, dict):
         raise ValueError("missing fields: scenario")
     survey_polygons = parse_survey_polygon(_text(scenario.get("survey_kml"), "survey_kml"))
-    constraints = parse_constraint_polygons(_optional_text(scenario.get("constraints_kml")))
-    dem_path = _acquire_dem(survey_polygons)
+    constraint_text = _optional_text(scenario.get("constraints_kml"))
+    constraints = parse_constraint_polygons(constraint_text)
+    points = parse_constraint_points(constraint_text)
+    aerodromes = _aerodromes(scenario.get("aerodromes"))
+    rectangle = interest_rectangle(
+        [polygon.ring for polygon in survey_polygons],
+        [(item["lon"], item["lat"]) for item in aerodromes],
+    )
+    constraints = clip_constraint_polygons(constraints, rectangle)
+    # A point is not an obstacle. An outside point is dropped and does not
+    # enter the terrain request. Routes never enter the rectangle pool.
+    clip_constraint_points(points, rectangle)
+    dem_path = _acquire_dem(rectangle)
     dem = _load_geotiff(dem_path)
     mission, notes, boards = _mission(
         scenario,
@@ -143,18 +162,12 @@ def solve_envelope(problem: Problem, deadline: float) -> Solution | Infeasible |
     )
 
 
-def _acquire_dem(polygons: list[ConstraintPolygon]) -> Path:
-    coordinates = [
-        [[[lon, lat] for lon, lat in polygon.ring]]
-        for polygon in polygons
-    ]
-    if len(coordinates) == 1:
-        geometry = {"type": "Polygon", "coordinates": coordinates[0]}
-    else:
-        geometry = {"type": "MultiPolygon", "coordinates": coordinates}
+def _acquire_dem(rectangle: InterestRectangle) -> Path:
+    """COP30 bounds and the cache key are this rectangle. No padding."""
+    geometry = rectangle_geometry(rectangle)
     try:
         return Path(
-            acquire_terrain_for_area(geometry, survey_crs="EPSG:4326")
+            acquire_terrain_for_area(geometry, survey_crs=rectangle.crs)
         ).resolve()
     except TerrainAcquisitionError as exc:
         raise ValueError(str(exc)) from exc
