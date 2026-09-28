@@ -180,10 +180,15 @@ function outerRing(polygon: Element): { ring: number[][]; height_m: number | nul
   if (!coordinates) return null;
   const points = parseCoordinateTuples(coordinates.textContent);
   if (points.length < 3) return null;
-  const altitudes = points.flatMap((point) => (point.alt === null ? [] : [point.alt]));
+  let maxAltitude: number | null = null;
+  for (const point of points) {
+    if (point.alt !== null) {
+      maxAltitude = maxAltitude === null ? point.alt : Math.max(maxAltitude, point.alt);
+    }
+  }
   return {
     ring: points.map((point) => [point.lon, point.lat]),
-    height_m: altitudes.length ? Math.max(...altitudes) : null,
+    height_m: maxAltitude,
   };
 }
 

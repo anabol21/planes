@@ -1,15 +1,45 @@
 ---
 workstream: web
 owner: Integration / Web
-task: WEB-002
+task: FE-001
 status: review
-updated: 2026-09-27
-checkpoint: 2026-09-22
-branch: frontend/WEB-002-on-test-merge
+updated: 2026-09-28
+checkpoint: 2026-09-28
+branch: integration/FE-001-large-kml-altitudes
 contract_version: v0
 ---
 
 # Web status
+
+## FE-001 — Large KML altitude rings
+
+- State: `review`; base `20783dce90df670c09e1adcc16f5729d7463601d`, target `dev`.
+- [x] User repair request promoted to `docs/workstreams/web/FE-001.md`.
+- [x] Scalar O(n) altitude maximum; no altitude array or spread arguments.
+- [x] Preserve no/invalid altitude null, mixed/negative heights and signed zeros.
+- [x] Generated 225,000-point extraction and upload/preview/submit/fetch regressions.
+- [x] Relevant kml/scenario/api/FE-001 suite: 51 PASS; full frontend: 77 PASS in 9 files.
+- [x] Typecheck/build, workspace validation and whitespace checks PASS.
+- [x] Native Chrome SMALL/A_TEXT/B_COORDINATES: all stages PASS, fetch YES;
+  B has 224,966 altitude points, request 1,800,944 bytes, no RangeError.
+- [x] Real Downloads obstacles KML: upload ready, preview/submit/fetch PASS,
+  request 5,327,423 bytes; not established as the original failing user file.
+- Next action: feature-branch handoff and independent review before merge to `dev`.
+- Evidence: `pnpm exec vitest run src/kml.test.ts src/scenario.test.ts src/api.test.ts src/fe001.test.ts`
+  (51 PASS); `pnpm test` (77 PASS); `pnpm build` (tsc/Vite PASS);
+  `python -B scripts/validate_workspace.py` (PASS); `git diff --check` (PASS).
+  Native browser artifacts in OS temp `fe-001-profile-FtnKPs/evidence.json`
+  and `performance.md`; browser console errors/warnings: none.
+- Performance (single runs, ms; parseKml / extraction / preview / submit):
+  SMALL 2.1 / 1.2 / 1.3 / 0.3; A_TEXT 36.2 / 32.5 / 33.1 / 41.0;
+  B_COORDINATES 130.9 / 136.3 / 123.5 / 126.3.
+- Blockers/decisions: none for this repair. Measurements use mocked fetch and
+  production functions, not a backend solve or a full React render profiler.
+  Existing build warning: MapLibre lazy chunk exceeds 500 kB.
+- Interface/downstream impact: NO v0 CONTRACT CHANGE; HTTP-001, backend/runtime,
+  raw KML transport and all domain payloads unchanged. Large outer-ring
+  validation can now complete before submission.
+- Rollback: revert FE-001; no schema/data migration. No merge/deployment/self-approval.
 
 On `test_merge` the form sends raw `survey_kml` and `constraints_kml`. The picture is `docs/architecture/STITCH_PICTURE.md`. The sentence below is the pre-stitch path on `main`.
 
