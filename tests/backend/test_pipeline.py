@@ -15,7 +15,7 @@ from wsgiref.simple_server import WSGIRequestHandler, make_server
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 
-from planes.backend.api import BackendAPI
+from planes.backend.api import MAX_BODY_BYTES, BackendAPI
 from planes.backend.fake_engine import FakeOptimizationEngine
 from planes.backend.service import BackendService, ResultNotReadyError
 from planes.backend.store import SQLiteJobStore
@@ -150,6 +150,58 @@ class BackendPipelineTests(unittest.TestCase):
         status, response = self.call_raw_api(BackendAPI(self.service), "POST", "/jobs", b"{")
         self.assertEqual("400 Bad Request", status)
         self.assertEqual("invalid_request", response["error"])
+
+    def test_empty_request_body_returns_400(self) -> None:
+        self.assertEqual(10 * 1024 * 1024, MAX_BODY_BYTES)
+        status, response = self.call_raw_api(BackendAPI(self.service), "POST", "/jobs", b"")
+        self.assertEqual("400 Bad Request", status)
+        self.assertEqual("invalid_request", response["error"])
+        self.assertEqual(
+            f"request body must be between 1 and {MAX_BODY_BYTES} bytes",
+            response["message"],
+        )
+
+    def test_request_body_over_ten_mib_returns_400(self) -> None:
+        status, response = self.call_raw_api(
+            BackendAPI(self.service),
+            "POST",
+            "/jobs",
+            b"{}",
+            content_length=MAX_BODY_BYTES + 1,
+        )
+        self.assertEqual("400 Bad Request", status)
+        self.assertEqual("invalid_request", response["error"])
+        self.assertEqual(
+            f"request body must be between 1 and {MAX_BODY_BYTES} bytes",
+            response["message"],
+        )
+
+    def test_request_body_over_old_megabyte_ceiling_is_accepted(self) -> None:
+        payload = {
+            "scenario": {
+                "name": "large kml",
+                "crs": "EPSG:4326",
+                "survey_kml": "x" * 1_100_000,
+            },
+            "optimization": {"test_outcome": "feasible"},
+            "seed": 1,
+        }
+        encoded = json.dumps(payload).encode("utf-8")
+        self.assertGreater(len(encoded), 1_000_000)
+        self.assertLessEqual(len(encoded), MAX_BODY_BYTES)
+        status, response = self.call_raw_api(
+            BackendAPI(self.service), "POST", "/jobs", encoded
+        )
+        self.assertEqual("202 Accepted", status)
+        self.assertEqual("queued", response["state"])
+
+    def test_non_object_json_returns_400(self) -> None:
+        status, response = self.call_raw_api(
+            BackendAPI(self.service), "POST", "/jobs", b"[]"
+        )
+        self.assertEqual("400 Bad Request", status)
+        self.assertEqual("invalid_request", response["error"])
+        self.assertEqual("request body must be a JSON object", response["message"])
 
     def test_missing_scenario_returns_400(self) -> None:
         status, response = self.call_api(
@@ -328,6 +380,7 @@ class BackendPipelineTests(unittest.TestCase):
         method: str,
         path: str,
         body: bytes = b"",
+        content_length: int | str | None = None,
     ) -> tuple[str, dict[str, Any]]:
         captured: dict[str, Any] = {}
 
@@ -335,10 +388,11 @@ class BackendPipelineTests(unittest.TestCase):
             captured["status"] = status
             captured["headers"] = headers
 
+        declared = str(len(body) if content_length is None else content_length)
         environ = {
             "REQUEST_METHOD": method,
             "PATH_INFO": path,
-            "CONTENT_LENGTH": str(len(body)),
+            "CONTENT_LENGTH": declared,
             "wsgi.input": io.BytesIO(body),
         }
         response_body = b"".join(api(environ, start_response))

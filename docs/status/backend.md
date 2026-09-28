@@ -1,16 +1,17 @@
 ---
 workstream: backend
 owner: Ruslan
-task: INT-001
-status: review
-updated: 2026-09-27
+task: WRAP-001
+status: in_progress
+updated: 2026-09-28
 checkpoint: 2026-09-23
-branch: test_merge
+branch: cursor/backend-10mib-body-limit-2a72
 contract_version: v0
 ---
 
 # Backend status
 
+- `in_progress`: WRAP-001 — local `POST /jobs` body ceiling raised from `1_000_000` bytes to `10 * 1024 * 1024` (`MAX_BODY_BYTES`). Empty/non-positive `Content-Length` is still rejected; the payload must still be a JSON object. Runtime listener `MAX_BODY_BYTES` (32 MiB) is unchanged. Covers `REQ-PROD-001` (web submit) and large KML inputs `REQ-IN-003`, `REQ-IN-005`, `REQ-IN-006`. Limit size itself is a team operational choice under `OPEN-021`, not a customer number. `OPEN-001` remains open.
 - `planned`: RUS-002 — рельеф из отдельного KML местности в матрицы `precompute`. Бриф: `docs/workstreams/model/RUS-002.md`.
 
 On `test_merge` the backend Python is unchanged. The scenario snapshot carries raw `survey_kml` and `constraints_kml`. The stitched listener path is `docs/architecture/STITCH_PICTURE.md`. The rest of this paragraph is the pre-stitch path on `main`.
@@ -34,11 +35,12 @@ Live path on `main`: the form at `127.0.0.1:5173` sends `aerodromes` and `boards
 
 ## In progress
 
+- [ ] WRAP-001: raise local API `MAX_BODY_BYTES` to 10 MiB and prove the old 1 MB ceiling no longer rejects a valid submit.
 - [ ] Independent review and agreement on the future shared JSON contract/fixtures.
 
 ## Next action
 
-The live worker path is `--engine runtime`. On `test_merge` read `docs/architecture/STITCH_PICTURE.md` before `docs/architecture/agent-brief-runtime.md`. That brief records the pre-stitch listener at git `da3da56`. The earlier note that a controlled smoke was not recorded in this file stays as checkpoint evidence.
+Run `python -m unittest discover -s tests/backend -v` and the focused body-size cases, then hand off the PR against `wrap/WRAP-001-shell-around-core`. Runtime compute listener stays at 32 MiB.
 
 ## Evidence
 
@@ -89,6 +91,7 @@ The commands above follow the CLI default `--engine fake` and are the recorded p
 
 ## Interface changes
 
+- `POST /jobs` now accepts request bodies up to `10 * 1024 * 1024` bytes (`10485760`). The `ValidationError` text is `request body must be between 1 and 10485760 bytes`. Shared contracts, runtime listener, and optimizer code are unchanged.
 - Added a backend-local `OptimizationEngine.solve(ComputeRequest) -> ComputeResponse` port matching `INTERFACES_V0.md`; no shared contract or architecture file changed.
 - Runtime can supply an adapter through worker composition without changing API, service, or storage code.
 - Runtime mode converts through runtime-owned `parse_request` and `response_to_dict`; fake-only optimization fields are not forwarded.
