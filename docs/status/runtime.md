@@ -1,15 +1,17 @@
 ---
 workstream: runtime
 owner: Misha
-task: MIS-001
+task: WRAP-001
 status: review
-updated: 2026-09-27
-checkpoint: 2026-09-27
-branch: test_merge
+updated: 2026-09-28
+checkpoint: 2026-09-28
+branch: cursor/dedupe-limitations-829a
 contract_version: v0
 ---
 
 # Runtime status
+
+- `review`: WRAP-001, повтор строк в `solver_report.limitations`. ISO-паковщик на `main` пишет одну и ту же фразу на каждую непокрытую полосу (`БВС 1: one swath exceeds endurance even with best pads`) и ещё раз кладёт сводку `uncovered swaths=N` в `CoverageInfeasible.limitations`. Ядро и `fields2cover_engine.py` не менялись. Обвязка оставляет первое вхождение каждой одинаковой строки: `unique_limitations` в `make_response` и `parse_response`, сборка строк в `geo_mission`, слияние в `physical_check`. Разные тексты (`uncovered swaths=N: …` и `uncovered_swaths=N`) остаются. Это гигиена канала ограничений, не новый расчёт. Зависит от `REQ-PROD-001`. `OPEN-008` не закрыт: текст про выносливость не доказывает модель заряда.
 
 - `review`: WRAP-001, коды физичности. Модуль `physical_check` читает готовый план и вход и дописывает код с коротким русским текстом в уже существующие `limitations`. Маршрут заново не строится, `fields2cover_engine.py` не менялся. Коды: `PHYS-ENDURANCE`, `PHYS-VPP-INSIDE`, `PHYS-AIRSPACE`, `PHYS-DEM`, `PHYS-TIMEOUT`, `PHYS-NO-PLAN`. Неразобранный текст высоты остаётся консервативным отказом и называется кодом только если готовый план уже содержит это нарушение. Сравнение AGL/AMSL с `alt_m` и перевод FL (1 FL = 100 ft, 1 ft = 0.3048 m) — командные допущения, не требования заказчика (`OPEN-012`). Выносливость здесь — `flight_time_s` справочника, не заряд (`OPEN-008`, `REQ-PLAN-002` не закрыт). Зависит от `REQ-PLAN-001`, `REQ-PLAN-003`, `REQ-PLAN-005`, `REQ-PLAN-006`. `OPEN-004` не закрыт: код не объявляет маршрут допустимым.
 
@@ -39,14 +41,15 @@ contract_version: v0
 - [x] Geo-core stitch. Envelope with aerodromes and boards calls `planner.solver.pipeline` of the copied core at `724d1da` (`src/planes/model/itog_model/mvp_optimizator`). Outcomes stay `feasible` / `infeasible` / `timed_out` / `error`; the plan is `mission_plan`. GeoTIFF is loaded with `planner.io.dem.loader.load_dem`. A `FlatDEM` is an explicit error. `dem.py` and the `dem/` package were not deleted. Adapter builds `MissionInput`: survey polygon EPSG:4326, constraint polygons as `Obstacle` (`height_m` 0), aerodromes as `VPP` (`alt_m` 0), boards as `UAVConfig` with id translation, GSD, criterion, wind, side overlap as `overlap_x`, forward overlap as `overlap_long`, `dem_file`. Fleet matrix is `docs/architecture/FLEET_CATALOG_SWEEP.md`. `fleet_catalog.json` was not filled with synthetic values.
 - [x] Listener geo-core only. `solver.solve` does not call `run`, `run_optimizer`, `solve_milp`, or `solve_metaheuristic`. An envelope with `aerodromes` and `boards` stays on `geo_mission.solve_envelope` (`run_one_angle`, trapezoid by default, OR-Tools routing). A one-card `takeoff` + `uav` scenario, and any other scenario that is not that envelope, raises `ValueError` before any gibrid import. The message says the listener only accepts the geo envelope. `pads` and `uav_types` stay rejected. `enumeration/outer.py` stays. `is_outer_scenario` and `load_catalog` stay. The listener does not call `run_candidates` or `select_winner`. `src/planes/model/itog_model/**` and the gibrid package body were not edited.
 - [x] MIS-002 outer enumeration reads the fleet catalog. A candidate is one board card whose camera `spectra` contain `required_spectrum`. The server checks the model–camera compatibility edge. `InputData.takeoff` is the chosen aerodrome. `uav` is the model flight fields with `count` equal to the card count. `camera` is that camera's five optic numbers. A spectrum mismatch is recorded (model id, camera id, required spectrum, camera spectra) and does not call the core. If no board covers the spectrum, the result is infeasible (`no camera covers required spectrum`), even when some of those cards also lack numbers. A spectrum match with incomplete optics or flight numbers is skipped with model id, camera id, and the missing fields, and does not call the core. No runnable card that did cover the spectrum does not call the core (`no runnable board`). More than 16 runnable cards is an error. A camera with no edge to the selected model is rejected. Calls stay independent and follow card order. A single takeoff/uav scenario stays on the one-call path and does not read the catalog. An envelope that still has `pads` or `uav_types` is rejected. `solver.solve` still picks the best successful call (`min_time` → `mission.mission_time_s`, `min_flight_hours` → `mission.total_flight_time_s`) and writes the winning aerodrome id, board id, model id, and camera id into `limitations`.
+- [x] WRAP-001 unique limitations. `unique_limitations` keeps first-seen identical strings in `make_response`, `parse_response`, `geo_mission` line assembly, and `physical_check` merge. `fields2cover_engine.py` and the optimizer body were not edited.
 
 ## In progress
 
-- None for the stitch code. Teammate picture: `docs/architecture/STITCH_PICTURE.md`. The listener `planes-compute.service` was fast-forwarded to `debcd9c` for the live stitch run (health `live`, contract `v0`). Commit `c04786a` adds tests only and was not deployed. Paragraphs that name git `da3da56` describe the listener before that move. The form sends `survey_kml` and `constraints_kml` with `aerodromes` and `boards`. SQLite stores the scenario unchanged.
+- None. Limitation-string unique is on `cursor/dedupe-limitations-829a` from `wrap/WRAP-001-shell-around-core`.
 
 ## Next action
 
-Read `docs/architecture/STITCH_PICTURE.md` before the `da3da56` briefs. On `test_merge`, `enumeration/outer.py` is not the live aerodromes-and-boards path. The listener no longer has a gibrid meta path. A job is solved only by the geo envelope. The geo core reads `power_const_w` 220 W. The old enumeration module still substitutes `90`/`0.02`/`0.008` for Geoscan 201, and the listener does not call it. Constraint altitude text is copied and not interpreted. `src/planes/contracts/` was not edited. The listener for the live stitch run was `debcd9c`; this checkout removes the gibrid call from `solver.solve`.
+Review the unique-limitations landing on `cursor/dedupe-limitations-829a`. The ISO packer on `main` still appends one endurance line per uncovered swath; this wrap shell drops repeats at the report boundary. The optimizer body was not patched.
 
 ## Evidence
 

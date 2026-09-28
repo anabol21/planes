@@ -34,6 +34,7 @@ from planes.integration.terrain.opentopography import (
 from planes.runtime.enumeration.outer import load_catalog
 from planes.runtime.logs import record
 from planes.runtime.solver import Problem
+from planes.runtime.types import unique_limitations
 
 
 _CORE_SRC = (
@@ -114,11 +115,11 @@ def solve_envelope(problem: Problem, deadline: float) -> Solution | Infeasible |
         dem=dem,
     )
     if mission is None:
-        lines = tuple(notes) or (_NO_SPECTRUM,)
+        lines = unique_limitations(notes) or (_NO_SPECTRUM,)
         _log(problem.job_id, lines)
         return _checked(Infeasible(lines), scenario)
     if time.monotonic() >= deadline:
-        lines = (_TIME_LIMIT, *notes)
+        lines = unique_limitations((_TIME_LIMIT, *notes))
         _log(problem.job_id, lines)
         return _checked(TimedOut(lines), scenario)
     from planes.runtime.fields2cover_engine import (
@@ -132,13 +133,13 @@ def solve_envelope(problem: Problem, deadline: float) -> Solution | Infeasible |
     try:
         candidate = _run_pipeline(mission)
     except BudgetExhausted:
-        lines = (_TIME_LIMIT, *notes)
+        lines = unique_limitations((_TIME_LIMIT, *notes))
         _log(problem.job_id, lines)
         return _checked(TimedOut(lines), scenario)
     finally:
         reset_context(token)
     if candidate is None:
-        lines = ("No valid candidates found", *notes)
+        lines = unique_limitations(("No valid candidates found", *notes))
         _log(problem.job_id, lines)
         return _checked(Infeasible(lines), scenario)
     plan = _plan(candidate, mission, str(dem_path), constraints)
@@ -147,11 +148,15 @@ def solve_envelope(problem: Problem, deadline: float) -> Solution | Infeasible |
         objective_value = float(candidate.C_max_s)
     else:
         objective_value = float(candidate.flight_hours_s)
-    lines = (
-        _NOT_GLOBALLY_OPTIMAL,
-        "constraint altitude text is copied and not interpreted; polygons are obstacles",
-        f"dem_file: {dem_path}",
-        *notes,
+    extra = getattr(candidate, "extra_limitations", ()) or ()
+    lines = unique_limitations(
+        (
+            _NOT_GLOBALLY_OPTIMAL,
+            "constraint altitude text is copied and not interpreted; polygons are obstacles",
+            f"dem_file: {dem_path}",
+            *notes,
+            *extra,
+        )
     )
     _log(problem.job_id, lines)
     return _checked(
@@ -240,7 +245,7 @@ def _mission(
             notes.insert(0, _NO_SPECTRUM)
         else:
             notes.append("no runnable board")
-        return None, notes, ()
+        return None, list(unique_limitations(notes)), ()
 
     Area = symbols["Area"]
     Obstacle = symbols["Obstacle"]
@@ -356,7 +361,7 @@ def _mission(
         params=params,
         dem=dem,
     )
-    return mission, notes, tuple(boards)
+    return mission, list(unique_limitations(notes)), tuple(boards)
 
 
 def _params(scenario: dict[str, Any], criterion_name: str, dem_path: Path, symbols: dict[str, Any]) -> Any:

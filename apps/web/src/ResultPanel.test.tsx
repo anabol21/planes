@@ -47,6 +47,35 @@ describe("ResultPanel mission map gating", () => {
     expect(document.querySelector(".limitations")?.textContent).toContain("PHYS-AIRSPACE");
   });
 
+  it("shows identical limitation lines once and keeps distinct remarks", () => {
+    const reason = "uncovered swaths=5378: a swath exceeds endurance even with recharge and best pads";
+    const perUav = "БВС 1: one swath exceeds endurance even with best pads";
+    const result = {
+      ...fixture,
+      solver_report: {
+        ...fixture.solver_report,
+        limitations: [
+          reason,
+          reason,
+          reason,
+          "uncovered_swaths=5378",
+          perUav,
+          perUav,
+          perUav,
+          "PHYS-ENDURANCE: Вылет длиннее выносливости борта",
+        ],
+      },
+    };
+    render(<ResultPanel result={result as JobResult} />);
+    const items = [...document.querySelectorAll(".limitations li")].map((item) => item.textContent);
+    expect(items).toEqual([
+      reason,
+      "uncovered_swaths=5378",
+      perUav,
+      "PHYS-ENDURANCE: Вылет длиннее выносливости борта",
+    ]);
+  });
+
   it("renders the map for a completed feasible result", async () => {
     render(<ResultPanel result={fixture as JobResult} />);
     expect(await screen.findByTestId("mission-map")).toBeTruthy();

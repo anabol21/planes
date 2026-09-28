@@ -118,7 +118,9 @@ def annotate_result(result: Any, scenario: dict[str, Any] | None) -> Any:
     )
     if not extra:
         return result
-    merged = tuple(result.limitations) + extra
+    from planes.runtime.types import unique_limitations
+
+    merged = unique_limitations((*result.limitations, *extra))
     if isinstance(result, Solution):
         return Solution(
             mission_plan=result.mission_plan,

@@ -104,10 +104,22 @@ function readNumber(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
+function uniqueStrings(items: string[]): string[] {
+  const seen = new Set<string>();
+  const ordered: string[] = [];
+  for (const item of items) {
+    if (seen.has(item)) continue;
+    seen.add(item);
+    ordered.push(item);
+  }
+  return ordered;
+}
+
 function getLimitations(report: JsonObject): string[] {
-  return Array.isArray(report.limitations)
+  const raw = Array.isArray(report.limitations)
     ? report.limitations.filter((item): item is string => typeof item === "string")
     : [];
+  return uniqueStrings(raw);
 }
 
 function SolverSummary({ report }: { report: JsonObject }) {
@@ -132,9 +144,11 @@ function SolverSummary({ report }: { report: JsonObject }) {
 }
 
 function diagnosticCodes(report: JsonObject): string[] {
-  return getLimitations(report)
-    .map((item) => item.split(":", 1)[0])
-    .filter((code) => /^PHYS-[A-Z0-9-]+$/.test(code));
+  return uniqueStrings(
+    getLimitations(report)
+      .map((item) => item.split(":", 1)[0])
+      .filter((code) => /^PHYS-[A-Z0-9-]+$/.test(code)),
+  );
 }
 
 function objectiveMetric(plan: MissionPlan): { label: string; value: string } {

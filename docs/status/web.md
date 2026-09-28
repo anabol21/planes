@@ -1,15 +1,17 @@
 ---
 workstream: web
 owner: Integration / Web
-task: WEB-002
+task: WRAP-001
 status: review
-updated: 2026-09-27
-checkpoint: 2026-09-22
-branch: frontend/WEB-002-on-test-merge
+updated: 2026-09-28
+checkpoint: 2026-09-28
+branch: cursor/dedupe-limitations-829a
 contract_version: v0
 ---
 
 # Web status
+
+WRAP-001, панель «Ограничения и замечания». `getLimitations` оставляет первое вхождение каждой одинаковой строки, порядок остальных не меняется. Панель больше не повторяет одну фразу про выносливость и непокрытые полосы. Разные тексты остаются. `mission_plan` не переписывается. Это отображение, не новый расчёт.
 
 WRAP-001, сводка и карта. Список «Задание backend» снят. Панель показывает исход, число БВС, число вылетов, метрику, которую солвер уже вернул (`C_max` как `mission_time_s` при `min_time`, суммарный налёт как `total_flight_time_s` при `min_flight_hours`), и коды `PHYS-*`. На карте рисуются только участки маршрута внутри полигонов съёмки, один цвет на `uav_id`. Веер транзитов не рисуется. `mission_plan` в ответе не переписывается. Сырой JSON остаётся свёрнутым. Это отображение, не новый расчёт маршрута.
 
@@ -44,12 +46,14 @@ the computed `mission_plan` and leaves the contract at `v0`.
 - [x] Browser-smoked the submission-to-result flow against a deterministic local v0 result: the
   viewport fitted the mission, two UAV legend entries and two base markers rendered, and 26 Esri
   satellite tile requests returned HTTP 200.
+- [x] WRAP-001 unique limitations in «Ограничения и замечания». Identical strings are shown once,
+  first-seen order, distinct endurance/uncovered-swath lines stay.
 
 ### Next action
 
-Review this landing on `frontend/WEB-002-on-test-merge` from `test_merge` `dc8bbc7`. A live form
-check on a Mac or VPS is the step after this landing. Esri production terms remain a documented
-limitation before deployment.
+Review the unique-limitations landing on `cursor/dedupe-limitations-829a` from
+`wrap/WRAP-001-shell-around-core`. A live form check with a large uncovered-swath result is the
+step after this landing.
 
 ### Evidence
 
