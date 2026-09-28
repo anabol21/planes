@@ -2,7 +2,7 @@
 workstream: runtime
 owner: Misha
 task: INT-F2C-002
-status: in_progress
+status: review
 updated: 2026-09-28
 checkpoint: 2026-09-28
 branch: cursor/live-grisha-f2c-iso-fc7a
@@ -11,7 +11,7 @@ contract_version: v0
 
 # Runtime status
 
-- `in_progress`: INT-F2C-002 overlay — live envelope default is isolated F2C (`grisha_f2c_bridge` / `tools/f2c_iso`). `PLANES_SOLVE_BACKEND=legacy_fields2cover` keeps `geo_mission.solve_envelope`. Worker isolation: clean PYTHONPATH, no Grisha sitecustomize. DEM GeoTIFF hook is ASL-only; duration stays 2D. Not full mvp LNS.
+- `review`: INT-F2C-002 overlay — live envelope default is isolated F2C (`grisha_f2c_bridge` / `tools/f2c_iso`). `PLANES_SOLVE_BACKEND=legacy_fields2cover` keeps `geo_mission.solve_envelope`. Worker isolation: clean PYTHONPATH, no Grisha sitecustomize. DEM GeoTIFF hook is ASL-only; duration stays 2D. Not full mvp LNS.
 
 - `review`: INT-F2C-001 overlay — `geo_mission._params` no longer requires `survey.strip_direction_deg` and does not copy it into `angles_deg`. `fields2cover_engine.plan` uses `generateBestSwaths` when angles are empty; a leftover request heading is ignored. Wind, GSD, and overlaps stay required.
 

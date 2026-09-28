@@ -3,7 +3,7 @@ task: INT-F2C-002
 owner: Integration
 branch: cursor/live-grisha-f2c-iso-fc7a
 target: main
-status: in_progress
+status: review
 checkpoint: 2026-09-28
 contract_version: v0
 allowed_paths:
