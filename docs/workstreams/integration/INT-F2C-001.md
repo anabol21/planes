@@ -3,7 +3,7 @@ task: INT-F2C-001
 owner: Integration
 branch: cursor/f2c-auto-strip-angle-d388
 target: main
-status: in_progress
+status: review
 checkpoint: 2026-09-28
 contract_version: v0
 allowed_paths:
@@ -14,6 +14,7 @@ allowed_paths:
   - src/planes/model/itog_model/mvp_optimizator/src/planner/geometry/generate.py
   - src/planes/model/itog_model/mvp_optimizator/src/planner/models/input.py
   - src/planes/model/itog_model/mvp_optimizator/src/planner/solver/pipeline.py
+  - src/planes/model/itog_model/mvp_optimizator/src/planner/solver/angles.py
   - tests/runtime/test_f2c_input_contract.py
   - tests/model/test_f2c_auto_angle.py
   - docs/f2c-input-contract.md

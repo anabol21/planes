@@ -22,8 +22,23 @@ _CORE = (
 if str(_CORE) not in sys.path:
     sys.path.insert(0, str(_CORE))
 
+import importlib.util
+
 from planner.models import Criterion, DecompositionMethod, Params, Wind
-from planner.solver.pipeline import _angles_to_try, _uses_auto_f2c
+
+
+def _load_angles():
+    path = _CORE / "planner" / "solver" / "angles.py"
+    spec = importlib.util.spec_from_file_location("planner_solver_angles", path)
+    module = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(module)
+    return module
+
+
+_angles = _load_angles()
+angles_to_try = _angles.angles_to_try
+uses_auto_f2c = _angles.uses_auto_f2c
 
 
 def _wind() -> Wind:
@@ -75,8 +90,8 @@ class AnglesToTryTest(unittest.TestCase):
 
         mission = Mission()
         mission.params = params
-        self.assertTrue(_uses_auto_f2c(mission))
-        self.assertEqual(_angles_to_try(mission), [0.0])
+        self.assertTrue(uses_auto_f2c(mission))
+        self.assertEqual(angles_to_try(mission), [0.0])
 
     def test_empty_fields2cover_is_one_dummy_pass(self) -> None:
         params = _params(
@@ -89,7 +104,7 @@ class AnglesToTryTest(unittest.TestCase):
 
         mission = Mission()
         mission.params = params
-        self.assertEqual(_angles_to_try(mission), [0.0])
+        self.assertEqual(angles_to_try(mission), [0.0])
 
     def test_trapezoid_keeps_supplied_angles(self) -> None:
         params = _params(
@@ -102,61 +117,97 @@ class AnglesToTryTest(unittest.TestCase):
 
         mission = Mission()
         mission.params = params
-        self.assertFalse(_uses_auto_f2c(mission))
-        self.assertEqual(_angles_to_try(mission), [15.0, 75.0])
+        self.assertFalse(uses_auto_f2c(mission))
+        self.assertEqual(angles_to_try(mission), [15.0, 75.0])
 
 
-class GenerateF2CPathTest(unittest.TestCase):
-    def test_fields2cover_calls_backend_and_ignores_angle(self) -> None:
-        from shapely.geometry import LineString
+def _load_f2c_backend():
+    import types
 
-        from planner.geometry import generate as generate_mod
-        from planner.models import Area
+    logging_mod = types.ModuleType("planner.utils.logging")
 
-        area = Area(
-            id="survey-1",
-            name="survey-1",
-            polygon={
-                "type": "Polygon",
-                "coordinates": [[
-                    [37.600, 55.750],
-                    [37.608, 55.750],
-                    [37.608, 55.754],
-                    [37.600, 55.754],
-                    [37.600, 55.750],
-                ]],
-            },
-        )
-        camera = {
-            "specs": {
-                "general": {
-                    "max_resolution": "6000x4000",
-                    "sensor_size": "23.5x15.6",
-                },
-                "performance": {"focal_length": "20"},
-            }
-        }
-        seen: list[tuple[float, float]] = []
+    def _noop(*_args, **_kwargs):
+        return None
 
-        def fake_lines(poly_m, spacing_m, headland_width_m=0.0):
-            del poly_m, headland_width_m
-            seen.append((spacing_m, 90.0))
-            return [LineString([(0.0, 0.0), (40.0, 0.0)])]
+    logging_mod.log_error = _noop
+    logging_mod.log_info = _noop
+    logging_mod.log_warn = _noop
+    utils_mod = types.ModuleType("planner.utils")
+    utils_mod.logging = logging_mod
+    sys.modules.setdefault("planner.utils", utils_mod)
+    sys.modules["planner.utils.logging"] = logging_mod
+    path = _CORE / "planner" / "geometry" / "f2c_backend.py"
+    spec = importlib.util.spec_from_file_location("planner_geometry_f2c_backend", path)
+    module = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(module)
+    return module
 
+
+class F2CBackendAutoAngleTest(unittest.TestCase):
+    def test_backend_calls_generate_best_swaths_not_fixed_angle(self) -> None:
+        from shapely.geometry import LineString, Polygon
+
+        backend = _load_f2c_backend()
+
+        calls: list[str] = []
+
+        class FakePoint:
+            def __init__(self, x: float, y: float) -> None:
+                self._x = x
+                self._y = y
+
+            def getX(self) -> float:
+                return self._x
+
+            def getY(self) -> float:
+                return self._y
+
+        class FakeSwath:
+            def startPoint(self) -> FakePoint:
+                return FakePoint(0.0, 0.0)
+
+            def endPoint(self) -> FakePoint:
+                return FakePoint(12.0, 0.0)
+
+        class FakeSwaths:
+            def sizeTotal(self) -> int:
+                return 1
+
+            def getSwath(self, index: int) -> FakeSwath:
+                del index
+                return FakeSwath()
+
+        class FakeBF:
+            def generateBestSwaths(self, obj, spacing, cells):
+                del cells
+                calls.append(f"best:{type(obj).__name__}:{spacing}")
+                return FakeSwaths()
+
+            def generateSwaths(self, *args, **kwargs):
+                del args, kwargs
+                raise AssertionError("generateSwaths must not run on the F2C path")
+
+        class FakeF2C:
+            OBJ_NSwathModified = type("OBJ_NSwathModified", (), {})
+            OBJ_NSwath = type("OBJ_NSwath", (), {})
+            OBJ_SwathLength = type("OBJ_SwathLength", (), {})
+            SG_BruteForce = FakeBF
+            Point = lambda self_or_x=None, y=None, *a, **k: FakePoint(0, 0)
+            VectorPoint = list
+            LinearRing = object
+            Cell = object
+            Cells = object
+
+        poly = Polygon([(0, 0), (40, 0), (40, 20), (0, 20)])
         with (
-            patch.object(generate_mod, "_use_fields2cover", return_value=True),
-            patch.object(generate_mod, "_generate_lines_f2c", side_effect=fake_lines),
+            patch.object(backend, "_load_f2c", return_value=FakeF2C),
+            patch.object(backend, "_shapely_to_f2c_cells", return_value=object()),
         ):
-            swaths, _h = generate_mod.generate_swaths_for_area(
-                area=area,
-                obstacles=[],
-                angle_deg=90.0,
-                gsd_cm_per_px=3.0,
-                camera=camera,
-                decomposition="fields2cover",
-            )
-        self.assertEqual(len(seen), 1)
-        self.assertGreaterEqual(len(swaths), 1)
+            lines = backend._generate_for_single_polygon(poly, 15.0, 0.0)
+        self.assertEqual(calls, ["best:OBJ_NSwathModified:15.0"])
+        self.assertEqual(len(lines), 1)
+        self.assertIsInstance(lines[0], LineString)
 
 
 if __name__ == "__main__":

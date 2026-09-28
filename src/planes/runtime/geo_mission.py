@@ -396,8 +396,9 @@ def _core_symbols() -> dict[str, Any]:
             VPP,
             Wind,
         )
+        from planner.solver.angles import angles_to_try
         from planner.solver.counters import Counters
-        from planner.solver.pipeline import _angles_to_try, run_one_angle, select_best
+        from planner.solver.pipeline import run_one_angle, select_best
     except ImportError as exc:
         raise ValueError(f"geo core import failed: {exc}") from exc
     cached = {
@@ -414,7 +415,7 @@ def _core_symbols() -> dict[str, Any]:
         "VPP": VPP,
         "Wind": Wind,
         "Counters": Counters,
-        "angles_to_try": _angles_to_try,
+        "angles_to_try": angles_to_try,
         "run_one_angle": run_one_angle,
         "select_best": select_best,
     }

@@ -2,7 +2,7 @@
 workstream: integration
 owner: Team
 task: INT-F2C-001
-status: in_progress
+status: review
 updated: 2026-09-28
 checkpoint: 2026-09-28
 branch: cursor/f2c-auto-strip-angle-d388
@@ -11,7 +11,7 @@ contract_version: v0
 
 # Integration status
 
-- `in_progress`: INT-F2C-001 — Fields2Cover owns strip heading. Frontend no longer sends `survey.strip_direction_deg`. `geo_mission._params` leaves `angles_deg` empty and sets `decomposition=fields2cover`. `f2c_backend` / `generate.py` / `fields2cover_engine` call `generateBestSwaths` (`OBJ_NSwathModified` | `OBJ_NSwath` | `OBJ_SwathLength`). A leftover `strip_direction_deg` is ignored. Contract: `docs/f2c-input-contract.md`. Brief: `docs/workstreams/integration/INT-F2C-001.md`.
+- `review`: INT-F2C-001 — Fields2Cover owns strip heading. Frontend no longer sends `survey.strip_direction_deg`. `geo_mission._params` leaves `angles_deg` empty and sets `decomposition=fields2cover`. `f2c_backend` / `generate.py` / `fields2cover_engine` call `generateBestSwaths` (`OBJ_NSwathModified` | `OBJ_NSwath` | `OBJ_SwathLength`). A leftover `strip_direction_deg` is ignored. Contract: `docs/f2c-input-contract.md`. Brief: `docs/workstreams/integration/INT-F2C-001.md`.
 
 - `review`: сшивка на `cursor/geo-core-kml-stitch`. Тракт рельефа скопирован из `origin/integration/TER-GRI-001` (`src/planes/integration/terrain/`, `opentopography.py`). Разбор KML съёмки и ограничений — `src/planes/integration/kml/`. Браузер отправляет тексты `survey_kml` и `constraints_kml`; третья загрузка препятствий снята. Полигоны ограничений идут в ядро как препятствия: у `MissionInput` отдельного типа запретной зоны нет. Высотный текст копируется и не толкуется. Ключ OpenTopography и скачанные растры в git не входят.
 
@@ -25,11 +25,11 @@ Live path on `main`: form `127.0.0.1:5173`, API `127.0.0.1:8000`, worker `--engi
 
 ## In progress
 
-- [ ] INT-F2C-001 verification on this branch (unit + web tests).
+- [x] INT-F2C-001 verification on this branch (unit + web tests).
 
 ## Next action
 
-Run `tests/runtime/test_f2c_input_contract.py`, `tests/model/test_f2c_auto_angle.py`, web `scenario.test.ts`, and workspace validation. Open the PR to `main`.
+Mikhail / Grisha / Ruslan review of PR #11. Do not deploy or restart the live listener from this branch.
 
 ## Completed (prior)
 
@@ -55,6 +55,19 @@ Run `tests/runtime/test_f2c_input_contract.py`, `tests/model/test_f2c_auto_angle
 Review the stitch on `cursor/geo-core-kml-stitch`. The listener on `main` is still the enumeration path in `docs/architecture/agent-brief-runtime.md`. This branch does not deploy it. The three-terminal fake-worker smoke remains the earlier DEMO-001 check.
 
 ## Evidence
+
+- Command: `PYTHONPATH=src python3 -m unittest tests.runtime.test_f2c_input_contract tests.model.test_f2c_auto_angle -v`
+- Result: `Ran 13 tests in 0.051s` / `OK`. Interpreter `/usr/bin/python3` 3.12.3. `fields2cover` is not installed here; engine/backend tests mock `generateBestSwaths` and assert `generateSwaths` is not called. Empty `angles_deg` does not IndexError. `_params` ignores `strip_direction_deg=45` and still requires GSD, overlaps, and wind.
+- Command: `pnpm exec vitest run src/scenario.test.ts` in `apps/web`
+- Result: 1 file, 22 tests, passed. Envelope survey is `{forward_overlap, side_overlap}` only.
+- Command: `pnpm exec tsc --noEmit` in `apps/web`
+- Result: exit 0.
+- Command: `python3 scripts/validate_workspace.py`
+- Result: `Workspace validation: PASS`.
+- Command: `git diff --check`
+- Result: passed.
+- PR: https://github.com/anabol21/planes/pull/11
+- Commit: recorded at handoff.
 
 - Command: `PYTHONPATH=src python3 -m unittest tests.runtime.test_geo_kml_stitch -v`
 - Result: `Ran 4 tests in 21.060s` / `OK`. Parser returns the constraint polygon. Mocked terrain HTTP is used once for the bbox; the cache hit does not call it again. `dem_file` is set. The route does not cross the constraint ring. Missing key and invalid raster fail explicitly.

@@ -13,7 +13,6 @@ from planner.io.loaders import load_mission
 from planner.models import (
     Candidate,
     Criterion,
-    DecompositionMethod,
     MissionInput,
     Params,
     Point,
@@ -24,6 +23,7 @@ from planner.models import (
 )
 from planner.physics import build_physics_model, build_physics_params
 from planner.physics.base import PhysicsParams
+from planner.solver.angles import angles_to_try, uses_auto_f2c
 from planner.solver.assignment import assign_clusters_to_uavs
 from planner.solver.clustering import cluster_swaths
 from planner.solver.counters import Counters
@@ -524,37 +524,11 @@ def run_one_angle(
 # ============================================================
 
 def _uses_auto_f2c(mission: MissionInput) -> bool:
-    """True when Fields2Cover owns the swath heading."""
-    decomp = mission.params.decomposition
-    if decomp == DecompositionMethod.FIELDS2COVER:
-        return True
-    if decomp == DecompositionMethod.AUTO:
-        try:
-            from planner.geometry.f2c_backend import is_available
-        except ImportError:
-            return False
-        return bool(is_available())
-    return False
+    return uses_auto_f2c(mission)
 
 
 def _angles_to_try(mission: MissionInput) -> list[float]:
-    """Angles for the planner loop.
-
-    On the Fields2Cover path the core calls ``generateBestSwaths`` and
-    ignores ``angles_deg`` / a leftover ``strip_direction_deg``. One dummy
-    ``0.0`` keeps ``run_one_angle``; ``generate.py`` does not treat it as a
-    hard heading. Trapezoid and triangulation still require a non-empty
-    list.
-    """
-    if _uses_auto_f2c(mission):
-        return [0.0]
-    angles = list(mission.params.angles_deg or [])
-    if not angles:
-        raise ValueError(
-            "angles_deg must be non-empty unless decomposition is "
-            "fields2cover or auto"
-        )
-    return angles
+    return angles_to_try(mission)
 
 
 def select_best(candidates: list[Candidate], criterion: Criterion) -> Candidate:

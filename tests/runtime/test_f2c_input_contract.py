@@ -2,18 +2,42 @@
 
 from __future__ import annotations
 
+import sys
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
+_CORE = (
+    Path(__file__).resolve().parents[2]
+    / "src"
+    / "planes"
+    / "model"
+    / "itog_model"
+    / "mvp_optimizator"
+    / "src"
+)
+if str(_CORE) not in sys.path:
+    sys.path.insert(0, str(_CORE))
+
+from planner.models import Criterion, DecompositionMethod, Params, Wind
+
 from planes.runtime import fields2cover_engine as engine
-from planes.runtime.geo_mission import _core_symbols, _params
+from planes.runtime.geo_mission import _params
+
+
+def _symbols() -> dict:
+    return {
+        "Params": Params,
+        "Wind": Wind,
+        "Criterion": Criterion,
+        "DecompositionMethod": DecompositionMethod,
+    }
 
 
 class GeoMissionParamsTest(unittest.TestCase):
     def setUp(self) -> None:
-        self.symbols = _core_symbols()
+        self.symbols = _symbols()
 
     def test_ignores_strip_direction_and_leaves_angles_empty(self) -> None:
         params = _params(
