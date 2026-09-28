@@ -65,10 +65,68 @@ The listener's older `src/planes/runtime/catalog/fleet_catalog.json`
 stays for the rollback / enumeration tests. The iso path prefers
 `catalog/fleet_catalog.json`.
 
+## Wave B (isolated path only)
+
+Implemented in `tools/f2c_iso/iso_src/wave_b.py`. The
+`legacy_fields2cover` rollback does **not** get these behaviours.
+
+`mission_time_s` is the board makespan **including** recharge gaps and
+UAV–UAV delay. `total_flight_time_s` is airborne time only. Extra
+fields: `mission.recharge_gap_s`, `mission.separation_delay_s`,
+`mission_plan.wave_b`, and per-route `takeoff_vpp_id` /
+`landing_vpp_id` / `start_time_s` / `recharge_before_s`.
+
+| Flag | Default | Effect |
+|---|---|---|
+| `allow_recharge` or `power.allow_recharge` | `true` | Multi-sortie + charge gaps. `false` → infeasible with uncovered if a board needs a second sortie. |
+| `recharge_time_s` or `power.recharge_time_s` | catalog / board | Seconds inserted between same-board sorties. Gemini catalog is a full-charge cycle (~6300 s); 201/801 spare-swap is 0 s. |
+| `allow_foreign_landing` | `true` | Land at the pad closest to the last swath (home wins a tie). |
+| `allow_foreign_takeoff` or `takeoff.allow_foreign` | `false` | First takeoff stays the board home pad. Later sorties take off from the previous landing pad. Set `true` to also pick the first takeoff from the fleet (preposition is not modeled). |
+| `min_separation_m` or `separation.min_horizontal_m` | `50` | Horizontal buffer. `0` disables the resolver. |
+| `separation.time_window_s` | `0` | Extra time slack around a sample when testing the buffer. |
+
+### How experiments should call it
+
+Keep `PLANES_SOLVE_BACKEND` unset (iso default). Put flags on the v0
+`scenario` object:
+
+```json
+{
+  "allow_recharge": true,
+  "recharge_time_s": 120,
+  "allow_foreign_landing": true,
+  "allow_foreign_takeoff": false,
+  "min_separation_m": 50,
+  "separation": {"time_window_s": 0}
+}
+```
+
+Fail-closed endurance: `"allow_recharge": false` (or
+`power.allow_recharge`). A leftover swath is `outcome=infeasible` with
+`uncovered_swaths=N`, not a silent second sortie.
+
+Disable Wave B pieces without leaving the iso path: foreign landing
+off (`allow_foreign_landing=false`), separation off
+(`min_separation_m=0`). Full pre-Wave-B engine: 
+`PLANES_SOLVE_BACKEND=legacy_fields2cover`.
+
+### Honest limitations
+
+- Pad choice is nearest-ferry greedy. Not a joint assignment of boards
+  to pads (`OPEN-015`).
+- First takeoff does not model a reposition flight to a foreign pad.
+- Recharge is a constant gap. Spare logistics, pad occupancy, and
+  battery-Wh are not modeled (`OPEN-008`, `OPEN-011`).
+- UAV–UAV check is 2D horizontal samples plus delay / optional reverse
+  of a later UAV's block. Ground / same-pad parking is ignored.
+  Not certified separation (`OPEN-013`). Not 3D obstacle overfly.
+- Heuristic results are not globally optimal (`OPEN-015`).
+
 ## What this path is not
 
 - Not full mvp LNS
 - Not a proven global assignment of boards to cells
 - Not a 3D time model
 - Not a battery-Wh packing model
+- Not certified UAV–UAV traffic management
 - Heuristic results are not globally optimal (`OPEN-015`)

@@ -39,6 +39,7 @@ import ortools  # noqa: F401
 from fields2cover_engine_iso import (  # noqa: E402
     BoardCamera,
     BudgetExhausted,
+    CoverageInfeasible,
     EngineContext,
     bind_context,
     marked_number,
@@ -46,6 +47,7 @@ from fields2cover_engine_iso import (  # noqa: E402
     plan,
     reset_context,
 )
+from wave_b import read_recharge_time_s, read_wave_b_flags  # noqa: E402
 
 try:
     from constraints import parse_constraint_polygons, parse_survey_polygon
@@ -411,6 +413,7 @@ def _expand_boards(
     survey = scenario.get("survey") or {}
     side_overlap = float(survey.get("side_overlap", 0.5))
     gsd = float(scenario.get("gsd_cm_per_px", 2.0))
+    flags = read_wave_b_flags(scenario)
     boards_out: list[BoardCamera] = []
     for card in scenario.get("boards") or []:
         model_id = str(card["model_id"])
@@ -436,6 +439,7 @@ def _expand_boards(
             raise ValueError(
                 f"model {model_id} has no positive endurance or survey/airspeed"
             )
+        recharge_s = read_recharge_time_s(model, card, flags)
         spacing_m, h_agl_m = optics(camera, gsd, side_overlap)
         base_id = str(card["id"])
         for n in range(count):
@@ -450,6 +454,7 @@ def _expand_boards(
                     speed_m_s=speed,
                     spacing_m=spacing_m,
                     h_agl_m=h_agl_m,
+                    recharge_time_s=recharge_s,
                 )
             )
     if not boards_out:
@@ -458,10 +463,16 @@ def _expand_boards(
 
 
 def _route_dict(route: Any) -> dict[str, Any]:
+    takeoff_id = str(getattr(route, "takeoff_vpp_id", None) or route.vpp_id)
+    landing_id = str(getattr(route, "landing_vpp_id", None) or route.vpp_id)
     return {
         "uav_id": route.uav_id,
-        "vpp_id": route.vpp_id,
+        "vpp_id": takeoff_id,
+        "takeoff_vpp_id": takeoff_id,
+        "landing_vpp_id": landing_id,
         "flight_index": int(route.flight_index),
+        "start_time_s": float(getattr(route, "start_time_s", 0.0) or 0.0),
+        "recharge_before_s": float(getattr(route, "recharge_before_s", 0.0) or 0.0),
         "waypoints": [
             {"lat": float(wp.lat), "lon": float(wp.lon), "alt_m": float(wp.alt_m)}
             for wp in route.waypoints
@@ -560,9 +571,42 @@ def solve_request(req: dict[str, Any]) -> dict[str, Any]:
         dem=dem_obj,
     )
 
-    token = bind_context(EngineContext(deadline=deadline, boards=boards))
+    flags = read_wave_b_flags(scenario)
+    token = bind_context(
+        EngineContext(
+            deadline=deadline,
+            boards=boards,
+            pads=tuple(vpps),
+            allow_recharge=flags.allow_recharge,
+            allow_foreign_landing=flags.allow_foreign_landing,
+            allow_foreign_takeoff=flags.allow_foreign_takeoff,
+            min_separation_m=flags.min_separation_m,
+            time_window_s=flags.time_window_s,
+        )
+    )
     try:
         candidate = plan(mission)
+    except CoverageInfeasible as exc:
+        wall = time.perf_counter() - t0
+        return {
+            "contract_version": req.get("contract_version", "v0"),
+            "job_id": req.get("job_id", "f2c-iso"),
+            "outcome": "infeasible",
+            "isolation": iso,
+            "solver_report": {
+                "method": "grisha_mvp_fields2cover_isolated",
+                "runtime_seconds": wall,
+                "limitations": [
+                    str(exc.reason),
+                    f"uncovered_swaths={exc.uncovered}",
+                    *list(exc.limitations),
+                    f"allow_recharge={flags.allow_recharge}",
+                ],
+            },
+            "mission_plan": None,
+            "error": exc.reason,
+            "uncovered_swath_count": exc.uncovered,
+        }
     except BudgetExhausted:
         wall = time.perf_counter() - t0
         return {
@@ -638,9 +682,18 @@ def solve_request(req: dict[str, Any]) -> dict[str, Any]:
                 "decomposition=fields2cover; angle via SG_BruteForce.generateBestSwaths (strip_direction_deg ignored)",
                 "Grisha mvp sitecustomize NOT on worker path; F2C in clean subprocess",
                 *dem_notes,
+                *list(getattr(candidate, "extra_limitations", ()) or ()),
                 "heuristic result is not globally optimal",
                 f"fleet_catalog={_resolve_catalog_path()}",
                 "board speed=survey_speed_m_s when present else airspeed_m_s; endurance=flight_time_s*(1-reserve_fraction); battery Wh not used for packing",
+                (
+                    f"wave_b allow_recharge={flags.allow_recharge} "
+                    f"allow_foreign_landing={flags.allow_foreign_landing} "
+                    f"allow_foreign_takeoff={flags.allow_foreign_takeoff} "
+                    f"min_separation_m={flags.min_separation_m} "
+                    f"time_window_s={flags.time_window_s}"
+                ),
+                "wave_b: mission_time_s includes recharge gaps and separation delays; total_flight_time_s is airborne only",
             ],
         },
         "mission_plan": {
@@ -664,7 +717,11 @@ def solve_request(req: dict[str, Any]) -> dict[str, Any]:
                 {
                     "uav_id": r["uav_id"],
                     "vpp_id": r["vpp_id"],
+                    "takeoff_vpp_id": r.get("takeoff_vpp_id", r["vpp_id"]),
+                    "landing_vpp_id": r.get("landing_vpp_id", r["vpp_id"]),
                     "flight_index": r["flight_index"],
+                    "start_time_s": r.get("start_time_s", 0.0),
+                    "recharge_before_s": r.get("recharge_before_s", 0.0),
                     "waypoints": r["waypoints"],
                 }
                 for r in routes
@@ -673,6 +730,18 @@ def solve_request(req: dict[str, Any]) -> dict[str, Any]:
                 "mission_time_s": float(candidate.C_max_s),
                 "total_flight_time_s": float(candidate.flight_hours_s),
                 "uav_used": int(candidate.n_uavs_used),
+                "recharge_gap_s": float(getattr(candidate, "recharge_gap_s", 0.0) or 0.0),
+                "separation_delay_s": float(getattr(candidate, "separation_delay_s", 0.0) or 0.0),
+            },
+            "wave_b": {
+                "allow_recharge": flags.allow_recharge,
+                "allow_foreign_landing": flags.allow_foreign_landing,
+                "allow_foreign_takeoff": flags.allow_foreign_takeoff,
+                "min_separation_m": flags.min_separation_m,
+                "time_window_s": flags.time_window_s,
+                "recharge_gap_s": float(getattr(candidate, "recharge_gap_s", 0.0) or 0.0),
+                "separation_delay_s": float(getattr(candidate, "separation_delay_s", 0.0) or 0.0),
+                "uncovered_swath_count": int(getattr(candidate, "uncovered_swath_count", 0) or 0),
             },
             "validation": {
                 "valid": len(clearance_errs) == 0,
@@ -691,6 +760,7 @@ def solve_request(req: dict[str, Any]) -> dict[str, Any]:
                     "h_agl_m": float(b.h_agl_m),
                     "speed_m_s": float(b.speed_m_s),
                     "endurance_s": float(b.endurance_s),
+                    "recharge_time_s": float(b.recharge_time_s),
                 }
                 for b in boards
             ],
