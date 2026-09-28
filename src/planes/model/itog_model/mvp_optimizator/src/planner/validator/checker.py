@@ -1,4 +1,5 @@
-"""Валидатор: покрытие, время, энергия, масса, рельеф, препятствия, ветер."""
+"""Валидатор: покрытие, время, энергия, масса, рельеф, препятствия,
+ветер, совместимость борт↔ВПП↔камера, запретные зоны, коллизии."""
 
 from __future__ import annotations
 
@@ -6,7 +7,13 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
-from planner.models import MissionInput, Obstacle, Route, Swath
+from planner.models import (
+    MissionInput,
+    NoFlyZone,
+    Obstacle,
+    Route,
+    Swath,
+)
 from planner.physics.base import PhysicsParams
 from planner.utils.route_metrics import bearing_deg as route_bearing_deg
 from planner.utils.route_metrics import haversine_m
@@ -58,9 +65,36 @@ def check_coverage(
 # Время / энергия
 # ============================================================
 
+def _flight_budget(
+    p: PhysicsParams,
+    route: Route,
+    physics_model,
+) -> tuple[float, float]:
+    T_limit = p.T_max_s * (1.0 - p.reserve_fraction)
+    E_limit = p.E_batt_wh * (1.0 - p.reserve_fraction)
+
+    if physics_model is None:
+        return T_limit, E_limit
+
+    h_agl_m = getattr(route, "h_agl_m", 0.0) or 0.0
+
+    try:
+        T_to = physics_model.takeoff_time_s(h_agl_m)
+        T_ld = physics_model.landing_time_s(h_agl_m)
+        E_to = physics_model.takeoff_energy_wh(h_agl_m)
+        E_ld = physics_model.landing_energy_wh(h_agl_m)
+    except Exception:
+        return T_limit, E_limit
+
+    T_limit -= (T_to + T_ld)
+    E_limit -= (E_to + E_ld)
+    return T_limit, E_limit
+
+
 def check_time_energy(
     routes: list[Route],
     params_by_uav: dict[str, PhysicsParams],
+    physics_by_uav: dict | None = None,
 ) -> list[str]:
     errors: list[str] = []
 
@@ -69,14 +103,30 @@ def check_time_energy(
         if p is None:
             continue
 
-        T_limit = p.T_max_s * (1.0 - p.reserve_fraction)
-        E_limit = p.E_batt_wh * (1.0 - p.reserve_fraction)
+        model = None
+        if physics_by_uav is not None:
+            model = physics_by_uav.get(r.uav_id)
 
-        if r.T_total_s > T_limit + 1e-3:
+        T_limit, E_limit = _flight_budget(p, r, model)
+
+        if model is not None:
+            h_agl_m = getattr(r, "h_agl_m", 0.0) or 0.0
+            try:
+                T_to = model.takeoff_time_s(h_agl_m)
+                T_ld = model.landing_time_s(h_agl_m)
+                T_check = r.T_air_s + T_to + T_ld
+            except Exception:
+                T_check = r.T_total_s
+        else:
+            T_check = r.T_total_s
+
+        if T_check > T_limit + 1e-3:
             errors.append(
                 f"UAV {r.uav_id} flight {r.flight_index}: "
-                f"T_total={r.T_total_s:.1f}s > limit {T_limit:.1f}s"
+                f"T_air={r.T_air_s:.1f}s "
+                f"T_total={T_check:.1f}s > limit {T_limit:.1f}s"
             )
+
         if r.E_wh > E_limit + 1e-3:
             errors.append(
                 f"UAV {r.uav_id} flight {r.flight_index}: "
@@ -116,7 +166,287 @@ def check_mass(
 
 
 # ============================================================
-# Рельеф — безопасность полос
+# Совместимость борт ↔ ВПП ↔ камера
+# ============================================================
+
+def check_vpp_compatibility(
+    routes: list[Route],
+    mission: MissionInput,
+    catalog,
+) -> list[str]:
+    errors: list[str] = []
+    uav_by_id = {u.id: u for u in mission.uavs}
+
+    seen_uavs: set[str] = set()
+    for r in routes:
+        if r.uav_id in seen_uavs:
+            continue
+        seen_uavs.add(r.uav_id)
+
+        uav = uav_by_id.get(r.uav_id)
+        if uav is None:
+            errors.append(f"Route for unknown UAV {r.uav_id!r}")
+            continue
+
+        try:
+            vpp = mission.vpp_by_id(r.vpp_id)
+        except KeyError:
+            errors.append(
+                f"Route {r.uav_id}/{r.flight_index}: "
+                f"vpp_id={r.vpp_id!r} не найден"
+            )
+            continue
+
+        if uav.vpp_id != vpp.id:
+            errors.append(
+                f"UAV {r.uav_id}: vpp_id={uav.vpp_id!r} в uav.json, "
+                f"но route использует {vpp.id!r}"
+            )
+
+        if not vpp.has_uav(uav.id):
+            errors.append(
+                f"UAV {r.uav_id}: не разрешён на ВПП {vpp.id!r} "
+                f"(разрешены: {sorted(vpp.uavs)})"
+            )
+
+        if not vpp.has_camera(uav.camera_id):
+            errors.append(
+                f"UAV {r.uav_id}: камера {uav.camera_id!r} "
+                f"не разрешена на ВПП {vpp.id!r} "
+                f"(разрешены: {sorted(vpp.cameras)})"
+            )
+
+    return errors
+
+
+def check_area_survey_type_supported(
+    mission: MissionInput,
+    catalog,
+) -> list[str]:
+    errors: list[str] = []
+    uav_by_id = {u.id: u for u in mission.uavs}
+
+    for area in mission.areas:
+        if area.uav_id is not None:
+            uav = uav_by_id.get(area.uav_id)
+            if uav is None:
+                errors.append(
+                    f"Area {area.id}: uav_id={area.uav_id!r} не найден"
+                )
+                continue
+            if not catalog.camera_supports(
+                uav.camera_id, area.survey_type,
+            ):
+                errors.append(
+                    f"Area {area.id}: камера {uav.camera_id!r} борта "
+                    f"{uav.id!r} не поддерживает "
+                    f"survey_type={area.survey_type.value!r}"
+                )
+            continue
+
+        supported = any(
+            catalog.camera_supports(u.camera_id, area.survey_type)
+            for u in mission.uavs
+        )
+        if not supported:
+            cameras = sorted({u.camera_id for u in mission.uavs})
+            errors.append(
+                f"Area {area.id}: survey_type="
+                f"{area.survey_type.value!r} не поддерживается "
+                f"ни одним бортом миссии (камеры: {cameras})"
+            )
+
+    return errors
+
+
+# ============================================================
+# Запретные зоны — 2D проверка
+# ============================================================
+
+def _swath_line_coords(s: Swath) -> list[tuple[float, float]]:
+    """Координаты полосы: segments, если есть, иначе start→end."""
+    if s.segments and len(s.segments) >= 2:
+        return [(seg.lon, seg.lat) for seg in s.segments]
+    return [(s.start.lon, s.start.lat), (s.end.lon, s.end.lat)]
+
+
+def _line_crosses_polygon(line, poly, min_length_m: float = 0.5) -> bool:
+    """True, если линия пересекает внутренность полигона существенной длиной."""
+    inter = line.intersection(poly)
+    if inter.is_empty:
+        return False
+
+    gt = inter.geom_type
+    if gt == "LineString":
+        return inter.length > min_length_m
+    if gt == "MultiLineString":
+        return sum(g.length for g in inter.geoms) > min_length_m
+    if gt == "GeometryCollection":
+        total = 0.0
+        for g in inter.geoms:
+            if g.geom_type == "LineString":
+                total += g.length
+            elif g.geom_type == "MultiLineString":
+                total += sum(x.length for x in g.geoms)
+        return total > min_length_m
+    return False
+
+
+def check_no_fly_zones(
+    routes: list[Route],
+    swaths_by_id: dict[str, Swath],
+    no_fly_zones: list[NoFlyZone],
+    max_violations: int = 10,
+) -> list[str]:
+    """Проверяет, что ни одна полоса и ни один waypoint не пересекают NFZ.
+
+    Проверяются:
+      - сегменты полос (реальная геометрия, а не start→end);
+      - waypoints маршрута (перелёты, взлёт, посадка, возврат).
+
+    Сложность: O(N_routes × M_swaths × K_nfz) + O(N_routes × M_wp × K_nfz).
+    Для типичных задач — миллисекунды.
+
+    Returns:
+        Список ошибок. Пустой, если запреток нет или нет пересечений.
+    """
+    if not no_fly_zones:
+        return []
+
+    from shapely.geometry import LineString, Point as ShPoint, shape
+
+    nfz_geoms: list[tuple[str, object]] = []
+    for nfz in no_fly_zones:
+        try:
+            geom = shape(nfz.polygon)
+        except Exception:
+            continue
+        nfz_geoms.append((nfz.id, geom))
+
+    if not nfz_geoms:
+        return []
+
+    errors: list[str] = []
+    total_violations = 0
+
+    for r in routes:
+        # 1. Полосы
+        for sid in r.swath_ids:
+            s = swaths_by_id.get(sid)
+            if s is None:
+                continue
+
+            coords = _swath_line_coords(s)
+            if len(coords) < 2:
+                continue
+
+            hit = False
+            for k in range(len(coords) - 1):
+                line = LineString([coords[k], coords[k + 1]])
+                for nfz_id, nfz_geom in nfz_geoms:
+                    if _line_crosses_polygon(line, nfz_geom):
+                        errors.append(
+                            f"Swath {sid} segment {k} crosses "
+                            f"no-fly zone {nfz_id!r}"
+                        )
+                        hit = True
+                        total_violations += 1
+                        break
+                if hit:
+                    break
+
+            if total_violations >= max_violations:
+                errors.append(
+                    f"... > {max_violations} NFZ violations, "
+                    f"список обрезан"
+                )
+                return errors
+
+        # 2. Waypoints
+        for i, wp in enumerate(getattr(r, "waypoints", []) or []):
+            pt = ShPoint(wp.lon, wp.lat)
+            for nfz_id, nfz_geom in nfz_geoms:
+                if nfz_geom.covers(pt):
+                    errors.append(
+                        f"UAV {r.uav_id} flight {r.flight_index} "
+                        f"waypoint {i} ({wp.lat:.5f},{wp.lon:.5f}) "
+                        f"inside no-fly zone {nfz_id!r}"
+                    )
+                    total_violations += 1
+                    break
+
+            if total_violations >= max_violations:
+                errors.append(
+                    f"... > {max_violations} NFZ violations, "
+                    f"список обрезан"
+                )
+                return errors
+
+    return errors
+
+
+# ============================================================
+# Коллизии между бортами
+# ============================================================
+
+def check_uav_separation(
+    routes: list[Route],
+    min_xy_m: float = 50.0,
+    min_alt_m: float = 15.0,
+    max_violations: int = 20,
+) -> list[str]:
+    errors: list[str] = []
+
+    by_uav: dict[str, list] = {}
+    for r in routes:
+        wps = getattr(r, "waypoints", None) or []
+        if wps:
+            by_uav.setdefault(r.uav_id, []).extend(wps)
+
+    uav_ids = sorted(by_uav.keys())
+    n = len(uav_ids)
+
+    if n < 2:
+        return errors
+
+    total_violations = 0
+
+    for i in range(n):
+        for j in range(i + 1, n):
+            uav_a = uav_ids[i]
+            uav_b = uav_ids[j]
+            wps_a = by_uav[uav_a]
+            wps_b = by_uav[uav_b]
+
+            for wp_a in wps_a:
+                for wp_b in wps_b:
+                    d_alt = abs(wp_a.alt_m - wp_b.alt_m)
+                    if d_alt >= min_alt_m:
+                        continue
+
+                    d_xy = haversine_m(wp_a, wp_b)
+                    if d_xy < min_xy_m:
+                        errors.append(
+                            f"UAV separation violation: "
+                            f"{uav_a} ↔ {uav_b} — "
+                            f"d_xy={d_xy:.1f}m (< {min_xy_m:.0f}m), "
+                            f"d_alt={d_alt:.1f}m (< {min_alt_m:.0f}m) "
+                            f"at ({wp_a.lat:.5f},{wp_a.lon:.5f}) / "
+                            f"({wp_b.lat:.5f},{wp_b.lon:.5f})"
+                        )
+                        total_violations += 1
+                        if total_violations >= max_violations:
+                            errors.append(
+                                f"... > {max_violations} separation "
+                                f"violations, список обрезан"
+                            )
+                            return errors
+
+    return errors
+
+
+# ============================================================
+# Рельеф
 # ============================================================
 
 def _swath_min_agl(s: Swath) -> float:
@@ -150,20 +480,10 @@ def check_terrain_safety(
     return errors
 
 
-# ============================================================
-# Рельеф — физическая выполнимость (warnings, не errors)
-# ============================================================
-
 def check_terrain_feasibility(
     routes: list[Route],
     swaths_by_id: dict[str, Swath],
 ) -> tuple[list[str], list[str]]:
-    """Проверяет feasible полос.
-
-    Возвращает (errors, warnings).
-    Errors пусты: infeasible полосы — не критическая ошибка (кандидат
-    уже получает штраф по времени/энергии в generate). Это предупреждение.
-    """
     warnings: list[str] = []
     seen: set[str] = set()
 
@@ -184,23 +504,11 @@ def check_terrain_feasibility(
     return [], warnings
 
 
-# ============================================================
-# Рельеф — безопасность на перелётах (только waypoints)
-# ============================================================
-
 def check_route_terrain_safety(
     routes: list[Route],
     dem,
     safety_margin_m: float,
 ) -> list[str]:
-    """Проверяет AGL **только в waypoints** маршрута.
-
-    Это фактическая проверка: waypoints — это точки, через которые
-    борт точно пролетает. Если хоть одна ниже safety — ошибка.
-
-    Интерполяция между waypoints — отдельная функция
-    check_route_terrain_safety_interpolated().
-    """
     errors: list[str] = []
     if dem is None or safety_margin_m <= 0:
         return errors
@@ -225,19 +533,10 @@ def check_route_terrain_safety(
     return errors
 
 
-# ============================================================
-# Рельеф — безопасность между waypoints (интерполяция)
-# ============================================================
-
 def _interpolate_waypoints(
     wps: list,
     step_m: float = CHECK_STEP_M,
 ) -> list[tuple[float, float, float]]:
-    """Разбивает waypoints на точки с шагом ~step_m.
-
-    Возвращает (lat, lon, alt_m). Высота между waypoints
-    интерполируется линейно — это worst-case оценка.
-    """
     if len(wps) < 2:
         return [(wp.lat, wp.lon, wp.alt_m) for wp in wps]
 
@@ -269,15 +568,6 @@ def check_route_terrain_safety_interpolated(
     step_m: float = CHECK_STEP_M,
     max_violations: int = 5,
 ) -> list[str]:
-    """Проверяет AGL **между waypoints** с линейной интерполяцией.
-
-    Возвращает список нарушений (максимум max_violations на маршрут).
-    Используется как warning по умолчанию: линейная интерполяция
-    даёт ложные срабатывания на пиках DEM между waypoints.
-
-    Если нужно — вызывающий код может превратить это в errors
-    (см. validate(..., strict_terrain_check=True)).
-    """
     warnings: list[str] = []
     if dem is None or safety_margin_m <= 0:
         return warnings
@@ -306,30 +596,16 @@ def check_route_terrain_safety_interpolated(
                 )
                 violations += 1
                 if violations >= max_violations:
-                    warnings.append(
-                        f"UAV {r.uav_id} flight {r.flight_index}: "
-                        f"... более {max_violations} нарушений, "
-                        f"список обрезан"
-                    )
                     break
 
     return warnings
 
-
-# ============================================================
-# Рельеф — сводка
-# ============================================================
 
 def check_terrain_safety_summary(
     routes: list[Route],
     swaths_by_id: dict[str, Swath],
     safety_margin_m: float,
 ) -> list[str]:
-    """Информационная сводка по terrain safety.
-
-    'Terrain summary: safe=X/N, borderline=Y, infeasible=Z'
-    Возвращает [] если все safe (Y=0 и Z=0).
-    """
     if safety_margin_m <= 0:
         return []
 
@@ -360,8 +636,6 @@ def check_terrain_safety_summary(
     total = safe + borderline + infeasible
     if total == 0:
         return []
-
-    # Не шумим, если всё чисто
     if borderline == 0 and infeasible == 0:
         return []
 
@@ -372,7 +646,7 @@ def check_terrain_safety_summary(
 
 
 # ============================================================
-# Ветер — выполнимость для fixed-wing
+# Ветер
 # ============================================================
 
 def check_wind_feasibility(
@@ -420,7 +694,7 @@ def check_wind_feasibility(
 
 
 # ============================================================
-# Препятствия — вертикальный зазор
+# Препятствия
 # ============================================================
 
 def check_obstacle_clearance(
@@ -494,37 +768,6 @@ def check_obstacle_clearance(
     return errors
 
 
-# ============================================================
-# Препятствия — 2D пересечение сегментов
-# ============================================================
-
-def _swath_line_coords(s: Swath) -> list[tuple[float, float]]:
-    if s.segments and len(s.segments) >= 2:
-        return [(seg.lon, seg.lat) for seg in s.segments]
-    return [(s.start.lon, s.start.lat), (s.end.lon, s.end.lat)]
-
-
-def _segment_intersects(seg, obs, min_length_m: float = 0.5) -> bool:
-    inter = seg.intersection(obs)
-    if inter.is_empty:
-        return False
-
-    gt = inter.geom_type
-    if gt == "LineString":
-        return inter.length > min_length_m
-    if gt == "MultiLineString":
-        return sum(g.length for g in inter.geoms) > min_length_m
-    if gt == "GeometryCollection":
-        total = 0.0
-        for g in inter.geoms:
-            if g.geom_type == "LineString":
-                total += g.length
-            elif g.geom_type == "MultiLineString":
-                total += sum(x.length for x in g.geoms)
-        return total > min_length_m
-    return False
-
-
 def check_obstacles(
     routes: list[Route],
     swaths_by_id: dict[str, Swath],
@@ -551,7 +794,7 @@ def check_obstacles(
             for k in range(len(coords) - 1):
                 line = LineString([coords[k], coords[k + 1]])
                 for obs in obs_geoms:
-                    if _segment_intersects(line, obs):
+                    if _line_crosses_polygon(line, obs):
                         errors.append(
                             f"Swath {sid} segment {k} intersects obstacle"
                         )
@@ -574,40 +817,53 @@ def validate(
     params_by_uav: dict[str, PhysicsParams],
     max_takeoff_mass_kg: float | None = None,
     strict_terrain_check: bool = False,
+    catalog=None,
+    physics_by_uav: dict | None = None,
 ) -> CheckResult:
-    """Полная валидация миссии.
-
-    Args:
-        strict_terrain_check: если True — нарушения terrain safety
-            между waypoints (по интерполяции) становятся errors,
-            а не warnings. По умолчанию False — эти нарушения
-            не отбрасывают кандидат, а идут в отчёт как предупреждения.
-    """
     errors: list[str] = []
     warnings: list[str] = []
 
-    # 0. Наличие физики
     missing_uavs = sorted({
         r.uav_id for r in routes if r.uav_id not in params_by_uav
     })
     if missing_uavs:
         errors.append(f"No physics params for uavs: {missing_uavs}")
 
-    # 1. Покрытие
     errors.extend(check_coverage(all_swaths, routes))
 
-    # 2. Время и энергия
-    errors.extend(check_time_energy(routes, params_by_uav))
+    errors.extend(
+        check_time_energy(routes, params_by_uav, physics_by_uav)
+    )
 
-    # 3. Масса
     if max_takeoff_mass_kg is not None:
         errors.extend(check_mass(routes, params_by_uav, max_takeoff_mass_kg))
     else:
         warnings.append("Mass check disabled: max_takeoff_mass_kg is None")
 
+    errors.extend(check_vpp_compatibility(routes, mission, catalog))
+
+    if catalog is not None:
+        errors.extend(
+            check_area_survey_type_supported(mission, catalog)
+        )
+
+    if mission.params.check_uav_separation:
+        sep_errors = check_uav_separation(
+            routes,
+            min_xy_m=mission.params.min_uav_separation_xy_m,
+            min_alt_m=mission.params.min_uav_separation_alt_m,
+        )
+        errors.extend(sep_errors)
+
     swaths_by_id = {s.id: s for s in all_swaths}
 
-    # 4. Рельеф — безопасность полос
+    # --- Запретные зоны ---
+    if mission.no_fly_zones:
+        nfz_errors = check_no_fly_zones(
+            routes, swaths_by_id, mission.no_fly_zones,
+        )
+        errors.extend(nfz_errors)
+
     if mission.params.safety_margin_m > 0:
         errors.extend(
             check_terrain_safety(
@@ -615,21 +871,18 @@ def validate(
             )
         )
 
-    # 5. Рельеф — физическая выполнимость (warnings)
     feas_errors, feas_warnings = check_terrain_feasibility(
         routes, swaths_by_id
     )
     errors.extend(feas_errors)
     warnings.extend(feas_warnings)
 
-    # 5b. Рельеф — сводка
     warnings.extend(
         check_terrain_safety_summary(
             routes, swaths_by_id, mission.params.safety_margin_m
         )
     )
 
-    # 6. Рельеф — безопасность на waypoints (errors)
     if mission.dem is not None:
         errors.extend(
             check_route_terrain_safety(
@@ -637,7 +890,6 @@ def validate(
             )
         )
 
-    # 6b. Рельеф — безопасность между waypoints (warnings или errors)
     if mission.dem is not None:
         interp = check_route_terrain_safety_interpolated(
             routes, mission.dem, mission.params.safety_margin_m
@@ -647,7 +899,6 @@ def validate(
         else:
             warnings.extend(interp)
 
-    # 7. Ветер — выполнимость для fixed-wing
     errors.extend(
         check_wind_feasibility(
             routes=routes,
@@ -657,7 +908,6 @@ def validate(
         )
     )
 
-    # 8. Препятствия — вертикальный зазор
     if mission.obstacles and mission.params.safety_margin_obstacle_m > 0:
         errors.extend(
             check_obstacle_clearance(
@@ -669,7 +919,6 @@ def validate(
             )
         )
 
-    # 9. Препятствия — 2D пересечение
     obstacles_polys = [o.polygon for o in mission.obstacles]
     if obstacles_polys:
         errors.extend(check_obstacles(routes, swaths_by_id, obstacles_polys))

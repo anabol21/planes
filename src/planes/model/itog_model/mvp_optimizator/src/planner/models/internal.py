@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel, Field, field_validator
 
-from planner.models.input import DecompositionMethod
+from planner.models.input import DecompositionMethod, SurveyType
 
 
 class Point(BaseModel):
@@ -26,12 +26,7 @@ class SwathSegment(BaseModel):
 
 
 class Swath(BaseModel):
-    """Одна полоса съёмки (прямой галс) с профилем рельефа.
-
-    Поля h_asl_entry_m / h_asl_exit_m / h_agl_min_m имеют тип float | None,
-    чтобы отличать «не задано» от «0 м ASL». Это важно для областей
-    на уровне моря: 0.0 — валидная высота, None — отсутствие данных.
-    """
+    """Одна полоса съёмки (прямой галс) с профилем рельефа."""
 
     id: str
     area_id: str
@@ -40,11 +35,9 @@ class Swath(BaseModel):
     length_m: float = Field(..., ge=0.0)
     segment_id: str | None = None
 
-    # Средняя высота
     h_agl_m: float = 0.0
     h_asl_m: float = 0.0
 
-    # Профиль
     segments: list[SwathSegment] = Field(default_factory=list)
     h_asl_entry_m: float | None = None
     h_asl_exit_m: float | None = None
@@ -52,19 +45,16 @@ class Swath(BaseModel):
     dem_min_m: float = 0.0
     dem_max_m: float = 0.0
 
-    # Время/энергия с учётом рельефа
     t_survey_actual_s: float = 0.0
     e_survey_actual_wh: float = 0.0
     v_survey_min_mps: float = 0.0
     feasible: bool = True
     infeasible_reason: str = ""
 
-    # Продольное перекрытие кадров
     n_photos: int = 0
     frame_length_m: float = 0.0
     photo_interval_m: float = 0.0
 
-    # Разбиение на подполосы
     parent_swath_id: str | None = None
     sub_swath_index: int = 0
 
@@ -77,26 +67,43 @@ class Swath(BaseModel):
 
 
 class Cluster(BaseModel):
+    """Кластер полос."""
+
     id: str
     swath_ids: list[str] = Field(default_factory=list)
     centroid_lat: float
     centroid_lon: float
 
+    survey_type: SurveyType | None = None
+    area_ids: list[str] = Field(default_factory=list)
+
 
 class Route(BaseModel):
     """Маршрут одного вылета одного борта.
 
-    Поля h_asl_min_m, h_asl_max_m, total_climb_m, total_descent_m
-    заполняются в recalc_all_routes по waypoints. До пересчёта — 0.0.
+    Поля T_air_s / E_air_wh — только воздушная часть (перелёты + съёмка).
+    Поля T_total_s / E_wh — с учётом взлёта и посадки:
+        T_total_s = T_air_s + T_to + T_ld
+        E_wh      = E_air_wh + E_to + E_ld
+
+    recalc_all_routes() пересчитывает T_air_s и E_air_wh по waypoints,
+    а T_total_s и E_wh восстанавливает, добавляя ту же разницу
+    (T_to + T_ld) и (E_to + E_ld), что была до пересчёта.
     """
 
     uav_id: str
     flight_index: int = Field(..., ge=0)
     vpp_id: str
     swath_ids: list[str] = Field(default_factory=list)
+
+    # Воздушная часть (перелёты + съёмка)
     T_air_s: float = Field(0.0, ge=0.0)
+    E_air_wh: float = Field(0.0, ge=0.0)   # NEW
+
+    # Полная (с взлётом и посадкой)
     T_total_s: float = Field(0.0, ge=0.0)
     E_wh: float = Field(0.0, ge=0.0)
+
     mass_kg: float = Field(0.0, ge=0.0)
     T_charge_s: float = Field(0.0, ge=0.0)
 
@@ -106,7 +113,7 @@ class Route(BaseModel):
     h_asl_min_m: float = 0.0
     h_asl_max_m: float = 0.0
 
-    # Полный полётный путь в WGS84 (с обходом + поднятой высотой)
+    # Полный полётный путь в WGS84
     waypoints: list[Point] = Field(default_factory=list)
 
 

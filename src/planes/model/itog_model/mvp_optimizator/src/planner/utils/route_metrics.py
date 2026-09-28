@@ -7,8 +7,11 @@
     t  = d / v_g
     e  = P·t/3600 + m·g·max(dh, 0)/3600
 
-Используется в pipeline для пересчёта T_air_s, E_wh после
+Используется в pipeline для пересчёта T_air_s, E_air_wh после
 построения waypoints (terrain corridor + B-spline).
+
+recalc_all_routes() сохраняет разницу между воздушной и полной
+энергией (E_to + E_ld), чтобы не терять её при пересчёте.
 """
 
 from __future__ import annotations
@@ -67,14 +70,14 @@ def recalc_route_metrics(
     wind_direction_deg: float,
     P_nominal_w: float,
 ) -> tuple[float, float]:
-    """
-    Пересчитывает (T_air_s, E_wh) из реальных waypoints маршрута.
+    """Пересчитывает (T_air_s, E_air_wh) из реальных waypoints.
 
-    Возвращает (T_air_s, E_wh).
-    Если waypoints нет — возвращает исходные значения.
+    Возвращает (T_air_s, E_air_wh) — только воздушную часть
+    (перелёты между waypoints + набор высоты). Взлёт/посадка
+    сюда не входят.
     """
     if not route.waypoints or len(route.waypoints) < 2:
-        return route.T_air_s, route.E_wh
+        return route.T_air_s, route.E_air_wh
 
     T_total = 0.0
     E_total = 0.0
@@ -118,12 +121,20 @@ def recalc_all_routes(
     wind_direction_deg: float,
     P_nominal_by_uav: dict[str, float],
 ) -> None:
-    """
-    Пересчитывает метрики всех маршрутов in-place.
+    """Пересчитывает метрики всех маршрутов in-place.
 
-    T_total_s сохраняет разницу (T_to + T_ld) от исходного значения:
+    Сохраняет разницу между полной и воздушной частью:
         delta_T = T_total_s − T_air_s = T_to + T_ld
-        T_total_s_new = T_air_s_new + delta_T
+        delta_E = E_wh − E_air_wh = E_to + E_ld
+
+    После пересчёта:
+        T_air_s  = T_new
+        E_air_wh = E_new
+        T_total_s = T_new + delta_T
+        E_wh      = E_new + delta_E
+
+    Инвариант:
+        E_wh = E_air_wh + E_to + E_ld
     """
     for r in routes:
         pp = params_by_uav.get(r.uav_id)
@@ -131,9 +142,17 @@ def recalc_all_routes(
             continue
         P_nom = P_nominal_by_uav.get(r.uav_id, 300.0)
 
-        # Разница T_total − T_air = T_to + T_ld (не меняется)
+        # --- Сохраняем разницу до пересчёта ---
         delta_T = max(r.T_total_s - r.T_air_s, 0.0)
 
+        # delta_E = E_to + E_ld. Если E_air_wh не заполнено (>0),
+        # считаем delta_E = 0 (legacy / fixed-wing: E_to = E_ld = 0).
+        if r.E_air_wh > 0.0:
+            delta_E = max(r.E_wh - r.E_air_wh, 0.0)
+        else:
+            delta_E = 0.0
+
+        # --- Пересчёт воздушной части ---
         T_new, E_new = recalc_route_metrics(
             route=r,
             params=pp,
@@ -143,5 +162,6 @@ def recalc_all_routes(
         )
 
         r.T_air_s = T_new
+        r.E_air_wh = E_new
         r.T_total_s = T_new + delta_T
-        r.E_wh = E_new
+        r.E_wh = E_new + delta_E

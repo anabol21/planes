@@ -10,7 +10,7 @@
     ],
     "language": ["ru", "en"],
     "units": "SI",
-    "notes": "Все ID — латиница в нижнем регистре, дефисы. Связи только через ID. Блок mvp_estimates содержит оценочные параметры для MVP (не паспортные)."
+    "notes": "Все ID — латиница в нижнем регистре, дефисы. Связи только через ID. Блок mvp_estimates содержит оценочные параметры для MVP (не паспортные). Влияние ветра на мощность НЕ моделируется — поле k_w удалено."
   },
 
   "aircraft": {
@@ -178,7 +178,8 @@
         "general": {
           "type": "digital",
           "max_resolution": "6000 x 4000 (24.3 MP)",
-          "sensor_size": "APS-C (23.5 x 15.6 mm)"
+          "sensor_size": "APS-C (23.5 x 15.6 mm)",
+          "survey_types": ["visible"]
         },
         "performance": {
           "shutter_type": "mechanical, focal-plane",
@@ -200,7 +201,8 @@
         "general": {
           "type": "digital",
           "sensor_size": "APS-C (23.2 × 15.4 mm)",
-          "max_resolution": "5456 × 3632"
+          "max_resolution": "5456 × 3632",
+          "survey_types": ["visible"]
         },
         "performance": {
           "focal_length": "16 или 20 mm"
@@ -221,7 +223,8 @@
           "spectral_bands_number": 5,
           "resolution": "1440×1080 (1.55 MP)",
           "sensor_diagonal": "6.3 mm",
-          "rgb_shooting": "Yes"
+          "rgb_shooting": "Yes",
+          "survey_types": ["visible", "multispectral"]
         },
         "performance": {
           "lens_focal_length": "8 mm",
@@ -257,7 +260,8 @@
         "general": {
           "type": "digital",
           "resolution": "45 MP",
-          "sensor": "full-frame CMOS Extmor R (35.9×24 mm)"
+          "sensor": "full-frame CMOS Extmor R (35.9×24 mm)",
+          "survey_types": ["visible"]
         },
         "performance": {
           "shutter": "central",
@@ -285,7 +289,8 @@
         "general": {
           "type": "digital",
           "resolution": "61 MP",
-          "sensor": "full-frame CMOS Extmor R (35.9×24 mm)"
+          "sensor": "full-frame CMOS Extmor R (35.9×24 mm)",
+          "survey_types": ["visible"]
         },
         "performance": {
           "shutter": "central",
@@ -313,7 +318,8 @@
         "general": {
           "type": "digital",
           "max_resolution": "61 MP",
-          "sensor": "full-frame CMOS Extmor R (35.9 × 24 mm)"
+          "sensor": "full-frame CMOS Extmor R (35.9 × 24 mm)",
+          "survey_types": ["visible"]
         },
         "performance": {
           "shutter": "central",
@@ -334,7 +340,8 @@
         "general": {
           "type": "digital",
           "max_resolution": "43.6 MP",
-          "sensor": "full-frame CMOS Extmor R (35.9 × 24 mm)"
+          "sensor": "full-frame CMOS Extmor R (35.9 × 24 mm)",
+          "survey_types": ["visible"]
         },
         "performance": {
           "shutter": "central",
@@ -356,7 +363,8 @@
         "general": {
           "type": "digital",
           "max_resolution": "24.3 MP",
-          "sensor": "APS-C (23.5 × 15.6 mm)"
+          "sensor": "APS-C (23.5 × 15.6 mm)",
+          "survey_types": ["visible"]
         },
         "performance": {
           "shutter": "focal-plane",
@@ -378,7 +386,8 @@
         "general": {
           "type": "digital video",
           "sensor": "1/2.3\", 12 MP",
-          "resolution": "4000 × 3000 (оценка, 4:3)"
+          "resolution": "4000 × 3000 (оценка, 4:3)",
+          "survey_types": ["visible"]
         },
         "performance": {
           "wide_angle_lens": "F=4.35 mm",
@@ -399,7 +408,8 @@
           "type": "thermal",
           "sensor": "640x512",
           "pixel_pitch_um": 17,
-          "pixel_pitch_note": "типовое для класса 640 × 512"
+          "pixel_pitch_note": "типовое для класса 640 × 512",
+          "survey_types": ["thermal"]
         },
         "performance": {
           "lens": "F=9.1 mm",
@@ -413,7 +423,7 @@
 
   "mvp_estimates": {
     "meta": {
-      "note": "Оценочные параметры для MVP. Не являются паспортными ТТХ. Источник — mvp.pdf, раздел 6."
+      "note": "Оценочные параметры для MVP. Не являются паспортными ТТХ. Источник — mvp.pdf, раздел 6. Влияние ветра на мощность НЕ моделируется — поле k_w удалено."
     },
     "gemini": {
       "v_air_mps": 12,
@@ -422,10 +432,9 @@
       "v_survey_mps": 12,
       "k_h": 90.0,
       "k_v": 0.02,
-      "k_w": 0.008,
       "t_turn_s": [5, 3, 1],
-      "power_model": "P = k_h * m + k_v * v^3 + k_w * |w|^2 * m",
-      "reserve_fraction": 0.05
+      "power_model": "P = k_h * m + k_v * v^3",
+      "reserve_fraction": 0.15
     },
     "geoscan801": {
       "v_air_mps": 12,
@@ -435,10 +444,9 @@
       "v_survey_mps": 12,
       "k_h": 90.0,
       "k_v": 0.02,
-      "k_w": 0.008,
       "t_turn_s": [5, 3, 1],
-      "power_model": "P = k_h * m + k_v * v^3 + k_w * |w|^2 * m",
-      "reserve_fraction": 0.05,
+      "power_model": "P = k_h * m + k_v * v^3",
+      "reserve_fraction": 0.15,
       "battery_energy_wh": 90,
       "camera_resolution": "4000x3000"
     },
@@ -464,7 +472,7 @@
       "airframe_mass_kg": 7.0,
       "airframe_mass_note": "оценка: 8,5 – 1,5 кг",
       "power_model": "P ≈ 220 Вт (константа для MVP)",
-      "reserve_fraction": 0.05
+      "reserve_fraction": 0.15
     }
   },
 

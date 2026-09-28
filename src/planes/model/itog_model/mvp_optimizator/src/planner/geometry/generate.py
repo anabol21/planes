@@ -1,5 +1,5 @@
 """Генерация полос с разбиением, boustrophedon, продольным перекрытием
-и горизонтальным буфером вокруг препятствий.
+и горизонтальным буфером вокруг препятствий и запретных зон.
 
 Декомпозиция работает вдоль направления полос:
 перед декомпозицией полигон поворачивается на -angle,
@@ -9,9 +9,9 @@
 поэтому ему передаётся НЕповёрнутый полигон, и обратный поворот не
 применяется. Угол angle_deg для F2C игнорируется.
 
-Если F2C падает на конкретном компоненте (например, после difference
-от obstacles получился слишком сложный полигон) — для этого компонента
-делается fallback на trapezoid. Остальные компоненты идут через F2C.
+Запретные зоны (NoFlyZone) вычитаются из полигона ВСЕГДА —
+летать над ними нельзя, независимо от высоты. Препятствия
+(Obstacle) вычитаются с буфером obstacle_buffer_m.
 
 Методы декомпозиции:
   - trapezoid      — вертикальные резы через вершины;
@@ -33,7 +33,14 @@ from planner.geometry.swath import swaths_in_piece
 from planner.geometry.trapezoid import trapezoid_decomposition
 from planner.geometry.triangulation import triangulation_decomposition
 from planner.io.dem import BaseDEM
-from planner.models import Area, Obstacle, Point, Swath, SwathSegment
+from planner.models import (
+    Area,
+    NoFlyZone,
+    Obstacle,
+    Point,
+    Swath,
+    SwathSegment,
+)
 from planner.utils.geo import make_local_transformer
 from planner.utils.logging import log_warn
 
@@ -42,8 +49,6 @@ SEGMENT_LEN_M = 30.0
 MIN_SWATH_LEN_M = 5.0
 ENTRY_EXIT_AVG_N = 3
 
-# Максимальный суммарный штраф за infeasible сегменты.
-# Итоговый множитель = 1 + min(total_excess, MAX_PENALTY_FACTOR).
 MAX_PENALTY_FACTOR = 5.0
 
 G = 9.81
@@ -129,9 +134,39 @@ def _parse_focal_mm(raw: Any) -> float:
 
 
 def _camera_params_from_catalog(camera: dict[str, Any]) -> dict[str, float]:
+    """Парсит specs камеры. Особый случай — thermal-камеры."""
     specs = camera.get("specs", {})
     general = specs.get("general", {})
     perf = specs.get("performance", {})
+
+    cam_type = str(general.get("type", "")).lower()
+
+    if "thermal" in cam_type:
+        sensor_raw = str(general.get("sensor", ""))
+        res_w, res_h = 640, 512
+        m = re.match(r"(\d+)\s*[x×]\s*(\d+)", sensor_raw)
+        if m:
+            res_w = int(m.group(1))
+            res_h = int(m.group(2))
+
+        lens = perf.get("lens", "F=9.1 mm")
+        focal_mm = _parse_focal_mm(lens)
+
+        try:
+            pitch_um = float(general.get("pixel_pitch_um", 17.0))
+        except (TypeError, ValueError):
+            pitch_um = 17.0
+
+        sensor_w_mm = res_w * pitch_um / 1000.0
+        sensor_h_mm = res_h * pitch_um / 1000.0
+
+        return {
+            "sensor_w_mm": sensor_w_mm,
+            "sensor_h_mm": sensor_h_mm,
+            "res_w_px": res_w,
+            "res_h_px": res_h,
+            "focal_mm": focal_mm,
+        }
 
     res_raw = (
         general.get("max_resolution")
@@ -287,11 +322,6 @@ def _reverse_swath(s: Swath) -> Swath:
 
 
 def _apply_boustrophedon(swaths: list[Swath], fwd) -> list[Swath]:
-    """Сортирует полосы по нормали и разворачивает чётные — змейка.
-
-    Применяется ко ВСЕМ методам, включая F2C.
-    F2C даёт геометрию без порядка — порядок делаем сами.
-    """
     if len(swaths) < 2:
         return swaths
 
@@ -324,7 +354,7 @@ def _apply_boustrophedon(swaths: list[Swath], fwd) -> list[Swath]:
 
 
 # ============================================================
-# Разбиение при крутом перепаде
+# Split при крутом перепаде
 # ============================================================
 
 def _find_break_indices(
@@ -445,16 +475,6 @@ def _compute_survey_time_energy(
     mass_kg: float,
     P_nominal_w: float,
 ) -> tuple[float, float, float, bool, str, int, float]:
-    """Считает t_survey и e_survey для полосы.
-
-    Штраф за infeasible сегменты — пропорционально превышению:
-        excess_ratio = max(0, v_min / v_needed − 1)
-        penalty = 1 + min(Σ excess_ratio, MAX_PENALTY_FACTOR)
-
-    Returns:
-        (t_total_s, e_total_wh, v_survey_min_mps, feasible,
-         infeasible_reason, n_infeasible_segments, total_excess_ratio)
-    """
     t_total = 0.0
     e_total_wh = 0.0
     v_min_used = v_nominal
@@ -543,12 +563,6 @@ def _generate_lines_f2c(
     spacing_m: float,
     headland_width_m: float,
 ) -> list[LineString]:
-    """F2C: неповёрнутый компонент → полосы в исходной системе.
-
-    Внутри f2c_backend есть timeout и simplify — если F2C уйдёт
-    в долгий перебор, поднимется F2CTimeoutError, вылетит сюда,
-    поймается в generate_swaths_for_area и откатится на trapezoid.
-    """
     from planner.geometry.f2c_backend import (
         generate_swaths_f2c, is_available,
     )
@@ -564,7 +578,6 @@ def _generate_lines_legacy(
     decomposition: str,
     spacing_m: float,
 ) -> list[LineString]:
-    """trapezoid / triangulation на повёрнутом компоненте."""
     if decomposition == "triangulation":
         pieces = triangulation_decomposition(comp_rot)
     else:
@@ -600,16 +613,17 @@ def generate_swaths_for_area(
     P_nominal_w: float = 300.0,
     obstacle_buffer_m: float = 20.0,
     headland_width_m: float = 0.0,
+    no_fly_zones: list[NoFlyZone] | None = None,
+    no_fly_buffer_m: float = 0.0,
 ) -> tuple[list[Swath], float]:
-    """Возвращает (swaths, h_agl_target).
+    """Генерирует полосы для области.
 
-    Для decomposition='fields2cover' (или 'auto' с доступным F2C)
-    полигон НЕ поворачивается на angle_deg — F2C сам выбирает
-    направление. angle_deg в этом случае игнорируется.
-
-    Если F2C падает / уходит в timeout / полигон слишком сложный —
-    fallback на trapezoid для этого компонента.
+    Препятствия вычитаются с obstacle_buffer_m. Запретные зоны —
+    всегда, с no_fly_buffer_m (по умолчанию 0). Препятствия
+    летать «над» в этой версии НЕЛЬЗЯ (как и было).
     """
+    no_fly_zones = no_fly_zones or []
+
     cam = _camera_params_from_catalog(camera)
     geom_calc = compute_flight_and_swath(
         gsd_cm_per_px, cam, overlap_x, overlap_long,
@@ -631,6 +645,17 @@ def generate_swaths_for_area(
         ],
     )
 
+    # 1. Запретные зоны — вычитаем ВСЕГДА
+    for nfz in no_fly_zones:
+        nfz_poly = shape(nfz.polygon)
+        nfz_m = Polygon(
+            [fwd.transform(x, y) for x, y in nfz_poly.exterior.coords]
+        )
+        if no_fly_buffer_m > 0:
+            nfz_m = nfz_m.buffer(no_fly_buffer_m)
+        poly_m = poly_m.difference(nfz_m)
+
+    # 2. Препятствия — вычитаем с буфером
     for obs in obstacles:
         obs_poly = shape(obs.polygon)
         obs_m = Polygon(
@@ -647,7 +672,6 @@ def generate_swaths_for_area(
     if not components_m:
         return [], h_agl_target
 
-    # Общий origin для поворотов legacy-методов
     if len(components_m) == 1:
         cx, cy = components_m[0].centroid.x, components_m[0].centroid.y
     else:
@@ -659,7 +683,6 @@ def generate_swaths_for_area(
             cx = sum(p.centroid.x for p in components_m) / len(components_m)
             cy = sum(p.centroid.y for p in components_m) / len(components_m)
 
-    # Решаем, использовать ли F2C
     use_f2c = False
     if decomposition in ("fields2cover", "auto"):
         from planner.geometry.f2c_backend import is_available
@@ -754,10 +777,8 @@ def generate_swaths_for_area(
             ))
             sid += 1
 
-    # Boustrophedon — для ВСЕХ методов (включая F2C).
     base_swaths = _apply_boustrophedon(base_swaths, fwd)
 
-    # Split + метрики
     final_swaths: list[Swath] = []
     for base in base_swaths:
         parts = split_swath_if_needed(

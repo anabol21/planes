@@ -1,0 +1,34 @@
+{
+  "uavs": [
+    {
+      "id": "gemini-pf1b",
+      "model": "gemini",
+      "camera_id": "pf1b",
+      "gnss_id": "ublox-zed-f9p",
+      "radio_id": "868-mhz-gemini",
+      "battery_id": "battery-gemini",
+      "vpp_id": "vpp-1",
+      "n_camera_slots": 1
+    },
+    {
+      "id": "gemini-pollux",
+      "model": "gemini",
+      "camera_id": "pollux",
+      "gnss_id": "ublox-zed-f9p",
+      "radio_id": "868-mhz-gemini",
+      "battery_id": "battery-gemini",
+      "vpp_id": "vpp-1",
+      "n_camera_slots": 1
+    },
+    {
+      "id": "gs801-thermal",
+      "model": "geoscan801",
+      "camera_id": "801-thermal",
+      "gnss_id": "gnss-801",
+      "radio_id": "801-radio",
+      "battery_id": "battery-801",
+      "vpp_id": "vpp-1",
+      "n_camera_slots": 1
+    }
+  ]
+}

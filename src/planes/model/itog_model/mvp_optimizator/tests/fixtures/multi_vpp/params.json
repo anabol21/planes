@@ -1,11 +1,11 @@
 {
   "gsd_cm_per_px": 3.0,
   "wind": {
-    "speed_mps": 7.0,
+    "speed_mps": 5.0,
     "direction_deg": 90.0
   },
-  "angles_deg": [0, 15, 30, 45, 60, 75, 90, 105, 120, 135, 150, 165],
-  "angles_early_stop_patience": 3,
+  "angles_deg": [0, 45, 90, 135],
+  "angles_early_stop_patience": 2,
   "optimization_criterion": "min_time",
   "R_max": 5,
   "reserve_fraction": 0.15,
@@ -14,11 +14,11 @@
   "overlap_long": 0.7,
   "dem_file": "dem.kml",
   "safety_margin_m": 30.0,
-  "safety_margin_factor": 0.1,
+  "safety_margin_factor": 0.0,
   "obstacle_buffer_m": 20.0,
   "safety_margin_obstacle_m": 30.0,
-  "smooth_waypoints": true,
+  "smooth_waypoints": false,
   "spline_samples": 300,
-  "terrain_corridor": true,
+  "terrain_corridor": false,
   "terrain_smooth_window": 5
 }

@@ -1,0 +1,68 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "area-north",
+        "name": "North area",
+        "survey_type": "visible",
+        "uav_id": "gemini-1"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [37.618, 55.7535],
+            [37.622, 55.7535],
+            [37.622, 55.7555],
+            [37.618, 55.7555],
+            [37.618, 55.7535]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "area-center",
+        "name": "Center area",
+        "survey_type": "visible",
+        "uav_id": "gemini-2"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [37.622, 55.7510],
+            [37.626, 55.7510],
+            [37.626, 55.7530],
+            [37.622, 55.7530],
+            [37.622, 55.7510]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "area-south",
+        "name": "South area",
+        "survey_type": "visible",
+        "uav_id": "gemini-3"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [37.626, 55.7485],
+            [37.630, 55.7485],
+            [37.630, 55.7505],
+            [37.626, 55.7505],
+            [37.626, 55.7485]
+          ]
+        ]
+      }
+    }
+  ]
+}

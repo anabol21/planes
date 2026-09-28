@@ -1,4 +1,11 @@
-"""Создание PhysicsParams из каталога + конфига борта."""
+"""Создание PhysicsParams из каталога + конфига борта.
+
+Модель мощности мультиротора:
+    P = k_h·m + k_v·v³
+
+Влияние ветра на мощность НЕ моделируется. `k_w` убран из
+PhysicsParams (см. planner.physics.base).
+"""
 
 from __future__ import annotations
 
@@ -14,7 +21,6 @@ from planner.physics.rotor import RotorPhysics
 _FIXED_WING_MODELS = {"geoscan201"}
 _MULTIROTOR_MODELS = {"gemini", "geoscan801"}
 
-# Дефолты, если в каталоге нет данных.
 _DEFAULT_T_MAX_S = 2400.0
 _DEFAULT_E_BATT_WH = 144.7
 _DEFAULT_V_AIR_MPS = 12.0
@@ -24,6 +30,7 @@ _DEFAULT_V_DESCENT_MPS = 3.0
 _DEFAULT_V_MIN_ROTOR_MPS = 1.0
 _DEFAULT_V_STALL_FIXED_MPS = 15.0
 _DEFAULT_CHARGE_TIME_GEMINI_S = 105.0 * 60.0
+_DEFAULT_RESERVE_FRACTION = 0.15   # было 0.05
 
 
 # ============================================================
@@ -33,7 +40,7 @@ _DEFAULT_CHARGE_TIME_GEMINI_S = 105.0 * 60.0
 def build_physics_params(
     uav: UAVConfig,
     catalog: Catalog,
-    reserve_fraction: float = 0.05,
+    reserve_fraction: float = _DEFAULT_RESERVE_FRACTION,
 ) -> PhysicsParams:
     aircraft = catalog.get_aircraft(uav.model)
     mvp = catalog.get_mvp_estimates(uav.model)
@@ -66,8 +73,6 @@ def build_physics_params(
         v_descent = _float_or(
             mvp.get("v_descent_mps"), _DEFAULT_V_DESCENT_MPS
         )
-        # Для fixed-wing вертикальная скорость висения не имеет смысла —
-        # берём климб (для совместимости поля PhysicsParams).
         v_vert = v_climb
     else:
         v_stall = _float_or(mvp.get("v_stall_mps"), 0.0)
@@ -75,10 +80,6 @@ def build_physics_params(
         v_climb = _float_or(mvp.get("v_climb_mps"), v_vert)
         v_descent = _float_or(mvp.get("v_descent_mps"), v_vert)
 
-    # Минимальная горизонтальная скорость:
-    #   - фиксированное значение из mvp_estimates, если есть;
-    #   - для fixed-wing — v_stall (ниже сваливание);
-    #   - для мультироторов — 1.0 (управляемость).
     v_min_explicit = mvp.get("v_min_mps")
     if v_min_explicit is not None:
         v_min = float(v_min_explicit)
@@ -119,7 +120,7 @@ def build_physics_params(
         T_max_s=T_max_s,
         k_h=_float_or(mvp.get("k_h"), 90.0),
         k_v=_float_or(mvp.get("k_v"), 0.02),
-        k_w=_float_or(mvp.get("k_w"), 0.008),
+        # k_w убран — ветер на мощность не влияет
         t_turn_s=5.0,
         reserve_fraction=reserve_fraction,
         T_catapult_s=_float_or(mvp.get("T_catapult_s"), 0.0),
@@ -151,7 +152,6 @@ def _is_fixed_wing(model: str) -> bool:
 
 
 def _float_or(raw, default: float) -> float:
-    """Возвращает float(raw) или default при None/пустой строке/ошибке."""
     if raw is None:
         return default
     try:
@@ -165,11 +165,6 @@ def _float_or(raw, default: float) -> float:
 # ============================================================
 
 def _parse_mass(specs: dict) -> float | None:
-    """'2 kg (battery & propellers included)' → 2.0.
-
-    '8.5 kg' → 8.5. '1.5 kg' → 1.5.
-    Приоритет: weight → max_takeoff_mass.
-    """
     general = specs.get("general", {})
     raw = general.get("weight") or general.get("max_takeoff_mass")
     if not raw:
@@ -186,14 +181,6 @@ def _parse_mass(specs: dict) -> float | None:
 
 
 def _parse_energy(battery: dict) -> float:
-    """Battery spec → Wh.
-
-    Поддерживает:
-      - energy_wh: 740 (число)
-      - energy_wh: "740 Wh"
-      - energy: "144.7 Wh" (строка)
-    Приоритет: energy_wh → energy.
-    """
     power = battery.get("specs", {}).get("power", {})
 
     raw = power.get("energy_wh")
@@ -226,18 +213,11 @@ _TIME_UNIT_TO_S = {
 
 
 def _parse_time_s(raw, default: float = _DEFAULT_T_MAX_S) -> float:
-    """'40 min' → 2400. '~105 min' → 6300. '2 h' → 7200. '2400 s' → 2400.
-
-    Устойчив к '~', '<', '>', запятым как десятичный разделитель.
-    Если единица не распознана — считает минуты (по историческому формату).
-    """
     if raw is None:
         return default
 
     s = str(raw).strip().lower().replace(",", ".")
 
-    # Единица измерения (длинные альтернативы первыми, чтобы 'min' не
-    # матчился раньше 'мин', а 'sec' раньше 'с')
     m = re.search(
         r"(\d+(?:\.\d+)?)\s*"
         r"(hours|hour|mins|seconds|second|secs|min|hr|ч|час|часов|часа|"
@@ -253,10 +233,8 @@ def _parse_time_s(raw, default: float = _DEFAULT_T_MAX_S) -> float:
         factor = _TIME_UNIT_TO_S.get(unit)
         if factor is not None:
             return val * factor
-        # Распозналась цифра, но единица не из словаря — по умолчанию минуты
         return val * 60.0
 
-    # Есть только число — считаем минутами
     nums = re.findall(r"(\d+(?:\.\d+)?)", s)
     if nums:
         try:
@@ -268,11 +246,6 @@ def _parse_time_s(raw, default: float = _DEFAULT_T_MAX_S) -> float:
 
 
 def _parse_charge_time_s(uav: UAVConfig, catalog: Catalog) -> float:
-    """Время зарядки АКБ борта.
-
-    Берёт первый charger из aircraft.related.chargers, у которого задано
-    specs.power.charging_time. Fallback: 105 мин для Gemini, 0 для остальных.
-    """
     try:
         aircraft = catalog.get_aircraft(uav.model)
     except KeyError:
@@ -282,12 +255,8 @@ def _parse_charge_time_s(uav: UAVConfig, catalog: Catalog) -> float:
     if not chargers:
         return _default_charge_time_s(uav.model)
 
-    # TODO (пара 5): заменить на catalog.get_charger(cid) после рефакторинга io.
-    data = getattr(catalog, "_data", {}) or {}
-    chargers_data = data.get("chargers", {}) if isinstance(data, dict) else {}
-
     for cid in chargers:
-        charger = chargers_data.get(cid)
+        charger = catalog.get_optional("chargers", cid)
         if not charger:
             continue
         ct = (
@@ -296,7 +265,9 @@ def _parse_charge_time_s(uav: UAVConfig, catalog: Catalog) -> float:
             .get("charging_time")
         )
         if ct:
-            return _parse_time_s(ct, default=_default_charge_time_s(uav.model))
+            return _parse_time_s(
+                ct, default=_default_charge_time_s(uav.model)
+            )
 
     return _default_charge_time_s(uav.model)
 

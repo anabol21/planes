@@ -1,9 +1,9 @@
-"""Чтение KML: препятствия с высотами.
+"""Чтение KML: препятствия и запретные зоны.
 
 Поддерживаются:
-  - Polygon (footprint препятствия);
-  - Point (точечное препятствие — превращается в квадрат 10×10 м);
-  - MultiGeometry (разворачивается в несколько препятствий).
+  - Polygon (footprint);
+  - Point (точечное препятствие → квадрат 10×10 м);
+  - MultiGeometry (разворачивается в несколько объектов).
 
 Высота извлекается из <description> в свободной форме:
   height=50, Height: 50, высота 50, h=50, 50 m.
@@ -11,22 +11,18 @@
 
 from __future__ import annotations
 
+import math
 import re
 from pathlib import Path
 
 from lxml import etree
 
-from planner.models import Obstacle
+from planner.models import NoFlyZone, Obstacle
 
 
 KML_NS = {"kml": "http://www.opengis.net/kml/2.2"}
 
-# Радиус точечного препятствия по умолчанию (метры).
-# Point в KML не имеет площади, но obstacle_buffer_m в pipeline даст
-# дополнительный отступ. 5 м — консервативно, чтобы не потерять объект.
 POINT_OBSTACLE_RADIUS_M = 5.0
-
-# 1 градус широты ≈ 111 320 м. Для долготы на широте φ: 111320·cos(φ).
 _M_PER_DEG_LAT = 111_320.0
 
 
@@ -47,7 +43,6 @@ _HEIGHT_RE = re.compile(
     re.IGNORECASE | re.VERBOSE,
 )
 
-# Второй шаблон: просто "50 m", "50 м" — если ключевого слова нет
 _HEIGHT_M_RE = re.compile(
     r"(?P<val>\d+(?:[.,]\d+)?)\s*(?:m\b|м\b|meters?|метров?|м\.)",
     re.IGNORECASE,
@@ -55,18 +50,7 @@ _HEIGHT_M_RE = re.compile(
 
 
 def _parse_height(description: str | None) -> float:
-    """Извлекает высоту из свободного текста описания.
-
-    Поддерживаемые формы:
-      - height=50
-      - Height: 50
-      - высота 50
-      - h=50
-      - 50 m
-      - 50 м
-
-    Возвращает 0.0, если высота не найдена.
-    """
+    """Извлекает высоту из свободного текста описания."""
     if not description:
         return 0.0
 
@@ -93,12 +77,10 @@ def _parse_height(description: str | None) -> float:
 # Парсинг координат
 # ============================================================
 
-def _parse_coords_text(coords_text: str) -> list[tuple[float, float, float]]:
-    """'lon,lat,alt lon,lat,alt ...' → [(lon, lat, alt), ...].
-
-    Пропускает некорректные токены. Возвращает пустой список, если
-    ни одного валидного токена нет.
-    """
+def _parse_coords_text(
+    coords_text: str,
+) -> list[tuple[float, float, float]]:
+    """'lon,lat,alt lon,lat,alt ...' → [(lon, lat, alt), ...]."""
     points: list[tuple[float, float, float]] = []
     if not coords_text:
         return points
@@ -119,7 +101,6 @@ def _parse_coords_text(coords_text: str) -> list[tuple[float, float, float]]:
 
 
 def _close_ring(pts: list[list[float]]) -> list[list[float]]:
-    """Замыкает ring, если первая и последняя точки различаются."""
     if not pts:
         return pts
     if pts[0] != pts[-1]:
@@ -128,10 +109,7 @@ def _close_ring(pts: list[list[float]]) -> list[list[float]]:
 
 
 def _coords_to_polygon(coords_text: str) -> dict | None:
-    """Строка координат → GeoJSON Polygon.
-
-    Возвращает None, если точек меньше 3.
-    """
+    """Строка координат → GeoJSON Polygon. None, если точек < 3."""
     raw = _parse_coords_text(coords_text)
     if len(raw) < 3:
         return None
@@ -145,21 +123,17 @@ def _point_to_polygon(
     coords_text: str,
     radius_m: float = POINT_OBSTACLE_RADIUS_M,
 ) -> dict | None:
-    """Точка → квадрат вокруг неё (для Point-препятствий).
-
-    Использует локальное приближение: 1° lat ≈ 111 320 м,
-    1° lon ≈ 111 320·cos(lat). Для маленького радиуса (10 м)
-    этого достаточно.
-    """
+    """Точка → квадрат вокруг неё."""
     raw = _parse_coords_text(coords_text)
     if not raw:
         return None
 
     lon, lat, _ = raw[0]
 
-    import math
     dlat = radius_m / _M_PER_DEG_LAT
-    dlon = radius_m / (_M_PER_DEG_LAT * max(math.cos(math.radians(lat)), 1e-6))
+    dlon = radius_m / (
+        _M_PER_DEG_LAT * max(math.cos(math.radians(lat)), 1e-6)
+    )
 
     ring = [
         [lon - dlon, lat - dlat],
@@ -172,18 +146,13 @@ def _point_to_polygon(
 
 
 # ============================================================
-# Разбор одного Placemark
+# Разбор Placemark
 # ============================================================
 
 def _placemark_geometries(placemark) -> list[dict]:
-    """Возвращает список GeoJSON-полигонов из одного Placemark.
-
-    Обрабатывает Polygon, Point и MultiGeometry. Игнорирует всё
-    остальное (LineString, LinearRing как самостоятельный объект).
-    """
+    """Polygon / Point / MultiGeometry → список GeoJSON-полигонов."""
     geoms: list[dict] = []
 
-    # --- Polygon ---
     for poly in placemark.findall(".//kml:Polygon", KML_NS):
         coords_el = poly.find(
             ".//kml:outerBoundaryIs//kml:LinearRing//kml:coordinates",
@@ -195,7 +164,6 @@ def _placemark_geometries(placemark) -> list[dict]:
         if geom is not None:
             geoms.append(geom)
 
-    # --- Point ---
     for point in placemark.findall(".//kml:Point", KML_NS):
         coords_el = point.find("kml:coordinates", KML_NS)
         if coords_el is None or coords_el.text is None:
@@ -208,15 +176,11 @@ def _placemark_geometries(placemark) -> list[dict]:
 
 
 # ============================================================
-# Основная функция
+# Препятствия
 # ============================================================
 
 def read_obstacles_kml(path: str | Path) -> list[Obstacle]:
-    """Читает KML с препятствиями.
-
-    Возвращает список Obstacle. Один Placemark с MultiGeometry
-    может дать несколько Obstacle (id с суффиксом -1, -2, ...).
-    """
+    """Читает KML с препятствиями."""
     path = Path(path)
     if not path.exists():
         raise FileNotFoundError(f"KML not found: {path}")
@@ -247,8 +211,6 @@ def read_obstacles_kml(path: str | Path) -> list[Obstacle]:
         base_id = name or f"obs-{len(obstacles) + 1}"
 
         for k, geom in enumerate(geoms):
-            # Один Placemark — один Obstacle. Несколько геометрий
-            # в MultiGeometry получают суффиксы -1, -2, ...
             obs_id = base_id if len(geoms) == 1 else f"{base_id}-{k + 1}"
 
             obstacles.append(
@@ -261,3 +223,56 @@ def read_obstacles_kml(path: str | Path) -> list[Obstacle]:
             )
 
     return obstacles
+
+
+# ============================================================
+# Запретные зоны
+# ============================================================
+
+def read_no_fly_zones_kml(path: str | Path) -> list[NoFlyZone]:
+    """Читает KML с запретными зонами.
+
+    Отличия от obstacles:
+      - нет height_m (запрет абсолютный);
+      - точка → квадрат 5×5 м (та же логика);
+      - возвращает пустой список, если файла нет.
+
+    KML-файл опционален: если его нет — запреток нет.
+    """
+    path = Path(path)
+    if not path.exists():
+        return []
+
+    try:
+        tree = etree.parse(str(path))
+    except etree.XMLSyntaxError:
+        return []
+
+    root = tree.getroot()
+
+    zones: list[NoFlyZone] = []
+
+    for placemark in root.findall(".//kml:Placemark", KML_NS):
+        name_el = placemark.find("kml:name", KML_NS)
+        name = ""
+        if name_el is not None and name_el.text:
+            name = name_el.text.strip()
+
+        geoms = _placemark_geometries(placemark)
+        if not geoms:
+            continue
+
+        base_id = name or f"nfz-{len(zones) + 1}"
+
+        for k, geom in enumerate(geoms):
+            nfz_id = base_id if len(geoms) == 1 else f"{base_id}-{k + 1}"
+
+            zones.append(
+                NoFlyZone(
+                    id=nfz_id,
+                    name=name,
+                    polygon=geom,
+                )
+            )
+
+    return zones

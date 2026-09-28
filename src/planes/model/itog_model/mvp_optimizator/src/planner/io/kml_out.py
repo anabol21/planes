@@ -1,4 +1,12 @@
-"""Экспорт маршрутов и полос в KML (с профилем высоты и обходом)."""
+"""Экспорт маршрутов и полос в KML (с профилем высоты и обходом).
+
+Слои KML:
+  - VPP (зелёные маркеры);
+  - Swaths (тонкие серые линии — полосы);
+  - Obstacles (красные полигоны — препятствия);
+  - NoFlyZones (красные полупрозрачные полигоны — запретные зоны);
+  - UAV: <id> (папки с маршрутами по бортам).
+"""
 
 from __future__ import annotations
 
@@ -6,7 +14,14 @@ from pathlib import Path
 
 import simplekml
 
-from planner.models import Candidate, MissionInput, Swath, VPP
+from planner.models import (
+    Candidate,
+    MissionInput,
+    Obstacle,
+    NoFlyZone,
+    Swath,
+    VPP,
+)
 
 
 _UAV_COLORS = [
@@ -26,11 +41,14 @@ def _uav_color(index: int) -> str:
 
 
 def _fmt_height(v: float | None) -> str:
-    """Форматирует высоту. None → 'n/a' (0.0 — валидное значение)."""
     if v is None:
         return "n/a"
     return f"{v:.1f}"
 
+
+# ============================================================
+# Базовые элементы
+# ============================================================
 
 def _add_vpp(kml: simplekml.Kml, vpp: VPP) -> None:
     p = kml.newpoint(
@@ -45,7 +63,6 @@ def _add_vpp(kml: simplekml.Kml, vpp: VPP) -> None:
 
 
 def _add_swath(kml: simplekml.Kml, swath: Swath, color: str) -> None:
-    """Рисует полосу с профилем высоты (по сегментам)."""
     if swath.segments and len(swath.segments) >= 2:
         coords = [(seg.lon, seg.lat, seg.h_asl_m) for seg in swath.segments]
     else:
@@ -69,19 +86,57 @@ def _add_swath(kml: simplekml.Kml, swath: Swath, color: str) -> None:
     )
 
 
+def _add_obstacle(kml: simplekml.Kml, obs: Obstacle) -> None:
+    """Препятствие — красный контур с полупрозрачной заливкой."""
+    coords = obs.polygon["coordinates"][0]   # ring
+    latlngs = [(c[0], c[1]) for c in coords]
+
+    pol = kml.newpolygon(
+        name=obs.id,
+        outerboundaryis=latlngs,
+    )
+    pol.style.polystyle.color = "660000ff"   # красный, alpha=0x66
+    pol.style.linestyle.color = "ff0000ff"
+    pol.style.linestyle.width = 2
+    pol.description = (
+        f"<b>Препятствие</b><br>"
+        f"id: {obs.id}<br>"
+        f"name: {obs.name}<br>"
+        f"height: {obs.height_m} м"
+    )
+
+
+def _add_no_fly_zone(kml: simplekml.Kml, nfz: NoFlyZone) -> None:
+    """Запретная зона — красный контур, сплошная заливка."""
+    coords = nfz.polygon["coordinates"][0]
+    latlngs = [(c[0], c[1]) for c in coords]
+
+    pol = kml.newpolygon(
+        name=f"NFZ: {nfz.id}",
+        outerboundaryis=latlngs,
+    )
+    # Более насыщенный красный, чем у препятствий
+    pol.style.polystyle.color = "990000ff"   # alpha=0x99
+    pol.style.linestyle.color = "ff0000ff"   # ярко-красный
+    pol.style.linestyle.width = 3
+    pol.description = (
+        f"<b>ЗАПРЕТНАЯ ЗОНА</b><br>"
+        f"id: {nfz.id}<br>"
+        f"name: {nfz.name}<br>"
+        f"полёты запрещены на любой высоте"
+    )
+
+
+# ============================================================
+# Маршруты
+# ============================================================
+
 def _add_route(
     kml: simplekml.Kml,
     candidate: Candidate,
     mission: MissionInput,
     swaths_by_id: dict[str, Swath],
 ) -> None:
-    """Каждый борт — папка с маршрутом.
-
-    Если есть waypoints — используем их (с обходом и поднятием высоты).
-    Fallback на swath_ids — для старых данных без waypoints.
-
-    Для каждого маршрута берём его собственную ВПП через mission.vpp_by_id.
-    """
     by_uav: dict[str, list] = {}
     for r in candidate.routes:
         by_uav.setdefault(r.uav_id, []).append(r)
@@ -136,26 +191,51 @@ def _add_route(
             )
 
 
+# ============================================================
+# Основная функция
+# ============================================================
+
 def write_routes_kml(
     path: str | Path,
     mission: MissionInput,
     candidate: Candidate,
     swaths_by_id: dict[str, Swath] | None = None,
 ) -> None:
-    """Пишет KML: ВПП, полосы, маршруты по бортам."""
+    """Пишет KML:
+      - VPP (зелёные маркеры);
+      - Swaths (серые линии);
+      - Obstacles (красные контуры);
+      - NoFlyZones (красные сплошные заливки);
+      - UAV: <id> (папки с маршрутами по бортам).
+    """
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
 
     kml = simplekml.Kml(name="Geoscan Planner — routes")
 
+    # 1. VPP
     for vpp in mission.vpps:
         _add_vpp(kml, vpp)
 
+    # 2. Полосы
     if swaths_by_id:
         folder = kml.newfolder(name="Swaths")
         for swath in swaths_by_id.values():
             _add_swath(folder, swath, color="ff888888")
 
+    # 3. Препятствия
+    if mission.obstacles:
+        obs_folder = kml.newfolder(name="Obstacles")
+        for obs in mission.obstacles:
+            _add_obstacle(obs_folder, obs)
+
+    # 4. Запретные зоны
+    if mission.no_fly_zones:
+        nfz_folder = kml.newfolder(name="NoFlyZones")
+        for nfz in mission.no_fly_zones:
+            _add_no_fly_zone(nfz_folder, nfz)
+
+    # 5. Маршруты
     _add_route(kml, candidate, mission, swaths_by_id or {})
 
     kml.save(str(path))

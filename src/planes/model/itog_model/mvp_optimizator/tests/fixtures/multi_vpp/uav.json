@@ -1,0 +1,34 @@
+{
+  "uavs": [
+    {
+      "id": "gemini-1",
+      "model": "gemini",
+      "camera_id": "pf1b",
+      "gnss_id": "ublox-zed-f9p",
+      "radio_id": "868-mhz-gemini",
+      "battery_id": "battery-gemini",
+      "vpp_id": "vpp-north",
+      "n_camera_slots": 1
+    },
+    {
+      "id": "gemini-2",
+      "model": "gemini",
+      "camera_id": "pf1b",
+      "gnss_id": "ublox-zed-f9p",
+      "radio_id": "868-mhz-gemini",
+      "battery_id": "battery-gemini",
+      "vpp_id": "vpp-center",
+      "n_camera_slots": 1
+    },
+    {
+      "id": "gemini-3",
+      "model": "gemini",
+      "camera_id": "pf1b",
+      "gnss_id": "ublox-zed-f9p",
+      "radio_id": "868-mhz-gemini",
+      "battery_id": "battery-gemini",
+      "vpp_id": "vpp-south",
+      "n_camera_slots": 1
+    }
+  ]
+}

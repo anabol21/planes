@@ -1,0 +1,68 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "area-visible",
+        "name": "Visible area",
+        "survey_type": "visible",
+        "gsd_cm_per_px": 3.0
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [37.620, 55.750],
+            [37.626, 55.750],
+            [37.626, 55.7545],
+            [37.620, 55.7545],
+            [37.620, 55.750]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "area-multispectral",
+        "name": "Multispectral area",
+        "survey_type": "multispectral",
+        "gsd_cm_per_px": 5.0
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [37.628, 55.750],
+            [37.634, 55.750],
+            [37.634, 55.7545],
+            [37.628, 55.7545],
+            [37.628, 55.750]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": "area-thermal",
+        "name": "Thermal area",
+        "survey_type": "thermal",
+        "gsd_cm_per_px": 10.0
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [37.636, 55.750],
+            [37.642, 55.750],
+            [37.642, 55.7545],
+            [37.636, 55.7545],
+            [37.636, 55.750]
+          ]
+        ]
+      }
+    }
+  ]
+}
