@@ -5,7 +5,7 @@ from __future__ import annotations
 from enum import Enum
 from typing import Any
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 class SurveyType(str, Enum):
@@ -22,6 +22,7 @@ class Criterion(str, Enum):
 class DecompositionMethod(str, Enum):
     TRAPEZOID = "trapezoid"
     TRIANGULATION = "triangulation"
+    FIELDS2COVER = "fields2cover"
     AUTO = "auto"
 
 
@@ -75,7 +76,10 @@ class UAVConfig(BaseModel):
 class Params(BaseModel):
     gsd_cm_per_px: float = Field(..., gt=0.0)
     wind: Wind
-    angles_deg: list[float] = Field(default_factory=lambda: [0.0, 45.0, 90.0])
+    # Empty / None is allowed only with fields2cover or auto: F2C picks
+    # the swath heading via generateBestSwaths. A leftover frontend
+    # strip_direction_deg must not be copied here on that path.
+    angles_deg: list[float] | None = Field(default_factory=lambda: [0.0, 45.0, 90.0])
     optimization_criterion: Criterion = Criterion.MIN_TIME
     attempts_max: int = Field(3, ge=1)
     R_max: int = Field(5, ge=1)
@@ -111,13 +115,27 @@ class Params(BaseModel):
 
     @field_validator("angles_deg")
     @classmethod
-    def _check_angles(cls, v: list[float]) -> list[float]:
-        if not v:
-            raise ValueError("angles_deg must be non-empty")
+    def _check_angles(cls, v: list[float] | None) -> list[float]:
+        if v is None:
+            return []
         for a in v:
             if not (0.0 <= a < 360.0):
                 raise ValueError(f"angle {a} out of range [0, 360)")
         return v
+
+    @model_validator(mode="after")
+    def _empty_angles_only_for_f2c(self) -> Params:
+        if self.angles_deg:
+            return self
+        if self.decomposition in (
+            DecompositionMethod.FIELDS2COVER,
+            DecompositionMethod.AUTO,
+        ):
+            return self
+        raise ValueError(
+            "angles_deg must be non-empty unless decomposition is "
+            "fields2cover or auto"
+        )
 
 
 class MissionInput(BaseModel):

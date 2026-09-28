@@ -3,13 +3,15 @@ workstream: model
 owner: Grisha
 task: GRI-001
 status: review
-updated: 2026-09-27
+updated: 2026-09-28
 checkpoint: 2026-09-23
-branch: GreforyAbdr-patch-1
+branch: cursor/f2c-auto-strip-angle-d388
 contract_version: v0
 ---
 
 # Model status
+
+- INT-F2C-001 overlay (dedicated contract task, not a GRI body rewrite): `DecompositionMethod.FIELDS2COVER` allows empty `angles_deg`. `f2c_backend.generate_swaths_f2c` and the `fields2cover`/`auto` path in `generate.py` call `generateBestSwaths` and ignore `angle_deg`. `_angles_to_try` returns one dummy `0.0` on that path.
 
 - `planned`: GRI-002 — непрямоугольная зона и отдельный KML ограничений полётной зоны. Бриф: `docs/workstreams/model/GRI-002.md`.
 

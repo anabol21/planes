@@ -23,6 +23,7 @@ from planner.models import (
 )
 from planner.physics import build_physics_model, build_physics_params
 from planner.physics.base import PhysicsParams
+from planner.solver.angles import angles_to_try, uses_auto_f2c
 from planner.solver.assignment import assign_clusters_to_uavs
 from planner.solver.clustering import cluster_swaths
 from planner.solver.counters import Counters
@@ -522,6 +523,14 @@ def run_one_angle(
 # Выбор лучшего, LNS
 # ============================================================
 
+def _uses_auto_f2c(mission: MissionInput) -> bool:
+    return uses_auto_f2c(mission)
+
+
+def _angles_to_try(mission: MissionInput) -> list[float]:
+    return angles_to_try(mission)
+
+
 def select_best(candidates: list[Candidate], criterion: Criterion) -> Candidate:
     if not candidates:
         raise ValueError("No candidates")
@@ -553,7 +562,8 @@ def run_mission(fixtures_dir: str | Path, output_dir: str | Path) -> Report:
     patience_left = patience
     best_metric: float | None = None
 
-    for theta in mission.params.angles_deg:
+    angles = _angles_to_try(mission)
+    for theta in angles:
         counters.reset_attempts()
         swaths_by_area, h_agl_by_area = _generate_all_swaths(mission, theta)
         last_swaths_by_id = {
@@ -646,7 +656,7 @@ def run_mission(fixtures_dir: str | Path, output_dir: str | Path) -> Report:
         optimization_criterion=mission.params.optimization_criterion.value,
         metrics=metrics,
         per_uav=list(per_uav.values()),
-        n_angles_tried=len(mission.params.angles_deg),
+        n_angles_tried=len(angles),
         n_candidates=len(candidates),
         lns_iterations=counters.lns_iter,
     )

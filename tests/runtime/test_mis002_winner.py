@@ -7,6 +7,7 @@ cover ``select_winner``. A one-card scenario is rejected before gibrid.
 from __future__ import annotations
 
 import json
+import os
 import time
 import unittest
 from pathlib import Path
@@ -112,6 +113,8 @@ class WinnerSelectionTest(unittest.TestCase):
 
         original = geo_mission._run_pipeline
         geo_mission._run_pipeline = boom
+        previous = os.environ.get("PLANES_SOLVE_BACKEND")
+        os.environ["PLANES_SOLVE_BACKEND"] = "legacy_fields2cover"
         problem = Problem(
             job_id="job_outer",
             scenario={
@@ -128,6 +131,10 @@ class WinnerSelectionTest(unittest.TestCase):
             result = solve(problem, time.monotonic() - 1)
         finally:
             geo_mission._run_pipeline = original
+            if previous is None:
+                os.environ.pop("PLANES_SOLVE_BACKEND", None)
+            else:
+                os.environ["PLANES_SOLVE_BACKEND"] = previous
         self.assertIsInstance(result, TimedOut)
 
     def test_single_call_is_rejected_before_gibrid(self) -> None:

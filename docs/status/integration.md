@@ -1,15 +1,19 @@
 ---
 workstream: integration
 owner: Team
-task: DEMO-001
+task: INT-F2C-002
 status: review
-updated: 2026-09-27
-checkpoint: 2026-09-27
-branch: test_merge
+updated: 2026-09-28
+checkpoint: 2026-09-28
+branch: cursor/live-grisha-f2c-iso-fc7a
 contract_version: v0
 ---
 
 # Integration status
+
+- `review`: INT-F2C-002 — live isolated Grisha+F2C contour landed in git on top of INT-F2C-001. Default `solver._solve_outer` is `grisha_f2c_bridge` → `tools/f2c_iso/` worker (`generateBestSwaths`, `strip_direction_deg` ignored). Rollback: `PLANES_SOLVE_BACKEND=legacy_fields2cover` → `geo_mission.solve_envelope`. Paths via `PLANES_F2C_WORKER` / `PLANES_F2C_CLIENT` / `PLANES_GRISHA_ROOT` (default `/opt/planes-grisha-f2c`). Optional GeoTIFF `dem_file` sets ASL; `mission_time_s` stays 2D. CAT-001C catalog at `catalog/fleet_catalog.json` (speed / reserve / optics; battery Wh not used for packing). This is pack/split F2C, not full mvp LNS. Doc: `docs/live-grisha-f2c-iso.md`. Brief: `docs/workstreams/integration/INT-F2C-002.md`.
+
+- `review`: INT-F2C-001 — Fields2Cover owns strip heading. Frontend no longer sends `survey.strip_direction_deg`. `geo_mission._params` leaves `angles_deg` empty and sets `decomposition=fields2cover`. `f2c_backend` / `generate.py` / `fields2cover_engine` call `generateBestSwaths` (`OBJ_NSwathModified` | `OBJ_NSwath` | `OBJ_SwathLength`). A leftover `strip_direction_deg` is ignored. Contract: `docs/f2c-input-contract.md`. Brief: `docs/workstreams/integration/INT-F2C-001.md`.
 
 - `review`: сшивка на `cursor/geo-core-kml-stitch`. Тракт рельефа скопирован из `origin/integration/TER-GRI-001` (`src/planes/integration/terrain/`, `opentopography.py`). Разбор KML съёмки и ограничений — `src/planes/integration/kml/`. Браузер отправляет тексты `survey_kml` и `constraints_kml`; третья загрузка препятствий снята. Полигоны ограничений идут в ядро как препятствия: у `MissionInput` отдельного типа запретной зоны нет. Высотный текст копируется и не толкуется. Ключ OpenTopography и скачанные растры в git не входят.
 
@@ -18,6 +22,20 @@ On `test_merge` the picture for teammates is `docs/architecture/STITCH_PICTURE.m
 Live path on `main`: form `127.0.0.1:5173`, API `127.0.0.1:8000`, worker `--engine runtime`. The CLI default remains `fake`. SQLite stores the scenario unchanged; catalog numbers are applied only on the listener. `fleet_catalog.json` is filled from Grisha's `data.json`; `geoscan-801` is his 1.5 kg quadcopter. GSD, overlaps, and strip direction come from the form. The form sends `aerodromes` and `boards`, not `pads` or `uav_types`. The listener is `planes-compute.service` at `/opt/planes`, git `da3da56` on `runtime/MIS-002-external-enumeration`, health `live`, contract `v0`, `solver_choice` `meta`. Documentation commit `794fb2d` did not move the listener. Pairs that reach `run()` and the remaining approximations (`geoscan-201` `kh`/`kv`/`kw` `90`/`0.02`/`0.008` instead of `220` W, `turn_time_s` `5.0`, `apply_turn_to_base` `false`, zones and obstacles not copied into `InputData`) are in `docs/architecture/agent-brief-runtime.md` and `docs/architecture/agent-brief-backend.md`.
 
 ## Completed
+
+- [x] INT-F2C-002 sources: `grisha_f2c_bridge.py`, isolated tools under `tools/f2c_iso/`, CAT-001C `catalog/fleet_catalog.json`, live path doc.
+- [x] INT-F2C-001 contract: required GSD / overlaps / wind; ignored `strip_direction_deg`; auto heading via `generateBestSwaths`. Doc `docs/f2c-input-contract.md`.
+
+## In progress
+
+- [x] INT-F2C-002 verification (bridge/client/catalog unit tests + workspace validate) and PR to `main`.
+- [x] INT-F2C-001 verification on the parent branch (unit + web tests).
+
+## Next action
+
+Merge PR #12 into `main` if checks allow. Do not deploy or restart the live listener from this branch.
+
+## Completed (prior)
 
 - [x] Terrain tract from `origin/integration/TER-GRI-001`: `src/planes/integration/terrain/opentopography.py` and its package. The geo core was not taken from that branch.
 - [x] Server-side KML parser `src/planes/integration/kml/`: survey polygon (EPSG:4326) and constraint polygons (`ring`, `name`, `type`, altitude text copied and not interpreted). The web job sends both file texts. The third obstacle upload is gone.
@@ -32,15 +50,35 @@ Live path on `main`: form `127.0.0.1:5173`, API `127.0.0.1:8000`, worker `--engi
 - [x] Added small synthetic KML fixtures so a fresh clone does not depend on organizer files.
 - [x] Merged `demo/end-to-end-mvp` (`3c1c60c`) onto `main` (`52367c8`). Commits already on `main`, including the optimizer-core docs and Grisha's baseline, stayed.
 
-## In progress
+## Prior in progress (DEMO-001)
 
 - [ ] Team review and fresh-machine replay from `main`.
 
-## Next action
+## Prior next action (DEMO-001)
 
 Review the stitch on `cursor/geo-core-kml-stitch`. The listener on `main` is still the enumeration path in `docs/architecture/agent-brief-runtime.md`. This branch does not deploy it. The three-terminal fake-worker smoke remains the earlier DEMO-001 check.
 
 ## Evidence
+
+- Command: `PYTHONPATH=src:tests/runtime python3 -m unittest tests.runtime.test_grisha_f2c_bridge tests.runtime.test_f2c_iso_client tests.runtime.test_cat001c_catalog tests.runtime.test_f2c_input_contract tests.model.test_f2c_auto_angle tests.runtime.test_solver tests.runtime.test_mis002_winner tests.runtime.test_fleet_catalog -v`
+- Result: 45 tests OK for iso/bridge/catalog + INT-F2C-001 + solver rejection + winner + runtime catalog. The one remaining error is pre-existing `test_run_accepts_seed_without_files` (`ortools` not installed here). Isolated worker self-check was not run: embed venv / fields2cover 2.1.0 is not in this environment.
+- Command: `python3 scripts/validate_workspace.py`
+- Result: `Workspace validation: PASS`.
+- PR: https://github.com/anabol21/planes/pull/12
+- Commit: recorded at handoff.
+
+- Command: `PYTHONPATH=src python3 -m unittest tests.runtime.test_f2c_input_contract tests.model.test_f2c_auto_angle -v`
+- Result: `Ran 13 tests in 0.051s` / `OK`. Interpreter `/usr/bin/python3` 3.12.3. `fields2cover` is not installed here; engine/backend tests mock `generateBestSwaths` and assert `generateSwaths` is not called. Empty `angles_deg` does not IndexError. `_params` ignores `strip_direction_deg=45` and still requires GSD, overlaps, and wind.
+- Command: `pnpm exec vitest run src/scenario.test.ts` in `apps/web`
+- Result: 1 file, 22 tests, passed. Envelope survey is `{forward_overlap, side_overlap}` only.
+- Command: `pnpm exec tsc --noEmit` in `apps/web`
+- Result: exit 0.
+- Command: `python3 scripts/validate_workspace.py`
+- Result: `Workspace validation: PASS`.
+- Command: `git diff --check`
+- Result: passed.
+- PR: https://github.com/anabol21/planes/pull/11
+- Commit: recorded at handoff.
 
 - Command: `PYTHONPATH=src python3 -m unittest tests.runtime.test_geo_kml_stitch -v`
 - Result: `Ran 4 tests in 21.060s` / `OK`. Parser returns the constraint polygon. Mocked terrain HTTP is used once for the bbox; the cache hit does not call it again. `dem_file` is set. The route does not cross the constraint ring. Missing key and invalid raster fail explicitly.
@@ -79,6 +117,8 @@ Review the stitch on `cursor/geo-core-kml-stitch`. The listener on `main` is sti
 
 ## Interface changes and downstream impact
 
+- No change under `src/planes/contracts/**`. Live default backend is `grisha_f2c_iso` (isolated pack/split F2C). Consumers that still need `geo_mission.solve_envelope` must set `PLANES_SOLVE_BACKEND=legacy_fields2cover`. Worker/client paths are env-overridable; deploy default root is `/opt/planes-grisha-f2c`. Iso catalog is `catalog/fleet_catalog.json` (CAT-001C). `mission_time_s` remains 2D even when `dem_file` sets ASL.
+- No change under `src/planes/contracts/**`. Scenario v0 still carries survey/wind inside `scenario`. `survey.strip_direction_deg` is no longer required and is ignored on the F2C path. `Params.angles_deg` may be empty when `decomposition` is `fields2cover` or `auto`. Auto-angle can change mission times versus fixtures that forced heading `0`.
 - No change under `src/planes/contracts/**`.
 - The job scenario on this branch carries `survey_kml` and `constraints_kml`. The browser no longer sends parsed `area`, `zone_constraints`, or `obstacles` for this tract. Constraint polygons reach the geo core as obstacles because `MissionInput` has no separate no-fly type. Altitude text is copied, not interpreted. Terrain acquisition sets `Params.dem_file`. A missing `OPENTOPOGRAPHY_API_KEY` or an invalid raster fails the job; flat terrain is not a fallback.
 - Worker CLI now accepts `--engine fake` and `--engine runtime`; omission remains equivalent to `--engine fake`.

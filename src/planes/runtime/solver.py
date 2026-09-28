@@ -62,12 +62,15 @@ def solve(problem: Problem, deadline: float) -> Solution | Infeasible | TimedOut
     """Solve one geo envelope.
 
     An envelope with ``aerodromes`` and ``boards`` calls
-    ``geo_mission.solve_envelope`` (``run_one_angle``, trapezoid by default,
-    OR-Tools routing). An envelope that still has ``pads`` or ``uav_types``
-    is rejected. A one-card ``takeoff`` + ``uav`` scenario, and any other
-    scenario that is not that envelope, raises ``ValueError`` before any
-    gibrid import. The message says the listener only accepts the geo
-    envelope. The pipeline turns that into ``outcome=error``.
+    ``grisha_f2c_bridge.solve_via_isolated_grisha_f2c`` (isolated F2C
+    generateBestSwaths / auto-angle; strip_direction_deg ignored) when
+    ``PLANES_SOLVE_BACKEND`` is unset or ``grisha_f2c_iso``. Rollback via
+    ``PLANES_SOLVE_BACKEND=legacy_fields2cover`` calls
+    ``geo_mission.solve_envelope``. An envelope that still has ``pads`` or
+    ``uav_types`` is rejected. A one-card ``takeoff`` + ``uav`` scenario,
+    and any other scenario that is not that envelope, raises ``ValueError``
+    before any gibrid import. The message says the listener only accepts
+    the geo envelope. The pipeline turns that into ``outcome=error``.
 
     ``deadline`` is ``time.monotonic()`` plus the problem time limit. The
     geo envelope observes it. This function does not call ``run``,
@@ -83,10 +86,22 @@ def solve(problem: Problem, deadline: float) -> Solution | Infeasible | TimedOut
 
 
 def _solve_outer(problem: Problem, deadline: float) -> Solution | Infeasible | TimedOut:
-    """Call the copied geo core once for the whole aerodrome and board envelope."""
-    from planes.runtime.geo_mission import solve_envelope
+    """Live Grisha+F2C contour: isolated worker, generateBestSwaths.
 
-    return solve_envelope(problem, deadline)
+    Falls back to legacy ``geo_mission.solve_envelope`` only when env
+    ``PLANES_SOLVE_BACKEND=legacy_fields2cover`` is set (rollback).
+    This is pack/split F2C, not full mvp LNS/assignment.
+    """
+    import os
+
+    backend = os.environ.get("PLANES_SOLVE_BACKEND", "grisha_f2c_iso").strip().lower()
+    if backend in ("legacy", "legacy_fields2cover", "geo_mission"):
+        from planes.runtime.geo_mission import solve_envelope
+
+        return solve_envelope(problem, deadline)
+    from planes.runtime.grisha_f2c_bridge import solve_via_isolated_grisha_f2c
+
+    return solve_via_isolated_grisha_f2c(problem, deadline)
 
 
 def _map_result(result: dict[str, Any]) -> Solution | Infeasible | TimedOut:

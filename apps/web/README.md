@@ -61,7 +61,7 @@ For a manual browser smoke run, start the API, start Vite, submit the form, invo
 
 - The form builds the scenario and optimization objects. The raw JSON panel is a read-only preview.
 - Submissions always send `contract_version: "v0"`.
-- The scenario carries `aerodromes`, `boards`, `gsd_cm_per_px`, and `survey.forward_overlap`, `survey.side_overlap`, `survey.strip_direction_deg`. It does not send `pads` or `uav_types`.
+- The scenario carries `aerodromes`, `boards`, `gsd_cm_per_px`, and `survey.forward_overlap`, `survey.side_overlap`. It does not send `survey.strip_direction_deg`, `pads`, or `uav_types`. The solver picks the strip heading.
 - Status requests are sequential and occur at one-second intervals.
 - Polling stops at `completed`, `timed_out`, or `failed`, then fetches the terminal result exactly once.
 - Starting another submission and unmounting the application both cancel the active request chain.

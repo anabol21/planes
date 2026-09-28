@@ -1,15 +1,19 @@
 ---
 workstream: runtime
 owner: Misha
-task: MIS-001
+task: INT-F2C-002
 status: review
-updated: 2026-09-27
-checkpoint: 2026-09-27
-branch: test_merge
+updated: 2026-09-28
+checkpoint: 2026-09-28
+branch: cursor/live-grisha-f2c-iso-fc7a
 contract_version: v0
 ---
 
 # Runtime status
+
+- `review`: INT-F2C-002 overlay — live envelope default is isolated F2C (`grisha_f2c_bridge` / `tools/f2c_iso`). `PLANES_SOLVE_BACKEND=legacy_fields2cover` keeps `geo_mission.solve_envelope`. Worker isolation: clean PYTHONPATH, no Grisha sitecustomize. DEM GeoTIFF hook is ASL-only; duration stays 2D. Not full mvp LNS.
+
+- `review`: INT-F2C-001 overlay — `geo_mission._params` no longer requires `survey.strip_direction_deg` and does not copy it into `angles_deg`. `fields2cover_engine.plan` uses `generateBestSwaths` when angles are empty; a leftover request heading is ignored. Wind, GSD, and overlaps stay required.
 
 - `review`: сшивка геоядра `724d1da` и тракта рельефа. Конверт с аэродромами и бортами вызывает `planner.solver.pipeline` скопированного ядра. У слушателя больше нет пути gibrid `meta`. Однокарточный `takeoff` + `uav` и любой другой сценарий, который не является внешним конвертом, поднимает `ValueError` до импорта gibrid: слушатель принимает только геоконверт. Пайплайн превращает это в `outcome=error`. `pads` и `uav_types` по-прежнему отклоняются. Исходы задания: `feasible`, `infeasible`, `timed_out`, `error`; план в `mission_plan`. Тексты KML съёмки и ограничений уходят на сервер. Ограничения разбирает `planes.integration.kml`, не оптимизатор. Полигоны ограничений становятся `Obstacle` с `height_m` 0. Рамка полигона съёмки запрашивает COP30; `Params.dem_file` — путь кэшированного GeoTIFF. Повтор той же рамки сеть не трогает. Нет ключа или негодный растр — явная ошибка, без плоского рельефа. Матрица справочника: `docs/architecture/FLEET_CATALOG_SWEEP.md`. Синтетические числа в `fleet_catalog.json` не добавлялись. `dem.py` и пакет `dem/` ядра на месте.
 
@@ -98,6 +102,7 @@ Read `docs/architecture/STITCH_PICTURE.md` before the `da3da56` briefs. On `test
 ## Interface changes
 
 - None under `src/planes/contracts/**`.
+- INT-F2C-002: default outer solve is isolated F2C (`method` `grisha_mvp_fields2cover_isolated`). Rollback `PLANES_SOLVE_BACKEND=legacy_fields2cover` keeps `geo_mission` (`method` `pipeline`). Deploy paths default under `/opt/planes-grisha-f2c` and are overridable. Iso catalog `catalog/fleet_catalog.json`. Battery Wh is not a packing constraint. Duration stays 2D with optional DEM ASL.
 - The live aerodromes-and-boards path calls `planner.solver.pipeline` (`method` `pipeline`). The listener no longer has a gibrid meta path. A one-card scenario and any other non-envelope raise `ValueError` (`outcome=error`) before a gibrid import. The scenario envelope carries `survey_kml` and `constraints_kml` file texts. Constraint polygons become `Obstacle` with `height_m` 0. A missing API key or an invalid raster is `outcome=error` and includes the `ValueError` text. There is no flat-terrain fallback. `mission_plan.solver` on the geo path is `pipeline`. A heuristic result is not globally optimal.
 - None under `src/planes/contracts/**` for the earlier listener work.
 - Runtime-local dataclasses and one JSON fixture only.
