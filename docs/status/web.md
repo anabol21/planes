@@ -11,6 +11,8 @@ contract_version: v0
 
 # Web status
 
+WRAP-001, шаг 2, заблокирован на слушателе. Поле «Направление полос» убрано из формы. `buildPrototypeScenario` больше не требует угол и не кладёт `survey.strip_direction_deg`. Ноль не подставляется. Слушатель `geo_mission._params` по-прежнему читает `survey.strip_direction_deg` через `_angle` и отклоняет конверт без этого ключа. Ядро не патчилось. Это не требование заказчика: направление полос было полем формы.
+
 On `test_merge` the form sends raw `survey_kml` and `constraints_kml`. The picture is `docs/architecture/STITCH_PICTURE.md`. The sentence below is the pre-stitch path on `main`.
 
 ## WEB-002 review handoff
@@ -127,6 +129,7 @@ Use the live path in `docs/architecture/agent-brief-backend.md`: form `127.0.0.1
 
 ## Blockers / limitations
 
+- WRAP-001 step 2 is blocked: the listener still requires `survey.strip_direction_deg`. The form no longer sends a user-chosen angle and does not invent `0`. The kernel was not patched.
 - Shared domain contracts remain unfrozen; the client must use backend HTTP contract version `v0` without inventing domain semantics.
 - Earlier WEB-001 note: backend RUS-001 PR #4 targeted `dev`, and this task branch was based on its verified commit. The enumeration form is on `main`. See the agent briefs.
 - Local backend and worker startup currently require `PYTHONPATH=src`.
