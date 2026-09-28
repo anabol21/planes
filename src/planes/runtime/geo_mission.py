@@ -87,7 +87,7 @@ def solve_envelope(problem: Problem, deadline: float) -> Solution | Infeasible |
     from planes.runtime.solver import Infeasible, Solution, TimedOut
 
     if time.monotonic() >= deadline:
-        return TimedOut((_TIME_LIMIT,))
+        return _checked(TimedOut((_TIME_LIMIT,)), problem.scenario)
     scenario = problem.scenario
     if not isinstance(scenario, dict):
         raise ValueError("missing fields: scenario")
@@ -116,11 +116,11 @@ def solve_envelope(problem: Problem, deadline: float) -> Solution | Infeasible |
     if mission is None:
         lines = tuple(notes) or (_NO_SPECTRUM,)
         _log(problem.job_id, lines)
-        return Infeasible(lines)
+        return _checked(Infeasible(lines), scenario)
     if time.monotonic() >= deadline:
         lines = (_TIME_LIMIT, *notes)
         _log(problem.job_id, lines)
-        return TimedOut(lines)
+        return _checked(TimedOut(lines), scenario)
     from planes.runtime.fields2cover_engine import (
         BudgetExhausted,
         EngineContext,
@@ -134,13 +134,13 @@ def solve_envelope(problem: Problem, deadline: float) -> Solution | Infeasible |
     except BudgetExhausted:
         lines = (_TIME_LIMIT, *notes)
         _log(problem.job_id, lines)
-        return TimedOut(lines)
+        return _checked(TimedOut(lines), scenario)
     finally:
         reset_context(token)
     if candidate is None:
         lines = ("No valid candidates found", *notes)
         _log(problem.job_id, lines)
-        return Infeasible(lines)
+        return _checked(Infeasible(lines), scenario)
     plan = _plan(candidate, mission, str(dem_path), constraints)
     criterion = mission.params.optimization_criterion.value
     if criterion == "min_time":
@@ -154,12 +154,22 @@ def solve_envelope(problem: Problem, deadline: float) -> Solution | Infeasible |
         *notes,
     )
     _log(problem.job_id, lines)
-    return Solution(
-        mission_plan=plan,
-        method="pipeline",
-        objective_value=objective_value,
-        limitations=lines,
+    return _checked(
+        Solution(
+            mission_plan=plan,
+            method="pipeline",
+            objective_value=objective_value,
+            limitations=lines,
+        ),
+        scenario,
     )
+
+
+def _checked(result: Solution | Infeasible | TimedOut, scenario: Any) -> Solution | Infeasible | TimedOut:
+    """Attach diagnostic codes after the solver returns. The plan is unchanged."""
+    from planes.runtime.physical_check import annotate_result
+
+    return annotate_result(result, scenario if isinstance(scenario, dict) else {})
 
 
 def _acquire_dem(rectangle: InterestRectangle) -> Path:

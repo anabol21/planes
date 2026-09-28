@@ -15,6 +15,18 @@ import { ResultPanel } from "./App";
 afterEach(cleanup);
 
 describe("ResultPanel mission map gating", () => {
+  it("shows a physical diagnostic code", () => {
+    const result = {
+      ...fixture,
+      solver_report: {
+        ...fixture.solver_report,
+        limitations: ["PHYS-AIRSPACE: Маршрут входит в зону, активную на высоте сегмента"],
+      },
+    };
+    render(<ResultPanel result={result as JobResult} />);
+    expect(document.querySelector(".limitations")?.textContent).toContain("PHYS-AIRSPACE");
+  });
+
   it("renders the map for a completed feasible result", async () => {
     render(<ResultPanel result={fixture as JobResult} />);
     expect(await screen.findByTestId("mission-map")).toBeTruthy();

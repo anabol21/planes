@@ -145,6 +145,17 @@ def run(raw: bytes, solve_fn: SolveFn | None = None) -> ComputeResponse:
         limitations = ["solver failed before producing a result"]
         if isinstance(exc, ValueError) and str(exc):
             limitations.append(str(exc))
+        from planes.runtime.physical_check import limitation_lines
+
+        scenario = problem.scenario if isinstance(problem.scenario, dict) else {}
+        limitations.extend(
+            limitation_lines(
+                plan=None,
+                scenario=scenario,
+                limitations=limitations,
+                outcome="error",
+            )
+        )
         return _judged(
             _error(problem, limitations, time.monotonic() - started)
         )
