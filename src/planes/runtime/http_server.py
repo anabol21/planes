@@ -17,11 +17,10 @@ import sys
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlsplit
 
-from planes.runtime.lock import JobLock, default_lock_path
+from planes.integration.http_body import request_body_limit
 from planes.runtime.logs import redact
 from planes.runtime.types import dump_response, make_response, parse_response, safe_job_id
 
-MAX_BODY_BYTES = 1_048_576
 # Process kill sits after the SCIP budget. The listener buffer stays on top.
 WRAPPER_SLACK_SECONDS = 5
 _CLI_BUFFER_SECONDS = 2.0
@@ -46,8 +45,15 @@ class ComputeHandler(BaseHTTPRequestHandler):
             return
         body, error = self._read_body()
         if error is not None:
-            self._send_json(400, {"contract_version": "v0", "error": error})
+            payload = {"contract_version": "v0", "error": error}
+            if error == "body_too_large":
+                payload["message"] = (
+                    f"request body must be between 1 and {self.server.max_request_body_bytes} bytes"
+                )
+            self._send_json(400, payload)
             return
+        from planes.runtime.lock import JobLock, default_lock_path
+
         lock = JobLock(default_lock_path())
         if not lock.try_acquire():
             self._send_json(503, {"contract_version": "v0", "error": "busy"})
@@ -69,11 +75,14 @@ class ComputeHandler(BaseHTTPRequestHandler):
             return b"", "invalid_content_length"
         if length < 0:
             return b"", "invalid_content_length"
-        if length > MAX_BODY_BYTES:
+        if length > self.server.max_request_body_bytes:
             return b"", "body_too_large"
         if length == 0:
-            return b"", None
-        return self.rfile.read(length), None
+            return b"", "empty_body"
+        body = self.rfile.read(length)
+        if len(body) != length:
+            return b"", "invalid_body_length"
+        return body, None
 
     def _send_json(self, status: int, payload: dict[str, object]) -> None:
         self._send_bytes(status, json.dumps(payload).encode("utf-8"))
@@ -91,6 +100,7 @@ class ComputeHTTPServer(ThreadingHTTPServer):
     allow_reuse_address = True
 
     def __init__(self, server_address: tuple[str, int], request_handler_class: type[ComputeHandler]) -> None:
+        self.max_request_body_bytes = request_body_limit()
         super().__init__(server_address, request_handler_class)
         # Fixed for the process lifetime. Callers keep their own COMPUTE_TOKEN.
         self.compute_token = os.environ.get("COMPUTE_TOKEN", "")

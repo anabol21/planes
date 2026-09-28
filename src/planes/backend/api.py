@@ -9,6 +9,8 @@ from collections.abc import Callable, Iterable
 from typing import Any
 from wsgiref.simple_server import make_server
 
+from planes.integration.http_body import request_body_limit
+
 from .service import (
     BackendService,
     JobNotFoundError,
@@ -25,6 +27,7 @@ _RESULT_PATH = re.compile(r"^/jobs/([^/]+)/result$")
 
 class BackendAPI:
     def __init__(self, service: BackendService) -> None:
+        self.max_request_body_bytes = request_body_limit()
         self.service = service
 
     def __call__(self, environ: dict[str, Any], start_response: StartResponse) -> Iterable[bytes]:
@@ -60,15 +63,18 @@ class BackendAPI:
         except ResultNotReadyError as error:
             return self._respond(start_response, "409 Conflict", {"error": "result_not_ready", "state": str(error)})
 
-    @staticmethod
-    def _read_body(environ: dict[str, Any]) -> dict[str, Any]:
+    def _read_body(self, environ: dict[str, Any]) -> dict[str, Any]:
         try:
             length = int(environ.get("CONTENT_LENGTH") or 0)
         except ValueError as error:
             raise ValidationError("invalid Content-Length") from error
-        if length <= 0 or length > 1_000_000:
-            raise ValidationError("request body must be between 1 and 1000000 bytes")
+        if length <= 0 or length > self.max_request_body_bytes:
+            raise ValidationError(
+                f"request body must be between 1 and {self.max_request_body_bytes} bytes"
+            )
         body = environ["wsgi.input"].read(length)
+        if len(body) != length:
+            raise ValidationError("request body length does not match Content-Length")
         payload = json.loads(body.decode("utf-8"))
         if not isinstance(payload, dict):
             raise ValidationError("request body must be a JSON object")

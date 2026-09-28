@@ -1,15 +1,49 @@
 ---
 workstream: integration
 owner: Team
-task: CAT-001C
+task: HTTP-001
 status: review
 updated: 2026-09-28
 checkpoint: 2026-09-28
-branch: integration/CAT-001C-full-fleet-catalog
+branch: integration/HTTP-001-request-body-limit
 contract_version: v0
 ---
 
 # Integration status
+
+## HTTP-001 — Shared request-body limit
+
+- State: `review` on CAT-001C base `3bff3e8`.
+- [x] Shared startup policy: `PLANES_MAX_REQUEST_BODY_BYTES`, default 10 MiB.
+- [x] Backend/runtime bounded readers, effective-max transport errors.
+- [x] Generated large-KML regression and boundary/configuration tests.
+- [x] New HTTP-001 suite: 9 tests PASS, including both default/custom boundaries.
+- [x] Existing backend suite: 32 tests PASS.
+- [x] Existing runtime fixture/pipeline/KML/catalog subset: 19 tests PASS.
+- [x] Workspace validator PASS and `git diff --check` PASS.
+- [x] 1,800,000-byte generated survey-KML JSON: backend HTTP route returns
+  202 and queues an unchanged scenario in temporary SQLite; runtime reader,
+  decoding, ingest/bind/compile pass. Full solve not claimed.
+- Next: independent review of pushed `integration/HTTP-001-request-body-limit`;
+  no merge, deployment or self-approval.
+- Evidence commands: `python -B -m unittest discover -s tests/integration -p
+  test_http001.py -v` (9 OK); `python -B -m unittest discover -s tests/backend
+  -v` (32 OK); unittest subset `test_fixture`, `test_pipeline`,
+  `test_kml_rings`, `test_fleet_catalog` with `src` and `tests/runtime` on
+  sys.path (19 OK); `python -B scripts/validate_workspace.py` (PASS).
+- Broader runtime attempt: 66 tests, 1 failure, 24 errors. Existing Windows
+  `fcntl`, missing numpy/shapely/pydantic, subprocess encoding and loopback
+  listener failures prevent an all-green full suite. Baseline archive at
+  `3bff3e8`, same interpreter: 45 tests, 23 errors; more modules fail at import
+  there because the POSIX lock import was eager. Counts are not directly
+  comparable. Current full log: OS temp `http001-runtime-regression.log`.
+- Blockers/decisions: none for HTTP-001 implementation; existing Windows POSIX
+  runtime and missing GIS dependencies limit full solver verification.
+- Interface/downstream impact: NO v0 CONTRACT CHANGE; both ingress services
+  use the shared env policy. Runtime oversize transport errors retain their
+  error code and include maximum in a message. Set overrides identically on
+  both services; no deployment/environment change performed.
+- Rollback: revert HTTP-001; no persistence/schema migration.
 
 ## CAT-001C — final selectable fleet catalog completion (review)
 
