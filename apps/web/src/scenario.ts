@@ -314,9 +314,9 @@ export function buildPrototypeScenario(
   };
 }
 
-export const DEFAULT_TIME_LIMIT = "90";
-// Hard maximum the form accepts. The default stays below this.
-export const MAX_TIME_LIMIT_SECONDS = 300;
+export const DEFAULT_TIME_LIMIT = "3600";
+// Hard maximum the form accepts. One hour is accepted; 3601 is rejected.
+export const MAX_TIME_LIMIT_SECONDS = 3600;
 
 export function buildOptimization(objective: string, timeLimitSeconds: number): JsonObject {
   if (!objective.trim()) throw new Error("Выберите критерий оптимизации.");

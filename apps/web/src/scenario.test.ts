@@ -285,22 +285,22 @@ describe("prototype scenario", () => {
   });
 
   it("serializes both supported objectives consistently", () => {
-    expect(DEFAULT_TIME_LIMIT).toBe("90");
+    expect(DEFAULT_TIME_LIMIT).toBe("3600");
     expect(buildOptimization("min_time", Number(DEFAULT_TIME_LIMIT))).toEqual({
       objective: "min_time",
-      time_limit_seconds: 90,
+      time_limit_seconds: 3600,
     });
     expect(buildOptimization("min_total_flight_time", 45)).toEqual({
       objective: "min_total_flight_time",
       time_limit_seconds: 45,
     });
-    expect(MAX_TIME_LIMIT_SECONDS).toBe(300);
+    expect(MAX_TIME_LIMIT_SECONDS).toBe(3600);
     expect(buildOptimization("min_time", MAX_TIME_LIMIT_SECONDS)).toEqual({
       objective: "min_time",
-      time_limit_seconds: 300,
+      time_limit_seconds: 3600,
     });
-    expect(() => buildOptimization("min_time", 301)).toThrow(
-      "Лимит расчёта не больше 300 секунд.",
+    expect(() => buildOptimization("min_time", 3601)).toThrow(
+      "Лимит расчёта не больше 3600 секунд.",
     );
   });
 
