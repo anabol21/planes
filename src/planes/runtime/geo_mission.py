@@ -1,9 +1,10 @@
-"""Envelope adapter for the copied geo core.
+"""Envelope adapter for the listener.
 
-An envelope with aerodromes and boards becomes one ``MissionInput`` and one
-call of ``planner.solver.pipeline`` (``run_one_angle``, trapezoid by default,
-OR-Tools routing). ``solver.solve`` does not send any other scenario here.
-This module does not edit the planner body.
+An envelope with aerodromes and boards becomes one ``MissionInput``. The
+listener then calls Fields2Cover (one strip angle, no OR-Tools). ``solver.solve``
+does not send any other scenario here. This module does not edit the planner
+body. ``run_angle_pipeline`` still wraps the old ``run_one_angle`` loop and is
+not on the listener path.
 """
 
 from __future__ import annotations
@@ -86,7 +87,7 @@ def solve_envelope(problem: Problem, deadline: float) -> Solution | Infeasible |
     constraints = parse_constraint_polygons(_optional_text(scenario.get("constraints_kml")))
     dem_path = _acquire_dem(survey_polygons)
     dem = _load_geotiff(dem_path)
-    mission, notes = _mission(
+    mission, notes, boards = _mission(
         scenario,
         survey_polygons=survey_polygons,
         constraints=constraints,
@@ -101,7 +102,22 @@ def solve_envelope(problem: Problem, deadline: float) -> Solution | Infeasible |
         lines = (_TIME_LIMIT, *notes)
         _log(problem.job_id, lines)
         return TimedOut(lines)
-    candidate = _run_pipeline(mission)
+    from planes.runtime.fields2cover_engine import (
+        BudgetExhausted,
+        EngineContext,
+        bind_context,
+        reset_context,
+    )
+
+    token = bind_context(EngineContext(deadline=deadline, boards=boards))
+    try:
+        candidate = _run_pipeline(mission)
+    except BudgetExhausted:
+        lines = (_TIME_LIMIT, *notes)
+        _log(problem.job_id, lines)
+        return TimedOut(lines)
+    finally:
+        reset_context(token)
     if candidate is None:
         lines = ("No valid candidates found", *notes)
         _log(problem.job_id, lines)
@@ -159,7 +175,7 @@ def _mission(
     constraints: list[ConstraintPolygon],
     dem_path: Path,
     dem: Any,
-) -> tuple[Any | None, list[str]]:
+) -> tuple[Any | None, list[str], tuple[Any, ...]]:
     symbols = _core_symbols()
     catalog = symbols["get_default_catalog"]()
     fleet = load_catalog()
@@ -201,7 +217,7 @@ def _mission(
             notes.insert(0, _NO_SPECTRUM)
         else:
             notes.append("no runnable board")
-        return None, notes
+        return None, notes, ()
 
     Area = symbols["Area"]
     Obstacle = symbols["Obstacle"]
@@ -234,6 +250,8 @@ def _mission(
         for index, polygon in enumerate(constraints)
     ]
     uavs = []
+    fleet_models: list[str] = []
+    fleet_cameras: list[str] = []
     by_vpp: dict[str, list[str]] = {item["id"]: [] for item in aerodromes}
     cameras_by_vpp: dict[str, list[str]] = {item["id"]: [] for item in aerodromes}
     for board, core_model, core_camera in admitted:
@@ -249,6 +267,8 @@ def _mission(
                 )
             )
             by_vpp[board["aerodrome_id"]].append(uav_id)
+            fleet_models.append(board["model_id"])
+            fleet_cameras.append(board["camera_id"])
             if core_camera not in cameras_by_vpp[board["aerodrome_id"]]:
                 cameras_by_vpp[board["aerodrome_id"]].append(core_camera)
     vpps = [
@@ -265,6 +285,46 @@ def _mission(
         if by_vpp[item["id"]]
     ]
     params = _params(scenario, criterion_name, dem_path, symbols)
+    from planes.runtime.fields2cover_engine import BoardCamera, marked_number, optics
+
+    aerodrome_by_id = {item["id"]: item for item in aerodromes}
+    boards: list[BoardCamera] = []
+    for uav, fleet_model_id, fleet_camera_id in zip(uavs, fleet_models, fleet_cameras):
+        try:
+            spacing_m, h_agl_m = optics(
+                cameras[fleet_camera_id],
+                params.gsd_cm_per_px,
+                params.overlap_x,
+            )
+        except ValueError:
+            # A camera with blank optics still builds the mission. The engine
+            # rejects it when a route is actually requested.
+            spacing_m, h_agl_m = float("nan"), float("nan")
+        endurance_s = marked_number(
+            models[fleet_model_id],
+            "flight_time_s",
+            f"flight_time_s {fleet_model_id}",
+        )
+        speed_m_s = marked_number(
+            models[fleet_model_id],
+            "airspeed_m_s",
+            f"airspeed_m_s {fleet_model_id}",
+        )
+        if endurance_s <= 0 or speed_m_s <= 0:
+            raise ValueError(f"model {fleet_model_id} has no positive endurance or airspeed")
+        place = aerodrome_by_id[uav.vpp_id]
+        boards.append(
+            BoardCamera(
+                uav_id=uav.id,
+                vpp_id=uav.vpp_id,
+                lat=place["lat"],
+                lon=place["lon"],
+                endurance_s=endurance_s,
+                speed_m_s=speed_m_s,
+                spacing_m=spacing_m,
+                h_agl_m=h_agl_m,
+            )
+        )
     mission = MissionInput(
         areas=areas,
         obstacles=obstacles,
@@ -273,7 +333,7 @@ def _mission(
         params=params,
         dem=dem,
     )
-    return mission, notes
+    return mission, notes, tuple(boards)
 
 
 def _params(scenario: dict[str, Any], criterion_name: str, dem_path: Path, symbols: dict[str, Any]) -> Any:
@@ -309,7 +369,19 @@ def _params(scenario: dict[str, Any], criterion_name: str, dem_path: Path, symbo
 
 
 def _run_pipeline(mission: Any) -> Any | None:
-    symbols = _core_symbols()
+    """Fields2Cover for this mission. The signature stays one argument."""
+    from planes.runtime.fields2cover_engine import plan
+
+    return plan(mission)
+
+
+def run_angle_pipeline(mission: Any) -> Any | None:
+    """Old listener loop: ``run_one_angle`` then ``select_best``.
+
+    The live listener does not call this. A stitch test can retarget here
+    when it still needs that loop.
+    """
+    symbols = _angle_symbols()
     counters = symbols["Counters"]()
     candidates = []
     for theta in mission.params.angles_deg:
@@ -348,8 +420,13 @@ def _plan(
                 ],
             }
         )
+    solver_name = (
+        "fields2cover"
+        if getattr(candidate, "decomposition_method", "") == "fields2cover"
+        else "pipeline"
+    )
     return {
-        "solver": "pipeline",
+        "solver": solver_name,
         "criterion": mission.params.optimization_criterion.value,
         "crs": "EPSG:4326",
         "dem_file": dem_file,
@@ -387,8 +464,6 @@ def _core_symbols() -> dict[str, Any]:
             VPP,
             Wind,
         )
-        from planner.solver.counters import Counters
-        from planner.solver.pipeline import run_one_angle, select_best
     except ImportError as exc:
         raise ValueError(f"geo core import failed: {exc}") from exc
     cached = {
@@ -403,11 +478,28 @@ def _core_symbols() -> dict[str, Any]:
         "UAVConfig": UAVConfig,
         "VPP": VPP,
         "Wind": Wind,
+    }
+    _core_symbols.cached = cached  # type: ignore[attr-defined]
+    return cached
+
+
+def _angle_symbols() -> dict[str, Any]:
+    """Imports for ``run_angle_pipeline`` only. The listener does not call it."""
+    cached = getattr(_angle_symbols, "cached", None)
+    if cached is not None:
+        return cached
+    _core_symbols()
+    try:
+        from planner.solver.counters import Counters
+        from planner.solver.pipeline import run_one_angle, select_best
+    except ImportError as exc:
+        raise ValueError(f"geo core import failed: {exc}") from exc
+    cached = {
         "Counters": Counters,
         "run_one_angle": run_one_angle,
         "select_best": select_best,
     }
-    _core_symbols.cached = cached  # type: ignore[attr-defined]
+    _angle_symbols.cached = cached  # type: ignore[attr-defined]
     return cached
 
 

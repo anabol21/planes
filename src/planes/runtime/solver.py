@@ -62,7 +62,7 @@ def solve(problem: Problem, deadline: float) -> Solution | Infeasible | TimedOut
     """Solve one geo envelope.
 
     An envelope with ``aerodromes`` and ``boards`` calls
-    ``geo_mission.solve_envelope`` (``run_one_angle``, trapezoid by default,
+    ``geo_mission.solve_envelope`` (Fields2Cover, one strip angle, no
     OR-Tools routing). An envelope that still has ``pads`` or ``uav_types``
     is rejected. A one-card ``takeoff`` + ``uav`` scenario, and any other
     scenario that is not that envelope, raises ``ValueError`` before any
@@ -83,7 +83,7 @@ def solve(problem: Problem, deadline: float) -> Solution | Infeasible | TimedOut
 
 
 def _solve_outer(problem: Problem, deadline: float) -> Solution | Infeasible | TimedOut:
-    """Call the copied geo core once for the whole aerodrome and board envelope."""
+    """Call Fields2Cover once for the whole aerodrome and board envelope."""
     from planes.runtime.geo_mission import solve_envelope
 
     return solve_envelope(problem, deadline)

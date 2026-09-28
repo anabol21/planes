@@ -220,15 +220,17 @@ class StitchSeamContractTest(unittest.TestCase):
         import planes.runtime.geo_mission as geo_mission
 
         seen: list[object] = []
-        original = geo_mission._run_pipeline
 
         def run_pipeline(mission: object):
             seen.append(mission)
             if real_pipeline:
-                return original(mission)
+                # The listener no longer calls run_one_angle. This assertion
+                # stays on the previous pipeline function.
+                return geo_mission.run_angle_pipeline(mission)
             ids = [uav.id for uav in mission.uavs]
             return _Candidate(ids)
 
+        original = geo_mission._run_pipeline
         geo_mission._run_pipeline = run_pipeline
         problem = Problem(
             job_id=job_id,
