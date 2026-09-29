@@ -74,9 +74,13 @@ class RealTerrainE2E(unittest.TestCase):
         # Observe the unmodified production client's return. Python profiling
         # sees the actual subprocess response without replacing client/worker.
         observed = []
+        http_statuses = []
         previous_profile = sys.getprofile()
 
         def observe(frame, event, value):
+            if (event == "return" and frame.f_code.co_name == "urlopen"
+                    and frame.f_globals.get("__name__") == "urllib.request"):
+                http_statuses.append(getattr(value, "status", None))
             if (event == "return" and frame.f_code.co_name == "solve"
                     and Path(frame.f_code.co_filename).resolve() == CLIENT):
                 observed.append(value)
@@ -93,6 +97,7 @@ class RealTerrainE2E(unittest.TestCase):
                 finally:
                     sys.setprofile(previous_profile)
 
+                self.assertEqual(http_statuses, [200], "real COP30 HTTP must return 200")
                 self.assertEqual(len(observed), 1, "production client subprocess must run once")
                 raw = observed[0]
                 self.assertEqual(raw.get("outcome"), "feasible", raw.get("error"))
@@ -164,6 +169,7 @@ class RealTerrainE2E(unittest.TestCase):
                 report = {
                     "canonical_bounds": canonical.normalized(),
                     "cop30_guard_arcsec": terrain.COP30_GRID_ARCSEC,
+                    "opentopography_http_status": http_statuses[0],
                     "request_bounds": guarded.normalized(),
                     "returned_tiff_bounds": raster_bounds,
                     "raster_size": raster_size,

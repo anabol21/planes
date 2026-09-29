@@ -19,6 +19,12 @@ def _envelope(**overrides: object) -> dict:
         "criterion": "min_time",
         "gsd_cm_per_px": 2,
         "required_spectrum": "RGB",
+        "survey_kml": (
+            "<kml><Placemark><Polygon><outerBoundaryIs><LinearRing><coordinates>"
+            "37.600,55.750 37.602,55.750 37.602,55.752 "
+            "37.600,55.752 37.600,55.750"
+            "</coordinates></LinearRing></outerBoundaryIs></Polygon></Placemark></kml>"
+        ),
         "aerodromes": [{"id": "аэродром 1", "lat": 55.748, "lon": 37.604}],
         "boards": [
             {
@@ -73,6 +79,16 @@ class IsolatedPathTest(unittest.TestCase):
 
 
 class BridgeSolveTest(unittest.TestCase):
+    def setUp(self) -> None:
+        # These tests cover response mapping, not HTTP; the real E2E test
+        # separately exercises unmocked acquisition and the child process.
+        patcher = patch(
+            "planes.integration.terrain.iso_acquire.acquire_terrain_for_area",
+            return_value=Path("COP30_unit_fixture.tif"),
+        )
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
     def test_strips_direction_and_maps_feasible(self) -> None:
         captured: dict[str, object] = {}
 
