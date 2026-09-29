@@ -339,9 +339,9 @@ describe("prototype scenario", () => {
     const request = parseSubmission(
       JSON.stringify(built),
       JSON.stringify(buildOptimization("min_time", 30)),
-      "7",
     );
     expect(request.contract_version).toBe("v0");
+    expect(request.seed).toBe(7);
     expect(request.scenario.uav).toBeUndefined();
     expect(request.scenario.pads).toBeUndefined();
     expect(request.scenario.aerodromes).toHaveLength(1);

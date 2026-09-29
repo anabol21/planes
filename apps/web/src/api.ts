@@ -222,31 +222,30 @@ function parseJsonObject(label: string, text: string): JsonObject {
   return value;
 }
 
+/** Fixed seed for v0 POST /jobs. Live grisha_f2c_iso only echoes it; UI no longer exposes a control. */
+export const FIXED_JOB_SEED = 7;
+
 export function parseSubmission(
   scenarioText: string,
   optimizationText: string,
-  seedText: string,
 ): SubmitJobRequest {
   const scenario = parseJsonObject("Scenario", scenarioText);
   const optimization = parseJsonObject("Optimization", optimizationText);
-  if (!/^-?\d+$/.test(seedText.trim())) {
-    throw new InputError("Seed must be an integer.");
-  }
-  const seed = Number(seedText);
-  if (!Number.isSafeInteger(seed)) {
-    throw new InputError("Seed must be a safe integer.");
-  }
-  return { contract_version: CONTRACT_VERSION, scenario, optimization, seed };
+  return {
+    contract_version: CONTRACT_VERSION,
+    scenario,
+    optimization,
+    seed: FIXED_JOB_SEED,
+  };
 }
 
 export async function submitFromEditors(
   api: JobApi,
   scenarioText: string,
   optimizationText: string,
-  seedText: string,
   signal?: AbortSignal,
 ): Promise<JobStatus> {
-  return api.submitJob(parseSubmission(scenarioText, optimizationText, seedText), signal);
+  return api.submitJob(parseSubmission(scenarioText, optimizationText), signal);
 }
 
 function abortableDelay(milliseconds: number, signal: AbortSignal): Promise<void> {

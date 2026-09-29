@@ -205,7 +205,7 @@ describe("request cancellation", () => {
 describe("editor validation", () => {
   it("prevents submission when scenario JSON is malformed", async () => {
     const api = createFakeApi([QUEUED]);
-    await expect(submitFromEditors(api, "{", "{}", "17")).rejects.toThrow(
+    await expect(submitFromEditors(api, "{", "{}")).rejects.toThrow(
       "Scenario must be valid JSON.",
     );
     expect(api.submitJob).not.toHaveBeenCalled();
@@ -213,17 +213,18 @@ describe("editor validation", () => {
 
   it("prevents submission when optimization JSON is malformed", async () => {
     const api = createFakeApi([QUEUED]);
-    await expect(submitFromEditors(api, "{}", "{", "17")).rejects.toThrow(
+    await expect(submitFromEditors(api, "{}", "{")).rejects.toThrow(
       "Optimization must be valid JSON.",
     );
     expect(api.submitJob).not.toHaveBeenCalled();
   });
 
-  it("prevents submission when the seed is not an integer", async () => {
+  it("stamps the fixed seed on every editor submission", async () => {
     const api = createFakeApi([QUEUED]);
-    await expect(submitFromEditors(api, "{}", "{}", "1.5")).rejects.toThrow(
-      "Seed must be an integer.",
+    await submitFromEditors(api, "{}", "{}");
+    expect(api.submitJob).toHaveBeenCalledWith(
+      expect.objectContaining({ seed: 7 }),
+      undefined,
     );
-    expect(api.submitJob).not.toHaveBeenCalled();
   });
 });
