@@ -35,7 +35,7 @@ describe("terminal result presentation", () => {
         error: { message: "simulated" },
       },
       "failed",
-      "Ошибка вычислительного контура",
+      "Ошибка расчёта",
     ],
   ] as const)("maps an authoritative result to the %s presentation", (result, badge, title) => {
     const presentation = getResultPresentation(result as JobResult);

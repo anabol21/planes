@@ -1,16 +1,17 @@
 ---
 workstream: integration
 owner: Team
-task: DEMO-001
+task: WRAP-002
 status: review
-updated: 2026-09-27
+updated: 2026-09-28
 checkpoint: 2026-09-27
-branch: test_merge
+branch: cursor/infeasible-error-codes-2089
 contract_version: v0
 ---
 
 # Integration status
 
+- `review`: WRAP-002 — стабильные `error_code` на API + русские карточки на wrap-оболочке. Оптимизатор и VPS не менялись. Бриф: `docs/workstreams/integration/WRAP-002.md`. Заметка: `docs/architecture/API_RESULT_CODES_V0.md`.
 - `review`: сшивка на `cursor/geo-core-kml-stitch`. Тракт рельефа скопирован из `origin/integration/TER-GRI-001` (`src/planes/integration/terrain/`, `opentopography.py`). Разбор KML съёмки и ограничений — `src/planes/integration/kml/`. Браузер отправляет тексты `survey_kml` и `constraints_kml`; третья загрузка препятствий снята. Полигоны ограничений идут в ядро как препятствия: у `MissionInput` отдельного типа запретной зоны нет. Высотный текст копируется и не толкуется. Ключ OpenTopography и скачанные растры в git не входят.
 
 On `test_merge` the picture for teammates is `docs/architecture/STITCH_PICTURE.md`. The browser sends raw `survey_kml` and `constraints_kml`. The sentence below is the pre-stitch path on `main`.

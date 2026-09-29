@@ -24,6 +24,14 @@ import {
   type KmlFileRecord,
 } from "./kml";
 import { formatDecimalInput, normalizeDecimalDraft, parseDecimalInput } from "./numberInput";
+import {
+  detailLines,
+  highlightFromResult,
+  publicLimitations,
+  resolveOutcomeCard,
+  type HighlightFields,
+  type OutcomeCardCopy,
+} from "./errorCards";
 import { getResultPresentation } from "./presentation";
 import {
   DEFAULT_AERODROMES,
@@ -105,9 +113,7 @@ function readNumber(value: unknown): number | null {
 }
 
 function getLimitations(report: JsonObject): string[] {
-  return Array.isArray(report.limitations)
-    ? report.limitations.filter((item): item is string => typeof item === "string")
-    : [];
+  return publicLimitations(report);
 }
 
 function SolverSummary({ report }: { report: JsonObject }) {
@@ -157,6 +163,7 @@ function MissionSummary({ result }: { result: Exclude<JobResult, { state: "faile
   const uavCount = new Set(routes.map((route) => route.uav_id)).size;
   const metric = plan ? objectiveMetric(plan) : { label: "C_max", value: "—" };
   const codes = diagnosticCodes(result.solver_report);
+  const errorCode = readString(result.error_code);
   return (
     <div className="result-section mission-summary">
       <h3>План миссии</h3>
@@ -165,28 +172,63 @@ function MissionSummary({ result }: { result: Exclude<JobResult, { state: "faile
         <div><dt>БВС</dt><dd>{uavCount}</dd></div>
         <div><dt>Вылеты</dt><dd>{routes.length}</dd></div>
         <div><dt>{metric.label}</dt><dd>{metric.value}</dd></div>
-        <div><dt>Коды</dt><dd>{codes.length ? codes.join(", ") : "нет"}</dd></div>
+        <div><dt>Коды</dt><dd>{errorCode ?? (codes.length ? codes.join(", ") : "нет")}</dd></div>
       </dl>
     </div>
   );
 }
 
-function failureMessage(error: JsonObject | null): string {
+function OutcomeCard({ card, details, jobId }: { card: OutcomeCardCopy; details?: JsonObject; jobId: string }) {
+  const facts = detailLines(details);
+  return (
+    <div className={`outcome-card tone-${card.tone}`} data-error-code={card.code} role="status">
+      <p className="eyebrow">{card.tone === "infeasible" ? "Сценарий нельзя выполнить" : card.tone === "timed_out" ? "Лимит времени" : card.tone === "offline" ? "Справка UX" : "Ошибка ввода"}</p>
+      <h3>{card.title}</h3>
+      <p>{card.body}</p>
+      <p className="outcome-cta">{card.cta}</p>
+      {(facts.length > 0 || card.code === "ERROR_WORKER_EXCEPTION") && (
+        <dl className="outcome-details">
+          <div><dt>Код</dt><dd>{card.code}</dd></div>
+          {facts.map((item) => (
+            <div key={item.key}><dt>{item.key}</dt><dd>{item.value}</dd></div>
+          ))}
+          {card.code === "ERROR_WORKER_EXCEPTION" && (
+            <div><dt>job_id</dt><dd>{jobId}</dd></div>
+          )}
+        </dl>
+      )}
+    </div>
+  );
+}
+
+function failureMessage(result: Extract<JobResult, { state: "failed" }>): string {
+  const card = resolveOutcomeCard(result);
+  if (card) return card.body;
+  if (result.message_ru) return result.message_ru;
+  const error = result.error;
   if (!error) return "Backend не передал описание ошибки.";
-  const directMessage = readString(error.message);
-  if (directMessage) return directMessage;
+  const classified = readString(error.message_ru);
+  if (classified) return classified;
   const report = error.solver_report;
   if (typeof report === "object" && report !== null && !Array.isArray(report)) {
     const limitations = getLimitations(report as JsonObject);
     if (limitations.length) return limitations[0];
+  }
+  const directMessage = readString(error.message);
+  if (directMessage && !/traceback|sitecustomize|iso f2c|f2c_isolated/i.test(directMessage)) {
+    return directMessage;
   }
   return "Вычислительный контур не смог сформировать результат.";
 }
 
 export function ResultPanel({ result }: { result: JobResult }) {
   const presentation = getResultPresentation(result);
+  const card = resolveOutcomeCard(result);
   const synthetic = result.state !== "failed" && result.mission_plan !== null && result.mission_plan.test_data === true;
   const icon = presentation.badge === "feasible" ? "✓" : presentation.badge === "infeasible" ? "—" : presentation.badge === "timed_out" ? "◷" : "!";
+  const details = result.details ?? (result.state === "failed" && result.error && typeof result.error.details === "object" && result.error.details !== null
+    ? result.error.details as JsonObject
+    : undefined);
   return (
     <section className={`card result-card result-${presentation.badge}`} aria-labelledby="result-title">
       <div className="result-hero">
@@ -195,8 +237,9 @@ export function ResultPanel({ result }: { result: JobResult }) {
         <span className={`status-badge ${presentation.badge}`}>{presentation.badge}</span>
       </div>
       {synthetic && <div className="synthetic-notice"><strong>Демонстрационные данные</strong><span>Backend пометил этот план как синтетический — это не реальное полётное задание.</span></div>}
+      {card && <OutcomeCard card={card} details={details} jobId={result.job_id} />}
       {result.state === "failed" ? (
-        <div className="result-section error-detail"><h3>Сообщение вычислительного контура</h3><p>{failureMessage(result.error)}</p></div>
+        !card && <div className="result-section error-detail"><h3>Сообщение вычислительного контура</h3><p>{failureMessage(result)}</p></div>
       ) : (
         <>
           <MissionSummary result={result} />
@@ -344,45 +387,49 @@ function BoardCard({
   board,
   index,
   aerodromeCount,
+  highlight,
   onChange,
   onRemove,
 }: {
   board: BoardInput;
   index: number;
   aerodromeCount: number;
+  highlight: HighlightFields;
   onChange: (next: BoardInput) => void;
   onRemove: () => void;
 }) {
   const cameras = camerasForModel(board.modelId);
   return (
-    <article className="uav-card">
+    <article className={`uav-card ${highlight.boards || highlight.model || highlight.camera || highlight.aerodrome ? "field-flagged-card" : ""}`}>
       <div className="uav-card-head">
         <div><strong>БВС {index + 1}</strong></div>
         <button className="text-button danger" type="button" onClick={onRemove}>Удалить</button>
       </div>
       <div className="uav-grid">
-        <label>
+        <label className={highlight.model ? "field-flagged" : undefined}>
           <span>Модель</span>
-          <select value={board.modelId} onChange={(event) => onChange(withModel(board, event.target.value))}>
+          <select value={board.modelId} onChange={(event) => onChange(withModel(board, event.target.value))} aria-invalid={highlight.model ? true : undefined}>
             <option value="">Выберите модель</option>
             {catalogModels().map((model) => <option key={model.id} value={model.id}>{model.name}</option>)}
           </select>
         </label>
-        <label>
+        <label className={highlight.camera ? "field-flagged" : undefined}>
           <span>Камера</span>
           <select
             value={board.cameraId}
             disabled={!board.modelId}
+            aria-invalid={highlight.camera ? true : undefined}
             onChange={(event) => onChange({ ...board, cameraId: event.target.value })}
           >
             <option value="">Выберите камеру</option>
             {cameras.map((camera) => <option key={camera.id} value={camera.id}>{cameraOptionLabel(camera)}</option>)}
           </select>
         </label>
-        <label>
+        <label className={highlight.aerodrome ? "field-flagged" : undefined}>
           <span>Аэродром</span>
           <select
             value={board.aerodromeIndex ?? ""}
+            aria-invalid={highlight.aerodrome ? true : undefined}
             onChange={(event) => onChange({
               ...board,
               aerodromeIndex: event.target.value === "" ? null : Number(event.target.value),
@@ -529,6 +576,7 @@ export default function App() {
 
   const backendLabel = job ? STATE_LABELS[job.state] : error ? "Ошибка запроса" : "Ожидает запуска";
   const backendTone = job?.state ?? (error ? "failed" : "idle");
+  const fieldHighlight = highlightFromResult(result);
 
   return (
     <main className="app-shell">
@@ -556,7 +604,7 @@ export default function App() {
           <label className="scenario-id-field"><span>Идентификатор сценария</span><input value={scenarioId} onChange={(event) => setScenarioId(event.target.value)} placeholder="demo-multi-uav-001" /></label>
         </section>
 
-        <section className="card workflow-section" aria-labelledby="geo-title">
+        <section className={`card workflow-section ${fieldHighlight.survey ? "section-flagged" : ""}`} aria-labelledby="geo-title">
           <div className="section-heading"><div><p className="eyebrow">02 · Геоданные</p><h2 id="geo-title">KML-файлы организатора</h2><p className="section-description">На сервер уходит текст задания на съёмку. Файл зон ограничений необязателен: без него полигонов ограничений нет. Кольца разбирает сервер.</p></div><span className="step-chip">.kml</span></div>
           <div className="upload-grid">
             <UploadCard category="survey_task" title="Границы задания на съёмку" description="Основная область работ. Один файл обязателен для запуска." sourceHint="Границы полетов.kml" files={surveyTask ? [surveyTask] : []} loading={loadingCategory === "survey_task"} onFiles={(files) => void handleKmlFiles("survey_task", files)} onRemove={() => setSurveyTask(null)} />
@@ -564,7 +612,7 @@ export default function App() {
           </div>
         </section>
 
-        <section className="card workflow-section" aria-labelledby="aerodrome-title">
+        <section className={`card workflow-section ${fieldHighlight.aerodrome ? "section-flagged" : ""}`} aria-labelledby="aerodrome-title">
           <div className="section-heading"><div><p className="eyebrow">03 · Аэродромы</p><h2 id="aerodrome-title">Аэродромы</h2><p className="section-description">Число от 1 до 4. У каждой строки долгота и широта, EPSG:4326. Подпись «аэродром 1» ставит система.</p></div></div>
           <label className="bounded-count"><span>Число аэродромов</span><select value={aerodromes.length} onChange={(event) => changeAerodromeCount(Number(event.target.value))}><option value={1}>1</option><option value={2}>2</option><option value={3}>3</option><option value={4}>4</option></select></label>
           <div className="fleet-list">{aerodromes.map((aerodrome, index) => (
@@ -579,9 +627,9 @@ export default function App() {
           ))}</div>
         </section>
 
-        <section className="card workflow-section" aria-labelledby="fleet-title">
+        <section className={`card workflow-section ${fieldHighlight.boards || fieldHighlight.model || fieldHighlight.camera ? "section-flagged" : ""}`} aria-labelledby="fleet-title">
           <div className="section-heading"><div><p className="eyebrow">04 · Борта</p><h2 id="fleet-title">Борта</h2><p className="section-description">Карточка задаёт модель, совместимую с ней камеру, аэродром и количество одинаковых бортов. Список камер зависит только от модели. Потолка карточек нет.</p></div><button className="secondary-button" type="button" onClick={() => setBoards((current) => addBoard(current))}>+ Добавить борт</button></div>
-          <div className="fleet-list">{boards.map((board, index) => <BoardCard key={`board-${index}`} board={board} index={index} aerodromeCount={aerodromes.length} onChange={(next) => setBoards((current) => current.map((item, itemIndex) => itemIndex === index ? next : item))} onRemove={() => setBoards((current) => removeBoard(current, index))} />)}</div>
+          <div className="fleet-list">{boards.map((board, index) => <BoardCard key={`board-${index}`} board={board} index={index} aerodromeCount={aerodromes.length} highlight={fieldHighlight} onChange={(next) => setBoards((current) => current.map((item, itemIndex) => itemIndex === index ? next : item))} onRemove={() => setBoards((current) => removeBoard(current, index))} />)}</div>
         </section>
 
         <section className="card workflow-section" aria-labelledby="survey-title">
@@ -600,7 +648,9 @@ export default function App() {
           <div className="section-heading"><div><p className="eyebrow">06 · Критерий оптимизации</p><h2 id="optimization-title">Настройки расчёта</h2><p className="section-description">Значения передаются в существующем envelope v0 без браузерной оптимизации.</p></div></div>
           <div className="control-grid">
             <label><span>Критерий</span><select value={objective} onChange={(event) => setObjective(event.target.value)}><option value="min_time">Минимальное время выполнения</option><option value="min_total_flight_time">Минимальный суммарный налёт</option></select><small className="field-hint">scenario.criterion: {objective === "min_total_flight_time" ? "min_flight_hours" : objective}</small></label>
-            <NumberField label="Лимит расчёта, с" placeholder={DEFAULT_TIME_LIMIT} value={timeLimit} onChange={setTimeLimit} hint={timeLimit > MAX_TIME_LIMIT_SECONDS ? TIME_LIMIT_TOO_LONG : `Не больше ${MAX_TIME_LIMIT_SECONDS}`} />
+            <div className={fieldHighlight.timeLimit ? "field-flagged" : undefined}>
+              <NumberField label="Лимит расчёта, с" placeholder={DEFAULT_TIME_LIMIT} value={timeLimit} onChange={setTimeLimit} hint={timeLimit > MAX_TIME_LIMIT_SECONDS ? TIME_LIMIT_TOO_LONG : `Не больше ${MAX_TIME_LIMIT_SECONDS}`} />
+            </div>
             <NumberField label="Seed" placeholder="7" integer value={Number(seedText)} onChange={(value) => setSeedText(formatDecimalInput(value))} hint="Для воспроизводимого запуска." />
           </div>
 

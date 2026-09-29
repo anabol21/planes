@@ -6,6 +6,7 @@ import json
 import uuid
 from typing import Any, Mapping
 
+from .error_codes import attach_classification
 from .models import CONTRACT_VERSION
 from .store import JobRecord, SQLiteJobStore
 
@@ -72,15 +73,17 @@ class BackendService:
         if record.state in {"queued", "running"}:
             raise ResultNotReadyError(record.state)
         if record.state == "failed":
-            return {
-                "contract_version": record.contract_version,
-                "job_id": record.job_id,
-                "state": record.state,
-                "error": record.error,
-            }
+            return attach_classification(
+                {
+                    "contract_version": record.contract_version,
+                    "job_id": record.job_id,
+                    "state": record.state,
+                    "error": record.error,
+                }
+            )
         if record.result is None:
             raise RuntimeError(f"terminal job {job_id} has no result")
-        return {"state": record.state, **record.result}
+        return attach_classification({"state": record.state, **record.result})
 
     @staticmethod
     def _snapshot_json(value: Mapping[str, Any], name: str) -> str:

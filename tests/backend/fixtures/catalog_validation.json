@@ -1,0 +1,27 @@
+{
+  "valid": {
+    "case": "geoscan-gemini + geoscan-pf1b",
+    "http_status": 200,
+    "outcome": "feasible",
+    "mission_time_s": 2138.353345881596,
+    "message": "feasible (catalog-compatible)"
+  },
+  "invalid_camera": {
+    "case": "camera-does-not-exist-xyz",
+    "http_status": 200,
+    "outcome": "error",
+    "message": "grisha_f2c_bridge: camera camera-does-not-exist-xyz not in catalog"
+  },
+  "invalid_uav": {
+    "case": "uav-does-not-exist-xyz",
+    "http_status": 200,
+    "outcome": "error",
+    "message": "grisha_f2c_bridge: uav model uav-does-not-exist-xyz not in catalog"
+  },
+  "incompatible": {
+    "case": "geoscan-gemini + riebo-r4",
+    "http_status": 200,
+    "outcome": "error",
+    "message": "grisha_f2c_bridge: camera riebo-r4 is not compatible with model geoscan-gemini"
+  }
+}

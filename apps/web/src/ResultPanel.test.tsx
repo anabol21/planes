@@ -3,6 +3,8 @@
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import enduranceFixture from "./test-fixtures/B2_recharge_OFF.response.json";
+import catalogFixture from "./test-fixtures/catalog_validation.json";
 import fixture from "./test-fixtures/mission-result-v0.json";
 import type { JobResult } from "./types";
 
@@ -50,6 +52,36 @@ describe("ResultPanel mission map gating", () => {
   it("renders the map for a completed feasible result", async () => {
     render(<ResultPanel result={fixture as JobResult} />);
     expect(await screen.findByTestId("mission-map")).toBeTruthy();
+  });
+
+  it("shows a Russian refusal card for the live endurance-no-recharge capture", () => {
+    const result = {
+      ...enduranceFixture,
+      state: "completed",
+      mission_plan: null,
+      artifacts: [],
+    } as JobResult;
+    render(<ResultPanel result={result} />);
+    expect(screen.getByText("Не хватает ресурса одного вылета")).toBeTruthy();
+    expect(screen.getByText(/запрете дозарядки/)).toBeTruthy();
+    expect(screen.getByText("Сценарий нельзя выполнить")).toBeTruthy();
+    expect(document.body.textContent).not.toMatch(/sitecustomize|iso f2c|f2c_isolated_worker|traceback/i);
+  });
+
+  it("shows a Russian catalog card without the bridge traceback", () => {
+    render(
+      <ResultPanel
+        result={{
+          contract_version: "v0",
+          job_id: "cat-uav",
+          state: "failed",
+          error: { outcome: "error", message: catalogFixture.invalid_uav.message },
+        }}
+      />,
+    );
+    expect(screen.getByText("Модель БВС не найдена в каталоге")).toBeTruthy();
+    expect(screen.getByText(/нет в каталоге флота/)).toBeTruthy();
+    expect(screen.queryByText(/grisha_f2c_bridge/)).toBeNull();
   });
 
   it.each([

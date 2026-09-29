@@ -1,16 +1,17 @@
 ---
 workstream: backend
 owner: Ruslan
-task: INT-001
+task: WRAP-002
 status: review
-updated: 2026-09-27
+updated: 2026-09-28
 checkpoint: 2026-09-23
-branch: test_merge
+branch: cursor/infeasible-error-codes-2089
 contract_version: v0
 ---
 
 # Backend status
 
+- `review`: WRAP-002 — API-слой нормализует `outcome` + `limitations`/`error` в `error_code`, `message_ru`, `message_en`, `details`. Классификатор `src/planes/backend/error_codes.py`. HTTP 200 + `infeasible` без изменений. Ядро и VPS не трогались. Заметка: `docs/architecture/API_RESULT_CODES_V0.md`.
 - `planned`: RUS-002 — рельеф из отдельного KML местности в матрицы `precompute`. Бриф: `docs/workstreams/model/RUS-002.md`.
 
 On `test_merge` the backend Python is unchanged. The scenario snapshot carries raw `survey_kml` and `constraints_kml`. The stitched listener path is `docs/architecture/STITCH_PICTURE.md`. The rest of this paragraph is the pre-stitch path on `main`.
@@ -31,6 +32,7 @@ Live path on `main`: the form at `127.0.0.1:5173` sends `aerodromes` and `boards
 - [x] Added the backend-owned `RuntimeOptimizationEngine` conversion wrapper around the unchanged runtime adapter.
 - [x] Added explicit worker selection through `--engine fake|runtime`, defaulting to the existing fake.
 - [x] Added deterministic runtime conversion and lifecycle tests using an injected adapter stub.
+- [x] WRAP-002: classify infeasible/error/timeout signals on `GET /jobs/{id}/result` without rewriting the engine port.
 
 ## In progress
 
@@ -38,7 +40,7 @@ Live path on `main`: the form at `127.0.0.1:5173` sends `aerodromes` and `boards
 
 ## Next action
 
-The live worker path is `--engine runtime`. On `test_merge` read `docs/architecture/STITCH_PICTURE.md` before `docs/architecture/agent-brief-runtime.md`. That brief records the pre-stitch listener at git `da3da56`. The earlier note that a controlled smoke was not recorded in this file stays as checkpoint evidence.
+Review WRAP-002 on `cursor/infeasible-error-codes-2089` against `wrap/WRAP-001-shell-around-core`. Classifier evidence is in `tests/backend/test_error_codes.py`. The live worker path remains `--engine runtime`.
 
 ## Evidence
 
@@ -89,6 +91,7 @@ The commands above follow the CLI default `--engine fake` and are the recorded p
 
 ## Interface changes
 
+- WRAP-002 (API read-shaping only, contract stays `v0`): `GET /jobs/{id}/result` may add `error_code`, `message_ru`, `message_en`, `details`, and `solver_report.unique_limitations`. Engine port and SQLite snapshots are unchanged. Consumers that ignore unknown fields keep working. See `docs/architecture/API_RESULT_CODES_V0.md`.
 - Added a backend-local `OptimizationEngine.solve(ComputeRequest) -> ComputeResponse` port matching `INTERFACES_V0.md`; no shared contract or architecture file changed.
 - Runtime can supply an adapter through worker composition without changing API, service, or storage code.
 - Runtime mode converts through runtime-owned `parse_request` and `response_to_dict`; fake-only optimization fields are not forwarded.
