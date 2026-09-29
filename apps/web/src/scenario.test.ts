@@ -327,10 +327,10 @@ describe("prototype scenario", () => {
     });
     expect(buildOptimization("min_time", MAX_TIME_LIMIT_SECONDS)).toEqual({
       objective: "min_time",
-      time_limit_seconds: 110,
+      time_limit_seconds: 600,
     });
     expect(() => buildOptimization("min_time", MAX_TIME_LIMIT_SECONDS + 1)).toThrow(
-      "Лимит расчёта не больше 110 секунд.",
+      "Лимит расчёта не больше 600 секунд.",
     );
   });
 
