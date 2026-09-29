@@ -15,9 +15,9 @@ contract_version: v0
 - `review`: WRAP-001 — local `POST /jobs` body ceiling raised from `1_000_000` bytes to `10 * 1024 * 1024` (`MAX_BODY_BYTES` = 10485760). Empty/non-positive `Content-Length` is still rejected; the payload must still be a JSON object. Runtime listener `MAX_BODY_BYTES` (32 MiB) is unchanged. Covers `REQ-PROD-001` (web submit) and large KML inputs `REQ-IN-003`, `REQ-IN-005`, `REQ-IN-006`. Limit size itself is a team operational choice under `OPEN-021`, not a customer number. `OPEN-001` remains open.
 - `planned`: RUS-002 — рельеф из отдельного KML местности в матрицы `precompute`. Бриф: `docs/workstreams/model/RUS-002.md`.
 
-On `test_merge` the backend Python is unchanged. The scenario snapshot carries raw `survey_kml` and `constraints_kml`. The stitched listener path is `docs/architecture/STITCH_PICTURE.md`. The rest of this paragraph is the pre-stitch path on `main`.
+Historical stitch notes: `docs/architecture/STITCH_PICTURE.md`.
 
-Live path on `main`: the form at `127.0.0.1:5173` sends `aerodromes` and `boards`, not `pads` or `uav_types`, to the API at `127.0.0.1:8000`. The live worker is `python -m planes.backend.worker --engine runtime`. The CLI default remains `fake`. SQLite stores `scenario_json` unchanged. Catalog numbers, including optics and power, are applied only on the listener. `fleet_catalog.json` is filled from Grisha's `data.json`; `geoscan-801` is his 1.5 kg quadcopter. GSD, overlaps, and strip direction come from the form. The listener is `planes-compute.service` at `/opt/planes`, git `da3da56` on `runtime/MIS-002-external-enumeration`, health `live`, contract `v0`, `solver_choice` `meta`. Documentation commit `794fb2d` was not deployed there. See `docs/architecture/agent-brief-backend.md` and `docs/architecture/agent-brief-runtime.md`. Remaining approximations (`geoscan-201` `kh`/`kv`/`kw` `90`/`0.02`/`0.008` instead of `220` W, `turn_time_s` `5.0`, `apply_turn_to_base` `false`, zones and obstacles not copied into `InputData`) are in the runtime brief.
+Live path on `main` (post-PR#18): `apps/web` (aerodromes + boards) → API `POST /jobs` → worker `--engine runtime` → compute `POST /v0/solve`. Default backend `PLANES_SOLVE_BACKEND=grisha_f2c_iso` via `grisha_f2c_bridge` + isolated F2C workers + `catalog/fleet_catalog.json` (`docs/live-grisha-f2c-iso.md`). CLI default remains `fake`. SQLite stores the scenario unchanged. Listener health is `live`, contract `v0`. Do not treat git `da3da56` / `runtime/MIS-002-external-enumeration` / `solver_choice` `meta` as the live tip. Product-honest limitations: flat/mono DEM when OpenTopography is unavailable; heuristic packing / separation is not a global optimum. Briefs: `docs/architecture/agent-brief-runtime.md`, `docs/architecture/agent-brief-backend.md`.
 
 ## Completed
 
@@ -97,7 +97,7 @@ The commands above follow the CLI default `--engine fake` and are the recorded p
 - The shared domain schemas and runtime-facing JSON fixtures remain unfrozen under `OPEN-001..006`, `OPEN-019`, and `OPEN-021`; the committed fixture and structures are backend-local only.
 - No external HTTP framework is declared in the repository, so the prototype uses the Python standard-library WSGI server rather than introducing an out-of-scope dependency.
 - Prototype recovery policy for a worker that dies after claiming a job is intentionally not defined. Such a job remains `running` rather than being silently duplicated or reported successful.
-- Earlier checkpoint: this file did not record a VPS smoke, because `COMPUTE_HOST`, `COMPUTE_TOKEN`, and `COMPUTE_TIMEOUT_SECONDS` were absent during that check. The listener now recorded in `docs/architecture/agent-brief-runtime.md` is git `da3da56`. Those three values stay outside Git.
+- Earlier checkpoint: this file did not record a VPS smoke, because `COMPUTE_HOST`, `COMPUTE_TOKEN`, and `COMPUTE_TIMEOUT_SECONDS` were absent during that check. Earlier MIS-002 listener evidence recorded git `da3da56` (not the post-PR#18 iso tip). Those three values stay outside Git.
 
 ## Interface changes
 

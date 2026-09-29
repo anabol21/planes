@@ -52,7 +52,7 @@ Python в `src/planes/backend/` не менялся. Это ожидаемо: б
 
 ## Что агентам не брать за текущий путь
 
-`docs/architecture/agent-brief-backend.md`, `docs/architecture/agent-brief-runtime.md` и статус на `main` описывают слушатель на `da3da56`: внешний перебор карточек, `solver_choice` `meta`, зоны не входят в `InputData`. Для ветки `test_merge` это уже не живой конверт. Сначала этот файл.
+Этот файл — историческая картина ветки `test_merge` (geo_mission + mvp pipeline). Живой контур на `main` после PR#18 — `grisha_f2c_iso` (`docs/live-grisha-f2c-iso.md`, брифы `agent-brief-*.md`): web → API `/jobs` → worker `--engine runtime` → `POST /v0/solve`. Не считать живым tip git `da3da56` / `runtime/MIS-002-external-enumeration` / `solver_choice` `meta`.
 
 Сломанный шов, тесты его не замалчивают: `sony-umc-r10c-16` и `sony-umc-r10c-20` схлопываются в `umc-r10c`, обе видимые камеры 801 схлопываются в `801-visible`. Высота полос берётся с камеры первого борта. Форма при этом задание принимает.
 

@@ -1,16 +1,16 @@
 # Быстрый запуск демо на Windows
 
-На ветке `test_merge` картина для тиммейтов и их агентов — `docs/architecture/STITCH_PICTURE.md`. Абзацы ниже описывают `main` на `da3da56`, до сшивки.
+На `main` (после PR#18) живой контур:
 
-На `main` живой путь — перебор аэродромов и бортов. Форма на `http://127.0.0.1:5173` отправляет `aerodromes` и `boards`, не `pads` и не `uav_types`. API слушает `http://127.0.0.1:8000`. Живой worker запускается с `--engine runtime`. SQLite хранит принятый `scenario` без подстановки справочника; числа каталога применяет только слушатель.
+`apps/web` (аэродромы + борты) → API `POST /jobs` → worker `--engine runtime` → compute `POST /v0/solve`.
 
-Слушатель — unit `planes-compute.service`, рабочий каталог `/opt/planes`, git `da3da562b3d38d92dcc3dfc2f3b46636331cb8fc` (`da3da56`), ветка `runtime/MIS-002-external-enumeration`. `GET /health` без токена отвечает `{"status": "live", "contract_version": "v0"}`. Вызов ядра идёт с `solver_choice` `meta`. Коммит `794fb2d71e8b9635798e59fba1d363e2988222eb` меняет только документацию; слушатель на него не переводился.
+Форма на `http://127.0.0.1:5173` отправляет `aerodromes` и `boards`, не `pads` и не `uav_types`. API слушает `http://127.0.0.1:8000`. SQLite хранит принятый `scenario` без подстановки справочника.
 
-`fleet_catalog.json` заполнен из `data.json` Гриши. Запись `geoscan-801` — его квадрокоптер массой 1.5 кг. GSD, перекрытия и направление полос приходят из формы.
+По умолчанию солвер — `PLANES_SOLVE_BACKEND=grisha_f2c_iso`: `grisha_f2c_bridge` + изолированные F2C-воркеры (`tools/f2c_iso/`) + `catalog/fleet_catalog.json`. Подробности: `docs/live-grisha-f2c-iso.md`. Откат: `PLANES_SOLVE_BACKEND=legacy_fields2cover`. Слушатель — unit `planes-compute.service`, `POST /v0/solve`, health `live`, контракт `v0`. Хост, токен и ключ OpenTopography только в окружении, не в git.
 
-Оставшиеся приближения: для `geoscan-201` ядро получает `kh`/`kv`/`kw` `90`/`0.02`/`0.008` вместо `220` Вт; `turn_time_s` `5.0`; `apply_turn_to_base` `false`; зоны и препятствия в `InputData` не копируются.
+Честные продуктовые ограничения этого пути: плоский / mono DEM, если OpenTopography недоступен; эвристическая укладка и разведение бортов — не глобальный оптимум. Не считать живым кончиком git `da3da56`, ветку `runtime/MIS-002-external-enumeration` или `solver_choice` `meta` (это прежний enumeration-слушатель).
 
-Пары, которые доходят до `run()`, и пары, которые не доходят, перечислены в `docs/architecture/agent-brief-runtime.md`. Путь backend — в `docs/architecture/agent-brief-backend.md`. Эти брифы не заменяют правила `AGENTS.md` и здесь не повторяются.
+Историческая картина сшивки на `test_merge` — `docs/architecture/STITCH_PICTURE.md`. Брифы: `docs/architecture/agent-brief-runtime.md`, `docs/architecture/agent-brief-backend.md`. Они не заменяют правила `AGENTS.md`.
 
 Fake worker (`--engine fake`, значение CLI по умолчанию) проверяет жизненный цикл задачи и маршруты не считает. Для живого расчёта его не используют.
 
@@ -110,7 +110,7 @@ Worker по умолчанию забирает одну задачу и зав�
 Invoke-RestMethod "http://<host>:8080/health"
 ```
 
-Ожидается `status` `live` и `contract_version` `v0`. На `/opt/planes` этот unit стоит на git `da3da56`, не на коммите документации `794fb2d`.
+Ожидается `status` `live` и `contract_version` `v0`. Живой compute-контур — `grisha_f2c_iso` (`docs/live-grisha-f2c-iso.md`), не прежний tip `da3da56` / `MIS-002` / `solver_choice` `meta`.
 
 ### Fake worker — только жизненный цикл
 
@@ -134,7 +134,7 @@ python -m planes.backend.worker --database .\demo.sqlite3 --engine fake
 9. Выполните worker живого пути в терминале 3 с `--engine runtime`.
 10. Браузер продолжит polling и покажет terminal result.
 
-KML разбирается локально в браузере. В запрос попадают кольца полигонов, аэродромы, борты, GSD, перекрытия и направление полос; multipart-загрузка не используется. Текущая форма `scenario` — явно обозначенный командный prototype profile, а не утверждённый заказчиком контракт. Результат с `solver_choice` `meta` и статусом `heuristic` не является глобальным оптимумом. Fake engine, если его запустить отдельно, возвращает синтетические данные и не доказывает построение маршрута.
+KML разбирается локально в браузере. В запрос попадают кольца полигонов, аэродромы, борты, GSD, перекрытия и направление полос; multipart-загрузка не используется. Текущая форма `scenario` — явно обозначенный командный prototype profile, а не утверждённый заказчиком контракт. Результат со статусом `heuristic` не является глобальным оптимумом. Fake engine, если его запустить отдельно, возвращает синтетические данные и не доказывает построение маршрута.
 
 KML-файлы в `apps/web/public/demo` созданы командой специально для локального smoke-теста. Они не являются файлами организатора и не содержат его геометрию.
 

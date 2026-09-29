@@ -112,7 +112,11 @@ class BridgeSolveTest(unittest.TestCase):
         self.assertEqual(request["contract_version"], "v0")
         self.assertNotIn("strip_direction_deg", request["scenario"]["survey"])
         self.assertEqual(request["scenario"]["survey"]["side_overlap"], 0.5)
-        self.assertTrue(any("generateBestSwaths" in line for line in result.limitations))
+        # Bridge must not re-append internal iso/bridge plumbing into limitations.
+        joined = "\n".join(result.limitations)
+        self.assertNotIn("live path:", joined)
+        self.assertNotIn("iso f2c=", joined)
+        self.assertNotIn("mvp_on_path", joined)
 
     def test_infeasible_and_timeout_map(self) -> None:
         class InfeasibleClient:
