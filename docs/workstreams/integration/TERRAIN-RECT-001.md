@@ -7,6 +7,7 @@ base: 5af4554d9e1463d2c94216389714df5344dc0380
 status: review
 contract_version: v0
 allowed_paths:
+  - .github/workflows/terrain-e2e.yml
   - README.md
   - docs/architecture/TERRAIN_PIPELINE.md
   - docs/architecture/INTERFACES_V0.md
@@ -19,6 +20,7 @@ allowed_paths:
   - tests/runtime/test_iso_terrain_acquire.py
   - tests/runtime/test_f2c_iso_client.py
   - tests/runtime/test_terrain_rectangle.py
+  - tests/runtime/test_terrain_real_e2e.py
   - docs/workstreams/integration/TERRAIN-RECT-001.md
   - docs/live-grisha-f2c-iso.md
   - docs/status/integration.md

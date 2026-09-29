@@ -1,0 +1,75 @@
+name: Real COP30 terrain to isolated Fields2Cover
+
+on:
+  workflow_dispatch:
+
+jobs:
+  terrain-e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    env:
+      PYTHONPATH: src
+      PLANES_RUN_REAL_TERRAIN_E2E: "1"
+      PLANES_DEM_FAIL_CLOSED: "1"
+      OPENTOPOGRAPHY_API_KEY: ${{ secrets.OPENTOPOGRAPHY_API_KEY }}
+      PLANES_TERRAIN_E2E_REPORT: ${{ runner.temp }}/terrain-e2e-report.txt
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install native Fields2Cover dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential cmake ninja-build git wget curl \
+            libgeos-dev libeigen3-dev libboost-dev libtbb-dev \
+            libtinyxml2-dev nlohmann-json3-dev libpython3-dev \
+            libprotobuf-dev protobuf-compiler swig
+      - name: Install OR-Tools C++ 9.9.3963
+        run: |
+          curl -fsSL https://github.com/google/or-tools/releases/download/v9.9/or-tools_amd64_ubuntu-22.04_cpp_v9.9.3963.tar.gz -o "$RUNNER_TEMP/ortools.tar.gz"
+          mkdir -p "$RUNNER_TEMP/ortools"
+          tar -xzf "$RUNNER_TEMP/ortools.tar.gz" -C "$RUNNER_TEMP/ortools" --strip-components=1
+          sudo cp -r "$RUNNER_TEMP/ortools/lib/." /usr/local/lib/
+          sudo cp -r "$RUNNER_TEMP/ortools/include/." /usr/local/include/
+          sudo cp -r "$RUNNER_TEMP/ortools/share/." /usr/local/share/
+          sudo ldconfig
+      - name: Install Python stack and build Fields2Cover once
+        run: |
+          python -m pip install --upgrade pip setuptools wheel
+          python -m pip install \
+            pydantic numpy rasterio shapely pyproj scikit-learn scipy \
+            ortools==9.9.3963 simplekml click folium matplotlib \
+            scikit-build-core pybind11 cmake ninja
+          SKBUILD_CMAKE_DEFINE="CMAKE_PROJECT_TOP_LEVEL_INCLUDES=$PWD/src/planes/model/itog_model/mvp_optimizator/fake_deps.cmake" \
+            python -m pip install --no-build-isolation fields2cover==2.1.0
+      - name: Probe Linux interpreter and native imports
+        run: |
+          python - <<'PY'
+          import importlib.metadata as md
+          import sys
+          import fields2cover, ortools, numpy, rasterio, shapely
+          print("PYTHON VERSION =", sys.version.split()[0])
+          for package in ("fields2cover", "ortools", "numpy", "rasterio", "shapely"):
+              print(package.upper() + " VERSION =", md.version(package))
+          assert md.version("fields2cover") == "2.1.0"
+          assert md.version("ortools") == "9.9.3963"
+          PY
+      - name: Run real OpenTopography to isolated Fields2Cover E2E
+        run: |
+          test -n "$OPENTOPOGRAPHY_API_KEY" || { echo 'OPENTOPOGRAPHY_API_KEY secret is missing'; exit 1; }
+          F2C_EMBED_PYTHON="$(command -v python)" python -m unittest tests.runtime.test_terrain_real_e2e -v
+      - name: Run terrain regressions and workspace validation
+        env:
+          PLANES_RUN_REAL_TERRAIN_E2E: "0"
+        run: |
+          python -m unittest tests.runtime.test_interest_box tests.runtime.test_iso_terrain_acquire tests.runtime.test_f2c_iso_client tests.runtime.test_terrain_rectangle -v
+          python scripts/validate_workspace.py
+          git diff --check
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: terrain-e2e-report
+          path: ${{ runner.temp }}/terrain-e2e-report.txt
+          if-no-files-found: ignore
