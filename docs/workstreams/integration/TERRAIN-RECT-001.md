@@ -3,7 +3,7 @@ task: TERRAIN-RECT-001
 owner: Integration
 branch: integration/TERRAIN-RECT-001-canonical-dem
 target: dev
-base: 745d2bd8b248b0b352fd8501e3312a48708c3d3d
+base: 5af4554d9e1463d2c94216389714df5344dc0380
 status: review
 contract_version: v0
 allowed_paths:
@@ -42,24 +42,30 @@ Generate small synthetic GeoTIFFs in test temporary directories; prove
 nonzero DEM samples and terrain-dependent ASL through production route code,
 and the complete isolated solve when compatible F2C dependencies exist.
 
-Preserve readable existing DEM reuse, spectrum early exit, cache identity
-and default mono/fail-closed policy. Existing readable DEM coverage bypass
-must be reported separately. Controlled acceptance uses fail-closed mode.
+Preserve validated existing DEM reuse, spectrum early exit and cache identity.
+The live canonical bridge requires terrain regardless of the standalone
+helper's configurable mono/fail-closed policy. Existing DEMs must pass full
+canonical coverage and finite-elevation validation before reuse. Terrain
+acquisition failures reach the pipeline as technical errors, not infeasible
+solutions or feasible flat-terrain plans.
 
 No frontend/backend/public v0 changes, optimizer changes, dependency
 installation without permission, deployment or merge.
 
 ## Verification and handoff
 
-Code reviewable; full synthetic raster/isolated F2C acceptance remains
-unverified until compatible dependencies are available. Rectangle,
-terrain-hook, route, ISO/client/bridge regressions ran: 39 tests, 0
-failures/errors, 7 dependency skips. A dependency-free downloader spy checks
-the exact COP30 query and cache identity; raster validation remains mocked
-in that test and is tested separately when rasterio is available.
-Workspace validation and git diff
---check passed. No dependency was installed. Next action: run the pending
-synthetic GeoTIFF and real isolated F2C tests in a compatible environment;
-do not label the complete path proven from source inspection alone.
+Initial implementation was based on `745d2bd8b248b0b352fd8501e3312a48708c3d3d`;
+the feature branch is synchronized with the newer `origin/main` at the
+`base` SHA above. Target remains `dev` under repository governance.
+
+Real synthetic GeoTIFF tests pass with rasterio: exact COP30 bounds/cache,
+full coverage validation, `_GeoTiffDem` nonzero/different samples (200/300 m),
+and production `_route` ASL (320/420 m with 120 m AGL). Live bridge tests
+cover missing key, acquisition errors, malformed/partial downloads, and
+invalid existing files with flat fallback configured; the worker is not
+called. The standalone helper retains its compatibility fallback. Full
+GeoTIFF-to-Fields2Cover child-plan acceptance is post-merge Linux integration
+verification: no Docker or WSL distribution is available on this host, and
+the Windows source build lacks native TinyXML2. Do not claim child-plan proof.
 Independent review is required before integration. Rollback: revert the
-task commit; no service/environment changes are part of this task.
+task commits; no deployment or public v0 contract change is part of this task.

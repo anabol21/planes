@@ -29,11 +29,11 @@ path, not a silent fallback.
 | `F2C_ISO_WORKER` | Alias for the worker path (client) | same as `PLANES_F2C_WORKER` |
 | `F2C_EMBED_PYTHON` | Python that has fields2cover 2.1.0 + ortools 9.9 | `$PLANES_GRISHA_ROOT/.venv-f2c-embed/bin/python` |
 | `PLANES_FLEET_CATALOG` | Catalog JSON for the worker | in-repo `catalog/fleet_catalog.json` |
-| `OPENTOPOGRAPHY_API_KEY` | Server-side COP30 download (iso path) | unset → mono fallback (default) |
+| `OPENTOPOGRAPHY_API_KEY` | Server-side COP30 download (iso path) | unset → live terrain error |
 | `PLANES_DEM_CACHE` | GeoTIFF cache for the iso acquire hook | `PLANES_TERRAIN_CACHE_DIR`, else `/tmp/dems` |
 | `PLANES_TERRAIN_CACHE_DIR` | Shared cache used by `acquire_terrain_for_area` | `~/.cache/planes/terrain` when iso cache unset |
 | `PLANES_DEM_PADDING_M` | Standalone survey-only hook padding; live bridge ignores it | `200` for standalone callers, `0` on live canonical path |
-| `PLANES_DEM_FAIL_CLOSED` | `1`/`true` → acquisition failure is `outcome=error` | unset: degrade to mono with limitations |
+| `PLANES_DEM_FAIL_CLOSED` | Standalone ISO helper fallback policy; live bridge always requires terrain | unset: standalone helper can degrade to mono |
 
 The client strips `PYTHONPATH`, `PYTHONHOME`, `PYTHONSTARTUP`,
 `PYTHONUSERBASE`, and `PYTHONSAFEPATH`, then sets `PYTHONNOUSERSITE=1`.
@@ -46,26 +46,26 @@ On the live iso path (`PLANES_SOLVE_BACKEND` unset / `grisha_f2c_iso`)
 `grisha_f2c_bridge` attaches terrain **before** the isolated worker runs.
 The browser does not send a DEM path.
 
-1. If `scenario.dem_file` (also `dem_geotiff` / `dem_path` / `dem`) is
-   already a readable file, that path is kept. OpenTopography is not
-   called.
-2. Else the bridge uses `interest_rectangle` to build the EPSG:4326
+1. The bridge uses `interest_rectangle` to build the EPSG:4326
    rectangle from survey outer-ring vertices (`survey_kml` or `areas`)
    and every aerodrome point. Constraints do not expand the rectangle.
-   `rectangle_geometry` passes this exact box to the hook. The live hook
-   uses zero padding and calls
+   `rectangle_geometry` passes this exact box to the hook with zero padding.
+2. A supplied `scenario.dem_file` (also `dem_geotiff` / `dem_path` / `dem`)
+   is reused only after real GeoTIFF validation: readable raster, CRS,
+   finite elevations, and full coverage of the canonical rectangle.
+   An invalid supplied file is an error, not a reason to reuse or clamp it.
+3. Without a supplied DEM, the hook calls
    `planes.integration.terrain.opentopography.acquire_terrain_for_area`
    (COP30 GeoTIFF). The cache directory is `PLANES_DEM_CACHE` when set,
    else `PLANES_TERRAIN_CACHE_DIR`, else `/tmp/dems`. The resolved path
    is written to `scenario.dem_file` for the worker. Downloaded and cached
-   GeoTIFFs must cover the normalized request bounds. A pre-existing
-   readable `dem_file` still bypasses that bounds check.
-3. If the key is missing, the HTTP call fails, or the survey bbox cannot
-   be derived, the **default** is degrade-to-mono: the worker keeps
-   flat `h=0` and the result lists the failure. Set
-   `PLANES_DEM_FAIL_CLOSED=1` to fail the job instead (`outcome=error`).
-   Legacy `geo_mission` (`PLANES_SOLVE_BACKEND=legacy_fields2cover`) is
-   unchanged: missing key / bad raster stay an explicit error there.
+   GeoTIFFs must cover the normalized request bounds. The COP30 query and
+   cache key use the same bounds.
+4. If the key is missing, acquisition fails, or the raster is invalid or
+   incomplete, the live bridge raises an explicit terrain error before the
+   worker runs (`outcome=error` through the pipeline). It never returns a
+   feasible flat-terrain plan on this path. The standalone ISO helper retains
+   its optional mono fallback; legacy `geo_mission` is unchanged.
 
 When the worker receives a readable GeoTIFF, waypoint `alt_m` is
 `DEM.h(lat, lon) + h_agl_m` (ASL). `mission.mission_time_s` and
@@ -73,8 +73,11 @@ When the worker receives a readable GeoTIFF, waypoint `alt_m` is
 descent time are not applied. A `terrain_corridor` request is recorded
 and not applied on this path.
 
-`OPEN-012`: a flat or 2D-time model is a documented limitation, not a
-hidden assumption. This hook does not claim a 3D corridor.
+`OPEN-012`: the 2D-time model is a documented limitation, not a hidden
+assumption. This hook does not claim a 3D corridor. Full GeoTIFF-to-child
+Fields2Cover subprocess verification remains pending a Linux environment;
+real GeoTIFF validation, `_GeoTiffDem` loading, and production `_route`
+terrain-dependent altitudes were verified locally.
 
 ## Catalog usage (CAT-001C)
 

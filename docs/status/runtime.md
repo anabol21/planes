@@ -3,8 +3,8 @@ workstream: runtime
 owner: Misha
 task: TERRAIN-RECT-001
 status: review
-updated: 2026-09-28
-checkpoint: 2026-09-28
+updated: 2026-09-29
+checkpoint: 2026-09-29
 branch: integration/TERRAIN-RECT-001-canonical-dem
 contract_version: v0
 ---
@@ -14,15 +14,16 @@ contract_version: v0
 ## TERRAIN-RECT-001 checkpoint
 
 - [x] Runtime bridge builds the canonical EPSG:4326 rectangle with existing `interest_rectangle`, using survey outer rings and all aerodromes, and supplies its GeoJSON geometry to terrain integration. Existing constraint inputs to ISO worker are unchanged.
-- [x] Production `_route` test proves waypoint ASL changes with DEM.h while duration remains unchanged; isolated worker `_GeoTiffDem` test is prepared pending rasterio.
-- [ ] Full isolated F2C solve with synthetic GeoTIFF requires compatible runtime dependencies; no installation or deployment has occurred.
-- Next: verify pending raster/worker tests in a compatible environment, independent review before merge.
-- Evidence: combined rectangle/ISO/client/bridge run 40 tests, 0 failures/errors, 7 dependency skips; exact COP30 query/cache spy; workspace validation PASS.
-- Blocker: rasterio/shapely/pyproj and compatible Fields2Cover/ortools absent locally; permission to install temporary raster test dependencies requested. Existing readable DEM has no rectangle coverage check.
+- [x] Real synthetic GeoTIFF loads through production `_GeoTiffDem`; nonempty samples 200/300 m plus AGL 120 m produce production `_route` ASL 320/420 m. Duration remains 2D path/speed.
+- [x] Live bridge requires canonical DEM and validates any supplied GeoTIFF against the full rectangle before worker invocation. Missing key, failed download, malformed/partial raster and wrong existing DEM become errors; standalone helper fallback remains separate.
+- [ ] Full isolated F2C solve with synthetic GeoTIFF remains post-merge Linux integration verification; no Docker or WSL distribution is available locally.
+- Next: independent branch review and Linux child-plan verification before deployment.
+- Evidence: focused rectangle/terrain/client tests 33 tests, 0 failures, 1 F2C subprocess skip; pipeline `outcome=error` and real-raster client handoff are covered. `test_grisha_f2c_bridge` cannot import on Windows (`fcntl`). Earlier forced child run failed at `No module named 'fields2cover'` after Windows native build failed on TinyXML2.
+- Blocker: no Linux execution backend locally. Existing readable DEM coverage bypass is closed on the live canonical bridge.
 - Decision: survey+aerodromes, zero padding is the task's team policy, not a customer REQ. OPEN-012 2D duration limitation retained.
 - Interface impact: runtime supplies geometry via internal ISO hook; public compute v0 unchanged. Rollback: revert the task commit.
 
-Live path on `main` (post-PR#18): `apps/web` (aerodromes + boards) → API `POST /jobs` → worker `--engine runtime` → compute `POST /v0/solve`. Default backend `PLANES_SOLVE_BACKEND=grisha_f2c_iso` via `grisha_f2c_bridge` + isolated F2C workers + `catalog/fleet_catalog.json` (`docs/live-grisha-f2c-iso.md`). CLI default remains `fake`. SQLite stores the scenario unchanged. Listener health is `live`, contract `v0`. Do not treat git `da3da56` / `runtime/MIS-002-external-enumeration` / `solver_choice` `meta` as the live tip. Product-honest limitations: flat/mono DEM when OpenTopography is unavailable; heuristic packing / separation is not a global optimum. Briefs: `docs/architecture/agent-brief-runtime.md`, `docs/architecture/agent-brief-backend.md`.
+Live path on `main` (post-PR#18): `apps/web` (aerodromes + boards) → API `POST /jobs` → worker `--engine runtime` → compute `POST /v0/solve`. Default backend `PLANES_SOLVE_BACKEND=grisha_f2c_iso` via `grisha_f2c_bridge` + isolated F2C workers + `catalog/fleet_catalog.json` (`docs/live-grisha-f2c-iso.md`). CLI default remains `fake`. SQLite stores the scenario unchanged. Listener health is `live`, contract `v0`. Do not treat git `da3da56` / `runtime/MIS-002-external-enumeration` / `solver_choice` `meta` as the live tip. This feature branch makes live ISO terrain errors fail closed; it has not been merged or deployed. Heuristic packing / separation is not a global optimum. Briefs: `docs/architecture/agent-brief-runtime.md`, `docs/architecture/agent-brief-backend.md`.
 
 - `review`: WRAP-001, повтор строк в `solver_report.limitations`. ISO-паковщик на `main` пишет одну и ту же фразу на каждую непокрытую полосу (`БВС 1: one swath exceeds endurance even with best pads`) и ещё раз кладёт сводку `uncovered swaths=N` в `CoverageInfeasible.limitations`. Ядро и `fields2cover_engine.py` не менялись. Обвязка оставляет первое вхождение каждой одинаковой строки: `unique_limitations` в `make_response` и `parse_response`, сборка строк в `geo_mission`, слияние в `physical_check`. Разные тексты (`uncovered swaths=N: …` и `uncovered_swaths=N`) остаются. Это гигиена канала ограничений, не новый расчёт. Зависит от `REQ-PROD-001`. `OPEN-008` не закрыт: текст про выносливость не доказывает модель заряда.
 
