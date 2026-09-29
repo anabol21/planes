@@ -1,0 +1,26 @@
+{
+  "contract_version": "v0",
+  "job_id": "waveb-val-b2_recharge_off-1790637995",
+  "outcome": "infeasible",
+  "solver_report": {
+    "method": "runtime-pipeline",
+    "objective": "min_time",
+    "runtime_seconds": 0.6578181160148233,
+    "seed": 7,
+    "limitations": [
+      "allow_recharge=false: uncovered swaths=16 (coverage needs more than one sortie under endurance)",
+      "uncovered_swaths=16",
+      "allow_recharge=false: uncovered swaths=16 (coverage needs more than one sortie under endurance)",
+      "allow_recharge=false: leftover swaths not packed into a second sortie",
+      "allow_recharge=False",
+      "live path: grisha_f2c_bridge → f2c_isolated_worker (generateBestSwaths)",
+      "iso f2c=2.1.0 mvp_on_path=False grisha_sitecustomize=False"
+    ]
+  },
+  "artifacts": [
+    {
+      "kind": "log",
+      "ref": "/var/log/planes/waveb-val-b2_recharge_off-1790637995.log"
+    }
+  ]
+}

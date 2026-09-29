@@ -71,7 +71,14 @@ export interface JobStatus {
   finished_at: string | null;
 }
 
-interface ComputeResultBase {
+export interface ResultClassification {
+  error_code?: string | null;
+  message_ru?: string | null;
+  message_en?: string | null;
+  details?: JsonObject;
+}
+
+interface ComputeResultBase extends ResultClassification {
   contract_version: typeof CONTRACT_VERSION;
   job_id: string;
   mission_plan: MissionPlan | null;
@@ -89,10 +96,11 @@ export interface TimedOutResult extends ComputeResultBase {
   outcome: "timed_out";
 }
 
-export interface FailedResult {
+export interface FailedResult extends ResultClassification {
   contract_version: typeof CONTRACT_VERSION;
   job_id: string;
   state: "failed";
+  outcome?: "error";
   error: JsonObject | null;
 }
 

@@ -1,16 +1,17 @@
 ---
 workstream: integration
 owner: Team
-task: DEMO-001
+task: WRAP-002
 status: review
-updated: 2026-09-27
+updated: 2026-09-28
 checkpoint: 2026-09-27
-branch: test_merge
+branch: cursor/infeasible-error-codes-2089
 contract_version: v0
 ---
 
 # Integration status
 
+- `review`: WRAP-002 — стабильные `error_code` на API + русские карточки на wrap-оболочке. Оптимизатор и VPS не менялись. Бриф: `docs/workstreams/integration/WRAP-002.md`. Заметка: `docs/architecture/API_RESULT_CODES_V0.md`.
 - `review`: сшивка на `cursor/geo-core-kml-stitch`. Тракт рельефа скопирован из `origin/integration/TER-GRI-001` (`src/planes/integration/terrain/`, `opentopography.py`). Разбор KML съёмки и ограничений — `src/planes/integration/kml/`. Браузер отправляет тексты `survey_kml` и `constraints_kml`; третья загрузка препятствий снята. Полигоны ограничений идут в ядро как препятствия: у `MissionInput` отдельного типа запретной зоны нет. Высотный текст копируется и не толкуется. Ключ OpenTopography и скачанные растры в git не входят.
 
 On `test_merge` the picture for teammates is `docs/architecture/STITCH_PICTURE.md`. The browser sends raw `survey_kml` and `constraints_kml`. The sentence below is the pre-stitch path on `main`.
@@ -38,10 +39,16 @@ Live path on `main`: form `127.0.0.1:5173`, API `127.0.0.1:8000`, worker `--engi
 
 ## Next action
 
-Review the stitch on `cursor/geo-core-kml-stitch`. The listener on `main` is still the enumeration path in `docs/architecture/agent-brief-runtime.md`. This branch does not deploy it. The three-terminal fake-worker smoke remains the earlier DEMO-001 check.
+Review WRAP-002 on `cursor/infeasible-error-codes-2089` against `wrap/WRAP-001-shell-around-core`. Live browser smoke of B2 OFF / catalog-negative remains a follow-up on a machine with the compute listener.
 
 ## Evidence
 
+- WRAP-002 command: `PYTHONPATH=src python3 -m unittest discover -s tests/backend -v`
+- WRAP-002 result: `Ran 50 tests in 0.872s` / `OK`.
+- WRAP-002 command: `pnpm test` and `pnpm typecheck` in `apps/web`
+- WRAP-002 result: 76 tests passed; `tsc --noEmit` exit 0.
+- WRAP-002 command: `python3 scripts/validate_workspace.py`
+- WRAP-002 result: `Workspace validation: PASS`.
 - Command: `PYTHONPATH=src python3 -m unittest tests.runtime.test_geo_kml_stitch -v`
 - Result: `Ran 4 tests in 21.060s` / `OK`. Parser returns the constraint polygon. Mocked terrain HTTP is used once for the bbox; the cache hit does not call it again. `dem_file` is set. The route does not cross the constraint ring. Missing key and invalid raster fail explicitly.
 - Command: `PYTHONPATH=src python3 -m unittest discover -s tests/backend -v`
