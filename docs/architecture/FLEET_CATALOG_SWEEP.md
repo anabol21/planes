@@ -6,7 +6,7 @@
 - перебор карточек `src/planes/runtime/enumeration/outer.py` (`run_candidates`);
 - ядро Гриши `src/planes/model/itog_model/mvp_optimizator/data/data.json` и его чтение в `planner.geometry.generate._camera_params_from_catalog` и `planner.physics.factory.build_physics_params`.
 
-Живой путь конверта с аэродромами и бортами (`planes.runtime.geo_mission.solve_envelope`) этот перебор не вызывает. Он переводит идентификаторы и отдаёт `MissionInput` в `planner.solver.pipeline`. Числа оптики и физики на этом пути читает `data.json`, а не `fleet_catalog.json`. Перебор `outer.py` остаётся для своих тестов и для однокарточного пути `takeoff` + `uav` не используется: тот путь по-прежнему вызывает gibrid-optimizer с `solver_choice` `meta`.
+**Исторический снимок для `geo_mission`/enumeration, не описание default solver.** На прежнем пути конверт с аэродромами и бортами (`planes.runtime.geo_mission.solve_envelope`) не вызывал перебор: он переводил идентификаторы в `MissionInput`, а оптику/физику читал из `data.json`. Текущий default — `grisha_f2c_iso`: bridge проверяет спектр по `src/planes/runtime/catalog/fleet_catalog.json`, а isolated worker читает `catalog/fleet_catalog.json` (или `PLANES_FLEET_CATALOG`). См. [live iso](../live-grisha-f2c-iso.md). Остальные таблицы ниже сохраняются как evidence прежнего аудита.
 
 Пометки в справочнике: `passport` — паспорт, `estimate` — оценка, `calculation` — расчёт. Пустая ячейка записана как `null` или в `gaps`.
 

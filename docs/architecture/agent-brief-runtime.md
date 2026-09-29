@@ -7,7 +7,7 @@
 
 `apps/web` (aerodromes + boards) → API `POST /jobs` → worker `--engine runtime` → compute `POST /v0/solve`.
 
-По умолчанию `PLANES_SOLVE_BACKEND=grisha_f2c_iso`: `src/planes/runtime/grisha_f2c_bridge.py` → изолированные F2C-воркеры (`tools/f2c_iso/`) + `catalog/fleet_catalog.json`. Подробности и честные ограничения (mono DEM при недоступном OpenTopography; эвристика ≠ глобальный оптимум): `docs/live-grisha-f2c-iso.md`. Откат: `PLANES_SOLVE_BACKEND=legacy_fields2cover` (`geo_mission`).
+По умолчанию `PLANES_SOLVE_BACKEND=grisha_f2c_iso`: `src/planes/runtime/grisha_f2c_bridge.py` → изолированные F2C-воркеры (`tools/f2c_iso/`) + `catalog/fleet_catalog.json`. На этом контуре DEM обязателен: недоступный OpenTopography или невалидный растр даёт технический `outcome=error`, без mono fallback. Эвристика не гарантирует глобальный оптимум. Подробности: [live iso](../live-grisha-f2c-iso.md) и [terrain](TERRAIN_PIPELINE.md). Откат: `PLANES_SOLVE_BACKEND=legacy_fields2cover` (`geo_mission`).
 
 Не считать живым кончиком git `da3da56`, ветку `runtime/MIS-002-external-enumeration` или вызов ядра с `solver_choice` `meta`. Историческая картина сшивки (`test_merge` / `geo_mission` + mvp pipeline): `docs/architecture/STITCH_PICTURE.md`.
 

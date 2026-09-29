@@ -1,196 +1,41 @@
-# Контур compute на VPS
+# Compute runtime: развёртывание и эксплуатация
 
-## Для агента Руслана
+Описан исходный код terrain-enabled integration candidate, а не подтверждённое состояние конкретной ВМ. Старые заметки о `MIS-002`, `solver_choice=meta` и SHA `da3da56` относились к прежнему развёртыванию; **не** используйте их как текущий deployment report. Перед изменением сервиса отдельно установите фактическую ветку/SHA и состояние зависимостей на целевом хосте. Архитектура — [техническая документация](../docs/PROJECT_DOCUMENTATION.md), compute-контракт — [INTERFACES_V0](../docs/architecture/INTERFACES_V0.md), terrain — [TERRAIN_PIPELINE](../docs/architecture/TERRAIN_PIPELINE.md).
 
-Миша передаёт `COMPUTE_HOST` и `COMPUTE_TOKEN` вне git. В репозитории этих значений нет. Хост — имя или адрес без схемы и без порта. Порт всегда 8080.
+## Граница процессов
 
-Читать: `src/planes/runtime/adapter.py`, `src/planes/runtime/types.py`. Не делать: SSH, systemd, тело `solver.solve`, placeholder, смена HTTP. Точка Руслана — вызов ниже. Backend не пишет логи runtime в свои таблицы. Runtime не трогает SQLite.
+Backend worker с `--engine runtime` читает `COMPUTE_HOST` (имя/адрес без схемы и порта), `COMPUTE_TOKEN`, `COMPUTE_TIMEOUT_SECONDS` и вызывает `RuntimeEngineAdapter` → `POST http://$COMPUTE_HOST:8080/v0/solve`. Listener [`planes.runtime.http_server`](../src/planes/runtime/http_server.py) проверяет Bearer token, допускает один job через lock, запускает отдельный `planes.runtime.cli solve`; он не обращается к SQLite. `GET /health` доступен без токена и показывает только liveness/`v0`. Неверный токен — `401`, занятый slot — `503`, неверное/слишком большое тело — `400` (compute лимит 32 МиБ; backend `POST /jobs` ограничен 10 МиБ). Ошибки транспорта и DEM не становятся `infeasible`.
 
-### Вызов
+На исходном default `PLANES_SOLVE_BACKEND=grisha_f2c_iso`. Bridge требует валидный DEM и до isolated F2C запуска получает/проверяет COP30, если подходящий `dem_file` не передан. `legacy_fields2cover` — **явный rollback** с отдельной terrain-политикой. На compute нужны Python зависимости GeoTIFF и отдельный embed Python с Fields2Cover/OR-Tools; без них live solve не готов, хотя `/health` может отвечать. Нативная Windows не является проверенной production-средой этого контура (`fcntl`/POSIX); Linux E2E [run 36614598024](https://github.com/anabol21/planes/actions/runs/36614598024) проверил код, не ВМ.
 
-Либо метод `RuntimeEngineAdapter.solve`, либо сырой запрос:
+## Unit и окружение
 
-```text
-POST http://$COMPUTE_HOST:8080/v0/solve
-```
+[`planes-compute.service`](planes-compute.service) запускает listener под `User=planes` из `/opt/planes`, `PYTHONPATH=/opt/planes/src`, порт `8080`, `Restart=on-failure`; env-файл `/etc/planes/planes-compute.env` с mode `600` находится вне git. [`planes-compute.env.example`](planes-compute.env.example) — только шаблон. Listener использует `COMPUTE_TOKEN`; адрес и timeout нужны вызывающему backend worker. Для terrain-enabled запуска в server-side окружении также задаётся `OPENTOPOGRAPHY_API_KEY`, а при необходимости `PLANES_DEM_CACHE`/`PLANES_TERRAIN_CACHE_DIR`; embed interpreter — `F2C_EMBED_PYTHON`. Остальные пути — [iso settings](../docs/live-grisha-f2c-iso.md). Не печатайте секрет или credential-bearing URL в командах, логах и тикетах.
 
-Заголовки:
+## Bootstrap и важная ловушка ветки
 
-- `Authorization: Bearer $COMPUTE_TOKEN`
-- `Content-Type: application/json; charset=utf-8`
+[`bootstrap-vps.sh`](bootstrap-vps.sh) ставит `python3-venv`, Git/curl, пользователя, unit и базовый venv. Его **фактический** default `PLANES_BRANCH=runtime/MIS-001-vps-loop` — историческое значение скрипта, не актуальный terrain-enabled tip. Поэтому перед применением задайте `PLANES_BRANCH` явно на проверенную ветку/релиз и проверьте ref; не запускайте bootstrap вслепую на действующей ВМ. Скрипт делает `checkout -B` и `reset --hard` целевого checkout `/opt/planes`, не устанавливает автоматически весь стек F2C/rasterio, а существующий env-файл не перезаписывает. Deployment нового code SHA включает отдельно подготовку зависимостей и миграционную проверку; документационный merge в `main` сам по себе ничего не разворачивает.
 
-### Окружение только на worker
-
-Три переменные читает процесс, который вызывает адаптер. На ВМ слушатель при старте читает тот же токен из своего env-файла.
-
-| Переменная | Смысл |
-|---|---|
-| `COMPUTE_HOST` | Имя или адрес без схемы и без порта |
-| `COMPUTE_TOKEN` | Один общий секрет на все job |
-| `COMPUTE_TIMEOUT_SECONDS` | Сколько секунд клиент ждёт ответ. Больше, чем `optimization.time_limit_seconds` |
-
-Токен — один общий секрет на каждый job, не право на отдельный job. То же значение ВМ читает из env-файла в момент старта процесса. Нет токена или он неверен — HTTP 401, не `infeasible`.
-
-### Вход
-
-Один JSON `ComputeRequest` версии `v0`. Обязательные поля:
-
-- `contract_version` равен `"v0"`
-- `job_id` — строка
-- `scenario` — объект; внутренности не проверяются
-- `optimization.objective` — непустая строка
-- `optimization.time_limit_seconds` — число секунд, больше либо равно 0
-- `seed` — целое число, не дробное
-
-Лишние поля в корне игнорируются. Живой перебор на слушателе читает в `scenario` поля `aerodromes` и `boards` и справочник `fleet_catalog.json`. Контракт запроса остаётся `v0`.
-
-Пример тела, снимок gri001. Единицы названы в полях: градусы, метры, метры в секунду, секунды, ватт-часы.
-
-```json
-{
-  "contract_version": "v0",
-  "job_id": "job_rus001_gri001",
-  "scenario": {
-    "id": "gri001_snapshot",
-    "crs": "EPSG:4326",
-    "uav_count": 1,
-    "uav_model": "Geoscan Gemini",
-    "payload_model": "Sony UMC-R10C",
-    "launch_point": {"crs": "EPSG:4326", "lon_deg": 30.31, "lat_deg": 59.94},
-    "survey_area": {
-      "type": "Polygon",
-      "crs": "EPSG:4326",
-      "coordinates_lon_lat_deg": [[[30.3, 59.93], [30.34, 59.93], [30.34, 59.95], [30.3, 59.95], [30.3, 59.93]]]
-    },
-    "gsd_m": 0.05,
-    "wind": {"speed_m_s": 3.0, "direction_from_deg": 270},
-    "cruise_speed_m_s": 15.0,
-    "max_flight_time_s": 2400,
-    "battery_wh": 144.7
-  },
-  "optimization": {"objective": "min_time", "time_limit_seconds": 30},
-  "seed": 7
-}
-```
-
-### Выход
-
-Тело HTTP 200 — один `ComputeResponse`: `contract_version`, `job_id`, `outcome` (`feasible`, `infeasible`, `timed_out` или `error`), `solver_report`, `artifacts`. Поле `mission_plan` есть только при `feasible`.
-
-### Ошибки
-
-| Ответ | Смысл |
-|---|---|
-| HTTP 401 `unauthorized` | Нет или неверен bearer |
-| HTTP 503 `busy` | Другой job держит lock |
-| HTTP 400 | Неверный `Content-Length` или тело больше 1 МиБ, до конвейера |
-| HTTP 200 и `outcome=error` | Битый JSON, неверный контракт, чужой `scenario` или сбой солвера |
-| HTTP 200 и `outcome=infeasible` | Отказ солвера. Запрос не сломан |
-| HTTP 200 и `outcome=timed_out` | Дедлайн, не `infeasible` |
-
-На ветке `test_merge` конверт с аэродромами и бортами описан в `docs/architecture/STITCH_PICTURE.md`. Следующий абзац — снимок `main` на `da3da56`.
-
-В репозитории на `main` `solver.solve` вызывает солвер Гриши с `solver_choice` `meta`. Конверт с `aerodromes` и `boards` идёт во внешний перебор; числа модели и камеры читаются из `fleet_catalog.json`. Конверт с `pads` или `uav_types` даёт `outcome=error`, не `infeasible`. Слушатель на ВМ — unit `planes-compute.service`, каталог `/opt/planes`, git `da3da562b3d38d92dcc3dfc2f3b46636331cb8fc` (`da3da56`), ветка `runtime/MIS-002-external-enumeration`. `GET /health` без токена отвечает `{"status": "live", "contract_version": "v0"}`. Коммит документации `5761f17bfc96f75cdab7a9403a94f86167cf86de` слушатель не переводил.
-
-## Для агента Гриши
-
-На `test_merge` конверт с аэродромами и бортами собирает `src/planes/runtime/geo_mission.py` и вызывает `planner.solver.pipeline`. Тело ядра по-прежнему не править. Картина — `docs/architecture/STITCH_PICTURE.md`.
-
-- Читать: `src/planes/runtime/solver.py`, `src/planes/runtime/pipeline.py`, имена outcome в `types.py`.
-- Делать: единственная точка — тело `solver.solve`. Функция получает `Problem` и `deadline` и возвращает `Solution`, `Infeasible` или `TimedOut`.
-- Не делать: HTTP, токен, адаптер, таблицы backend. Placeholder — не солвер.
-
-Слушатель на ВМ принимает один JSON `ComputeRequest` версии `v0` и возвращает один JSON `ComputeResponse` версии `v0`. Вызывающий код пользуется `RuntimeEngineAdapter.solve`. Метод всегда отправляет тело запроса на `http://$COMPUTE_HOST:8080/v0/solve` с заголовком `Authorization: Bearer $COMPUTE_TOKEN`.
-
-Хост, токен и таймаут читаются только из окружения вызывающего процесса:
-
-| Переменная | Смысл |
-|---|---|
-| `COMPUTE_HOST` | Имя хоста или адрес без схемы и без порта |
-| `COMPUTE_TOKEN` | Общий секрет. Одно и то же значение на ВМ и у вызывающего |
-| `COMPUTE_TIMEOUT_SECONDS` | Сколько секунд вызывающий ждёт HTTP-ответ |
-
-Если любой из трёх переменных нет, `solve` возвращает `outcome=error`. Это ошибка конфигурации, не результат солвера и не `infeasible`.
-
-`optimization.time_limit_seconds` в теле запроса — лимит ядра в секундах. Слушатель передаёт его в CLI как `--timeout-seconds`. `COMPUTE_TIMEOUT_SECONDS` должен быть больше этого лимита, иначе клиент закроет соединение раньше, чем обёртка успеет вернуть `timed_out`.
-
-## Процессы на ВМ
-
-`systemd` держит `planes-compute.service` (`User=planes`, `WorkingDirectory=/opt/planes`, `Restart=on-failure`). Процесс слушает `0.0.0.0:8080`. Маршрут он не считает. На `POST /v0/solve` слушатель проверяет токен, берёт lock одного job и запускает:
-
-```text
-python -m planes.runtime.cli solve --request - --timeout-seconds <N>
-```
-
-CLI запускает ядро отдельным процессом: `python -m planes.runtime.core`. Stdout ядра — JSON, логи — stderr и `/var/log/planes/<job_id>.log`. По таймауту CLI посылает группе процесса SIGTERM, затем SIGKILL. Падение ядра не роняет слушатель: следующий запрос снова стартует CLI.
-
-Конвейер ядра: ingest, bind, compile, judge, emit. `compile` проверяет, что `scenario` — JSON-объект, и кладёт его в `Problem` без переписывания. `solver.solve` для конверта с `aerodromes` и `boards` перебирает снаружи и читает `fleet_catalog.json`; ядро вызывается как `run` с `solver_choice` `meta`. Одиночные `takeoff` и `uav` остаются одним вызовом и `fleet_catalog.json` не читают. `optimal` и `feasible` становятся `Solution` (`outcome=feasible`). `heuristic` тоже `Solution`, с limitation, что это не глобальный оптимум. `infeasible` солвера становится `Infeasible`. Обрыв по лимиту времени становится `TimedOut`. Исключение (чужие или недостающие поля, pydantic, импорт) становится `outcome=error`, процесс завершается с кодом 0. Битый JSON — тоже `error`, не `infeasible`. `Infeasible` приходит без `mission_plan`. `TimedOut` → `timed_out`.
-
-`PLANES_SOLVER_ARGV` по-прежнему подменяет процесс ядра. Им пользуются проверки crash, битого stdout и sleep через модуль placeholder. Это не продуктовый путь и не поле запроса. Коммит `5761f17` слушатель не переводил: unit остаётся на git `da3da56`.
-
-Lock одного job лежит в `/run/planes/planes-compute.lock`, если этот каталог доступен для записи, иначе в `/var/lock` или во временном каталоге.
-
-## Подготовка ВМ
-
-Из checkout репозитория, от root:
+Пример на подготовленной Linux ВМ, после проверки целевой ветки и бэкапа/rollback plan:
 
 ```bash
-sudo bash infra/bootstrap-vps.sh
-```
-
-Скрипт идемпотентен. Он ставит `python3-venv`, `git`, `curl`, заводит пользователя `planes`, клонирует ветку в `/opt/planes`, создаёт venv и включает unit. Файл окружения копируется в `/etc/planes/planes-compute.env` (режим `600`, вне git) только если его ещё нет. Пока `COMPUTE_TOKEN` равен шаблону из репозитория, unit включён, но процесс не стартует.
-
-Дальше на ВМ, не копируя секрет в git:
-
-```bash
+sudo env PLANES_BRANCH=<verified-release-branch> bash infra/bootstrap-vps.sh
 sudoedit /etc/planes/planes-compute.env
 sudo systemctl restart planes-compute.service
 sudo systemctl status planes-compute.service
 ```
 
-В файле только три переменные: `COMPUTE_HOST`, `COMPUTE_TOKEN`, `COMPUTE_TIMEOUT_SECONDS`. Слушатель читает токен. Хост и таймаут нужны процессу, который вызывает адаптер.
+Не копируйте команду с `main` как release-процедуру без проверки CI, текущего checkout и зависимости F2C. `COMPUTE_TIMEOUT_SECONDS` на стороне worker должен превышать максимальный `optimization.time_limit_seconds` с запасом на listener/CLI.
 
-Повторный запуск bootstrap обновляет checkout до `origin` выбранной ветки (`PLANES_BRANCH`, по умолчанию `runtime/MIS-001-vps-loop`). Живой checkout сейчас — ветка `runtime/MIS-002-external-enumeration`, git `da3da56`. Коммит `5761f17` его не двигал. Повтор без `PLANES_BRANCH=runtime/MIS-002-external-enumeration` уведёт unit на ветку по умолчанию. Правки внутри `/opt/planes` при этом сбрасываются. Уже созданный env-файл не перезаписывается.
+## Проверка после развёртывания
 
-## Проверка
+1. Зафиксируйте `git -C /opt/planes rev-parse HEAD`, точный ref, `systemctl status` и наличие зависимостей; не публикуйте значения env.
+2. `GET http://$COMPUTE_HOST:8080/health` должен дать `{"status":"live","contract_version":"v0"}`. Это только проверка listener.
+3. Отправьте санитизированный `ComputeRequest v0` с `survey_kml`, `aerodromes`, `boards` на Bearer `/v0/solve` или через backend vertical slice. Проверьте `outcome`, `solver_report`, реальный F2C child и DEM-зависимые `waypoint.alt_m`. Положительный `/health` без этого шага не подтверждает terrain integration.
+4. Проверьте `POST /jobs` → worker → `GET /jobs/{id}/result` и terminal state в frontend. Для отрицательного теста отсутствующий/невалидный DEM должен дать технический `error`, а не feasible mono plan.
 
-Подставьте значения в окружение вызывающей стороны. В команды не вписывайте адрес и токен.
-
-```bash
-curl -sS "http://$COMPUTE_HOST:8080/health"
-```
-
-Ожидается JSON `{"status": "live", "contract_version": "v0"}`, без тела job и без авторизации.
-
-Проверка ядра на ВМ тем же fixture, который уходит в слушатель:
-
-```bash
-sudo -u planes env PYTHONPATH=/opt/planes/src \
-  /opt/planes/venv/bin/python -m planes.runtime.cli solve \
-  --request /opt/planes/tests/runtime/fixtures/compute_request_v0.json \
-  --timeout-seconds 30
-```
-
-Запрос через слушатель:
-
-```bash
-curl -sS \
-  -H "Authorization: Bearer $COMPUTE_TOKEN" \
-  -H "Content-Type: application/json; charset=utf-8" \
-  --data-binary @tests/runtime/fixtures/compute_request_v0.json \
-  "http://$COMPUTE_HOST:8080/v0/solve"
-```
-
-Успешный контур отвечает HTTP 200 и JSON с `outcome` `feasible`, `infeasible`, `timed_out` или `error`. `infeasible` — ответ ядра, не авария инфраструктуры. Нет или неверен токен — HTTP 401. Уже идёт другой job — HTTP 503. Если слушатель не запущен, клиент видит ошибку соединения; адаптер возвращает `outcome=error`, не `infeasible`.
-
-## Логи
-
-`/var/log/planes/<job_id>.log` и stderr процесса. В лог не попадают токен и заголовок `Authorization`. Ссылка на лог лежит в `artifacts`. Каталог создаёт bootstrap и `LogsDirectory=planes` у unit.
+Журналы процесса доступны через `journalctl -u planes-compute.service` и runtime log directory `/var/log/planes`; сохраняйте санитизированные excerpts. `infeasible` — законный solver outcome, timeout и technical `error` рассматриваются отдельно. Коды backend UI описаны в [API_RESULT_CODES_V0](../docs/architecture/API_RESULT_CODES_V0.md).
 
 ## Откат
 
-```bash
-sudo systemctl disable --now planes-compute.service
-```
-
-Каталог `/opt/planes` и `/etc/planes/planes-compute.env` при этом остаются. Env-файл удаляют только вместе с ротацией токена.
+При дефекте переключите checkout на заранее зафиксированный рабочий ref и перезапустите unit после проверки его совместимых зависимостей. `PLANES_SOLVE_BACKEND=legacy_fields2cover` доступен как явный кодовый rollback, но имеет другую terrain-семантику; его нельзя выдавать за canonical COP30 path. Для остановки listener: `sudo systemctl disable --now planes-compute.service`. Env-файл не удаляйте вместе с кодом; токен при компрометации ротируется отдельно.

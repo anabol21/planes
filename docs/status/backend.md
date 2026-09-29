@@ -11,6 +11,8 @@ contract_version: v0
 
 # Backend status
 
+> Исторические checkpoints ниже не являются снимком текущего terrain-enabled deployment. Ранние фразы о flat/mono при недоступном OpenTopography относятся к прежнему пути; canonical `grisha_f2c_iso` теперь требует DEM и возвращает технический `outcome=error`. Текущий обзор: [PROJECT_DOCUMENTATION](../PROJECT_DOCUMENTATION.md), детали: [TERRAIN_PIPELINE](../architecture/TERRAIN_PIPELINE.md).
+
 - `review`: WRAP-002 — API-слой нормализует `outcome` + `limitations`/`error` в `error_code`, `message_ru`, `message_en`, `details`. Классификатор `src/planes/backend/error_codes.py`. Ранний фильтр ветра (`wind.speed_ms` vs `max_wind_m_s`) даёт `INFEASIBLE_WIND_EXCEEDS_FLEET` без VPS. Модель без лимита ветра — unknown, потолок флота не поднимает. HTTP 200 + `infeasible` без изменений. Ядро и VPS packing не трогались. Заметка: `docs/architecture/API_RESULT_CODES_V0.md`.
 - `review`: WRAP-001 — local `POST /jobs` body ceiling raised from `1_000_000` bytes to `10 * 1024 * 1024` (`MAX_BODY_BYTES` = 10485760). Empty/non-positive `Content-Length` is still rejected; the payload must still be a JSON object. Runtime listener `MAX_BODY_BYTES` (32 MiB) is unchanged. Covers `REQ-PROD-001` (web submit) and large KML inputs `REQ-IN-003`, `REQ-IN-005`, `REQ-IN-006`. Limit size itself is a team operational choice under `OPEN-021`, not a customer number. `OPEN-001` remains open.
 - `planned`: RUS-002 — рельеф из отдельного KML местности в матрицы `precompute`. Бриф: `docs/workstreams/model/RUS-002.md`.

@@ -11,6 +11,8 @@ contract_version: v0
 
 # Model status
 
+> Исторические checkpoints ниже сохранены как evidence прежних model/iso срезов. Утверждение о flat/mono при недоступном OpenTopography не относится к текущему canonical `grisha_f2c_iso`: он требует DEM и возвращает технический `outcome=error`. Текущий обзор: [PROJECT_DOCUMENTATION](../PROJECT_DOCUMENTATION.md).
+
 - INT-F2C-001 overlay (dedicated contract task, not a GRI body rewrite): `DecompositionMethod.FIELDS2COVER` allows empty `angles_deg`. `f2c_backend.generate_swaths_f2c` and the `fields2cover`/`auto` path in `generate.py` call `generateBestSwaths` and ignore `angle_deg`. `_angles_to_try` returns one dummy `0.0` on that path.
 
 - `planned`: GRI-002 — непрямоугольная зона и отдельный KML ограничений полётной зоны. Бриф: `docs/workstreams/model/GRI-002.md`.

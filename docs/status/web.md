@@ -11,6 +11,8 @@ contract_version: v0
 
 # Web status
 
+> Исторические checkpoints ниже не удостоверяют фактический deployment. Раннее утверждение о flat/mono при недоступном OpenTopography относится к прежнему пути; canonical `grisha_f2c_iso` требует DEM и возвращает технический `outcome=error`. Текущий обзор: [PROJECT_DOCUMENTATION](../PROJECT_DOCUMENTATION.md).
+
 WRAP-002, карточки исходов. Панель результата показывает `error_code` из API (или выводит его из live-сигналов `limitations`/`error`) русским title/body/CTA. `INFEASIBLE_*` — отказ сценария, не падение. `INFEASIBLE_WIND_EXCEEDS_FLEET` подсвечивает скорость ветра и модели. `ERROR_*` подсвечивает поля модели/камеры/аэродрома. `TIMED_OUT_*` предлагает упростить сценарий. Строки `iso`/`f2c`/`sitecustomize`/traceback в ограничениях скрыты. Дубликаты строк в «Ограничения и замечания» убираются (`publicLimitations` / ранее WRAP-001 unique limitations).
 
 WRAP-001, сводка и карта. Список «Задание backend» снят. Панель показывает исход, число БВС, число вылетов, метрику, которую солвер уже вернул (`C_max` как `mission_time_s` при `min_time`, суммарный налёт как `total_flight_time_s` при `min_flight_hours`), и коды `PHYS-*`. На карте рисуются только участки маршрута внутри полигонов съёмки, один цвет на `uav_id`. Веер транзитов не рисуется. `mission_plan` в ответе не переписывается. Сырой JSON остаётся свёрнутым. Это отображение, не новый расчёт маршрута.

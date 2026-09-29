@@ -11,6 +11,8 @@ contract_version: v0
 
 # Runtime status
 
+> Исторические runtime checkpoints ниже сохранены как evidence разных этапов. Упоминания прежнего `geo_mission`/`pipeline` описывают тот этап, а не исходный default `grisha_f2c_iso` с обязательным DEM. Текущая карта: [PROJECT_DOCUMENTATION](../PROJECT_DOCUMENTATION.md), [TERRAIN_PIPELINE](../architecture/TERRAIN_PIPELINE.md).
+
 ## TERRAIN-RECT-001 checkpoint
 
 - [x] Permanent [terrain pipeline architecture](../architecture/TERRAIN_PIPELINE.md) documents the runtime rectangle and DEM handoff; the workstream and status remain implementation evidence. Documentation-only follow-up; no runtime code or v0 interface change.

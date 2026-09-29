@@ -16,7 +16,7 @@
 run_core(data: InputData, solver_choice: Literal["auto", "milp", "meta"] = "auto") -> dict
 ```
 
-`InputData` — схема из `optimizer/models.py`. `solver_choice` — тот же выбор, который CLI уже принимает флагом `--solver`. На живом слушателе в вызов уходит `meta`. Возвращаемый словарь — тот же объект, который CLI пишет в `output.json`. В аргументах функции нет путей к файлам.
+`InputData` — схема из `optimizer/models.py`. `solver_choice` — тот же выбор, который CLI этого исторического ядра принимает флагом `--solver`. В прежнем enumeration-контуре в вызов уходил `meta`; текущий `grisha_f2c_iso` этот путь не вызывает. Возвращаемый словарь — тот же объект, который CLI пишет в `output.json`. В аргументах функции нет путей к файлам.
 
 При статусе `optimal`, `feasible` или `heuristic` словарь содержит:
 

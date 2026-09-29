@@ -1,47 +1,24 @@
-# Project map and ownership
+# Карта проекта planes
 
-Product scope comes from `docs/spec/REQUIREMENTS.md`. Architecture below is the team's implementation decision and must not be described as wording from the customer.
+Подробная техническая точка входа — [PROJECT_DOCUMENTATION](PROJECT_DOCUMENTATION.md). Исходные требования — [spec/REQUIREMENTS](spec/REQUIREMENTS.md), границы — [SYSTEM_BOUNDARIES](architecture/SYSTEM_BOUNDARIES.md). Схема ниже описывает исходный код terrain-enabled контура; она сама по себе не удостоверяет deployment.
 
-## Product flow
+```text
+apps/web (сырой survey_kml + constraints_kml, аэродромы, boards)
+  → backend API → SQLite → backend worker --engine runtime
+  → RuntimeEngineAdapter → compute listener /v0/solve
+  → solver.solve → grisha_f2c_bridge
+      ├─ terrain: survey + все аэродромы → COP30 GeoTIFF → validated cache
+      └─ isolated F2C client/worker → Fields2Cover → Wave B
+  → ComputeResponse v0 → backend result → UI polling, summary и карта
+```
 
-`Frontend → API → Job Storage → Worker → OptimizationEngine → Q-CHECK → Result/Export`
+| Граница | Владелец | Файлы |
+|---|---|---|
+| Форма и представление | Frontend | [`apps/web`](../apps/web/) |
+| Очередь, состояния, HTTP | Backend | [`src/planes/backend`](../src/planes/backend/) |
+| Транспорт, listener, выбор solve | Runtime | [`src/planes/runtime`](../src/planes/runtime/) |
+| Получение и проверка DEM | Integration | [`src/planes/integration/terrain`](../src/planes/integration/terrain/) |
+| Изолированное построение миссии | Solver/F2C | [`tools/f2c_iso`](../tools/f2c_iso/) |
+| Публичные v0 интерфейсы | Shared | [`src/planes/contracts`](../src/planes/contracts/), [INTERFACES_V0](architecture/INTERFACES_V0.md) |
 
-The computation behind `OptimizationEngine` follows:
-
-`M-CATALOG ⇄ M-FLIGHT → M-OPT`
-
-- `M-FLIGHT` is self-sufficient for evaluating one proposed flight: geometry, route, physical feasibility, duration, resource use, and coverage.
-- `M-CATALOG` decides which flight specifications to try and retains feasible evaluated candidates.
-- `M-OPT` chooses candidates, assigns UAVs and start times, and optimizes mission-level objectives. It does not rewrite candidate routes.
-
-Grisha's current simplified task may collapse candidate generation and optimization internally, but its public input/output must remain compatible with the boundary above.
-
-## Running path on main
-
-`main` (post-PR#18) live contour: `apps/web` (aerodromes + boards) → API `POST /jobs` → worker `--engine runtime` → compute `POST /v0/solve`. Default backend `PLANES_SOLVE_BACKEND=grisha_f2c_iso` via `grisha_f2c_bridge` + isolated F2C workers + `catalog/fleet_catalog.json` (`docs/live-grisha-f2c-iso.md`). The CLI default remains `fake`. SQLite stores the scenario unchanged. Catalog numbers are applied on the compute side.
-
-Listener: `planes-compute.service`, health `live`, contract `v0`. Do not treat git `da3da56` / `runtime/MIS-002-external-enumeration` / `solver_choice` `meta` as the live tip. Rollback: `PLANES_SOLVE_BACKEND=legacy_fields2cover`.
-
-Product-honest limitations: flat/mono DEM when OpenTopography is unavailable; heuristic packing / separation is not a global optimum. Details: `docs/architecture/agent-brief-runtime.md`, `docs/architecture/agent-brief-backend.md`. Those briefs do not replace `AGENTS.md`.
-
-## Human workstreams
-
-### Grisha — simplified model
-
-Owns a pure, deterministic compute package and benchmark evidence. The first scope assumes identical Geoscan Gemini UAVs, one Sony UMC-R10C camera, one common takeoff/landing point, a rectangular flat survey area, constant wind, one flight per UAV, and one user-selected objective.
-
-### Ruslan — backend pipeline
-
-Owns job creation, validation, immutable input snapshots, job state transitions, persistence, worker orchestration, status/result endpoints, and a fake engine. The HTTP request must not perform the heavy calculation.
-
-### Misha — compute runtime and VPS
-
-Owns the real adapter from the backend engine port to the optimization core, execution isolation, timeouts, logs, health checks, deployment, and a reproducible VPS runbook.
-
-### Team integration
-
-Owns shared contracts, composition root, end-to-end fixtures, independent verification, and checkpoint acceptance. This is not a fourth implementation silo: it is the controlled meeting point of the three streams.
-
-## Non-overlap rule
-
-Ruslan owns **when and why** a job is run. Misha owns **where and how** the compute process is run. Grisha owns **what mathematical result** the compute process returns.
+Default в коде — `PLANES_SOLVE_BACKEND=grisha_f2c_iso`. `legacy_fields2cover` — явный rollback. Старый внешний enumeration и `solver_choice=meta` — исторические пути. На canonical bridge DEM обязателен: невозможность получить/проверить рельеф даёт технический `outcome=error`, без flat/mono подмены. Ограничения передаются worker как препятствия для swath geometry, но не расширяют DEM rectangle. Задачи `M-CATALOG`, `M-FLIGHT`, `M-OPT` в старых архитектурных заметках — концептуальное разделение работы команды, а не схема текущих процессов. Точные semantics — [terrain](architecture/TERRAIN_PIPELINE.md) и [iso](live-grisha-f2c-iso.md).

@@ -36,11 +36,11 @@ Every numeric field must name or declare its unit. Geospatial coordinates must d
 
 ## Live scenario on main
 
-The port above is unchanged (`v0`). On `main` (post-PR#18) the form sends `aerodromes` and `boards`, not `pads` or `uav_types`. An envelope that still has `pads` or `uav_types` is rejected by the listener. SQLite stores the scenario unchanged. Live solve backend is `PLANES_SOLVE_BACKEND=grisha_f2c_iso` (`grisha_f2c_bridge` + isolated F2C + `catalog/fleet_catalog.json`); see `docs/live-grisha-f2c-iso.md`. Do not treat git `da3da56` / `runtime/MIS-002-external-enumeration` / `solver_choice` `meta` as the live tip.
+The port above is unchanged (`v0`). The current form sends raw `survey_kml` and optional `constraints_kml`, `aerodromes` and `boards`, not `pads` or `uav_types`. An envelope that still has `pads` or `uav_types` is rejected by the listener. SQLite stores the scenario unchanged. The source default is `PLANES_SOLVE_BACKEND=grisha_f2c_iso` (`grisha_f2c_bridge` + isolated F2C + `catalog/fleet_catalog.json`); see [live iso](../live-grisha-f2c-iso.md). The earlier git `da3da56` / `runtime/MIS-002-external-enumeration` / `solver_choice=meta` notes are historical.
 
 Listener: `planes-compute.service`, health `live`, contract `v0`. Local processes: form `127.0.0.1:5173`, API `127.0.0.1:8000`, worker `--engine runtime`. Briefs: `docs/architecture/agent-brief-runtime.md`, `docs/architecture/agent-brief-backend.md`.
 
-On the current terrain feature branch, the live canonical path requires a valid DEM; terrain acquisition or validation failure produces `outcome=error`. The standalone ISO helper retains a compatibility mono fallback. Terrain remains an internal runtime concern and adds no v0 field; see the canonical [terrain pipeline](TERRAIN_PIPELINE.md). Heuristic results are not globally optimal.
+In terrain-enabled code, the live canonical path requires a valid DEM; terrain acquisition or validation failure produces `outcome=error`. The standalone ISO helper retains a compatibility mono fallback. Terrain remains an internal runtime concern and adds no v0 field; see the canonical [terrain pipeline](TERRAIN_PIPELINE.md). Heuristic results are not globally optimal. Deployment of a given Git commit must be verified separately.
 
 ## Compatibility rule
 

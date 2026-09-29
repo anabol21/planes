@@ -1,7 +1,8 @@
 # Live Grisha + isolated Fields2Cover path
 
-Contract `v0`. This is the pack/split F2C isolated contour that the live
-VPS runs today. It is **not** full mvp LNS / board assignment.
+Contract `v0`. This is the pack/split F2C isolated contour selected by the
+current source default. The successful Linux integration run proves the code
+path, not which commit a VPS currently runs. It is **not** full mvp LNS / board assignment.
 
 Strip heading is solver-owned (`generateBestSwaths`). A leftover
 `survey.strip_direction_deg` is ignored. See `docs/f2c-input-contract.md`.

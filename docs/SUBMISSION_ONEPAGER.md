@@ -1,78 +1,18 @@
-# Отборный one-pager — planes
+# planes — one-pager для проверки
 
-**Репозиторий:** https://github.com/anabol21/planes  
-**Актуальный контур:** ветка `main` (после PR #18 + docs #19)  
-**Контракт:** `v0`  
-**Живой путь:** `apps/web` (aerodromes + boards) → API `POST /jobs` → worker `--engine runtime` → compute `POST /v0/solve`  
-**Бэкенд солвера по умолчанию:** `PLANES_SOLVE_BACKEND=grisha_f2c_iso` (`grisha_f2c_bridge` + `tools/f2c_iso/` + `catalog/fleet_catalog.json`)
+**Проект:** [anabol21/planes](https://github.com/anabol21/planes) · **контракт:** `v0` · **техническая документация:** [PROJECT_DOCUMENTATION](PROJECT_DOCUMENTATION.md). Это прототип группового планирования авиационной съёмки, а не сертифицированный полётный комплекс.
 
-Это стартовая прод-версия для **отбора**: рабочий вертикальный срез с честной областью применимости. Не заявляем универсальную оптимальность и не выдаём исторические ветки за tip.
+Пользователь загружает KML области и опциональных ограничений, задаёт аэродромы, борты/камеры, GSD, перекрытия, ветер и критерий. Browser отправляет **сырой** `survey_kml`/`constraints_kml` в `scenario`; API сохраняет его в SQLite. Worker вызывает compute listener, где `grisha_f2c_iso` проверяет спектр, получает полный COP30 DEM для прямоугольника survey + все аэродромы, передаёт validated GeoTIFF изолированному Fields2Cover 2.1.0 worker и строит mission plan. UI показывает результат и карту.
 
-Связанные артефакты: `docs/spec/REQUIREMENTS.md`, `docs/spec/OPEN_QUESTIONS.md`, `docs/live-grisha-f2c-iso.md`, `AGENTS.md` § Current path, демо-KML в `apps/web/public/demo/`.
-
----
-
-## Что умеем (доказательно на tip)
-
-| Тема | Что есть | Привязка к ТЗ |
-|---|---|---|
-| Веб-сервис | UI в современном браузере, локальный Vite `5173` + API `8000` | `REQ-PROD-001`, `REQ-PLAT-001` |
-| Группа БВС | Сценарий с несколькими бортами (`boards`) и аэродромами (`aerodromes`); индивидуальные задания | `REQ-PROD-002`, `REQ-PROD-003`, `REQ-IN-001`–`002` |
-| Область съёмки | Загрузка KML полигона съёмки; форма отдаёт кольца в `scenario` | `REQ-IN-003` |
-| Параметры полёта | Каталог моделей/камер; UI и iso-bridge фильтруют/отклоняют камеры по `required_spectrum`; скорость и endurance из каталога; ветер по **модулю** | `REQ-PLAN-001`–`004` |
-| Критерии | Выбор: минимизация `Cmax` (время завершения работ) **или** суммы длительностей полётов — `TEAM-DECISION` / `OPEN-006` | `REQ-OPT-001`–`003`, `REQ-DEMO-004` |
-| Маршруты | Ключевые точки, скорость, старт/посадка, этапы; карта в UI. Высота = AGL+DEM; при mono DEM — плоская модель (`h=0`) | `REQ-OUT-001`–`006`, `REQ-DEMO-002`–`003` |
-| Отказы | Стабильные `error_code` / `message_ru` / `message_en` / `details`; ранний `INFEASIBLE_WIND_EXCEEDS_FLEET` без вызова ядра | UX / интеграция |
-| Smoke | web → API → worker → `/health` (`live`, `v0`) и `/v0/solve` | `REQ-DEMO-001`, `REQ-DELIV-F-002` |
-
-Демо-фикстуры (командные, не организаторские):  
-`apps/web/public/demo/survey-task-demo.kml`, опционально `restricted-zones-demo.kml`, `obstacles-demo.kml`.
-
----
-
-## Честно не умеем / известные ограничения (`REQ-DOC-006`)
-
-| Ограничение | Суть | OPEN / заметка |
-|---|---|---|
-| Рельеф | Без валидного ключа OpenTopography — **flat/mono** (`h=0`), не fail-closed по умолчанию. Время полёта **2D**; climb/descent и `terrain_corridor` **не** применяются | `OPEN-012` |
-| Оптимум | Укладка / Wave B / разведение — **эвристика**, не доказанный глобальный оптимум | `OPEN-015` |
-| Энергия | `energy_wh` в каталоге **не** используется для packing; recharge — константный gap, не логистика АКБ | `OPEN-008`, `OPEN-011` |
-| Ветер | Учитывается **скорость**, не полный вектор (попутный/встречный не различаются) | `OPEN-007` |
-| Совместный полёт | Горизонтальный буфер/delay — не сертифицированное разведение и не 3D-коллизии | `OPEN-013` |
-| Зоны / препятствия | Могут лежать в `scenario` SQLite; в `InputData` слушателя **не копируются** — не заявляем полный учёт NFZ на live iso | `OPEN-004` |
-| Экспорт | **Сейчас не заявляем:** `REQ-OUT-007` и `REQ-DEMO-005` этим контуром **не закрыты** — download KML/GeoJSON в ResultPanel на tip отсутствует. Round-trip / flight-safety validation ≠ допуск к реальному полёту | `OPEN-005`, `REQ-OUT-007`, `REQ-DEMO-005` |
-| Fake worker | `--engine fake` проверяет lifecycle, **маршруты не считает** | — |
-| Совместимость с ПО Геоскана | Не доказана без отдельной проверки | `OPEN-020` |
-
-**Не является живым tip:** git `da3da56`, ветка `runtime/MIS-002-external-enumeration`, конверт `pads` / `uav_types`, `solver_choice` `meta`. Откат iso: `PLANES_SOLVE_BACKEND=legacy_fields2cover`.
-
-Правило заявления результата (из OPEN): внутренние тесты доказывают модель в заявленных допущениях — не универсальную оптимальность, не безопасность реального полёта.
-
----
-
-## Smoke до сдачи (без секретов в git)
-
-1. Checkout `main`, из корня: API  
-   `PYTHONPATH=src python -m planes.backend.api --database ./demo.sqlite3 --host 127.0.0.1 --port 8000`
-2. Frontend: `cd apps/web && pnpm install && pnpm dev` → `http://127.0.0.1:5173`
-3. Worker (тот же `demo.sqlite3`): задать в env только `COMPUTE_HOST`, `COMPUTE_TOKEN`, `COMPUTE_TIMEOUT_SECONDS` →  
-   `PYTHONPATH=src python -m planes.backend.worker --database ./demo.sqlite3 --engine runtime`
-4. Health слушателя (без токена): `GET http://<host>:8080/health` → `status=live`, `contract_version=v0`
-5. В UI: загрузить `survey-task-demo.kml`, задать 1–4 аэродрома и карточки бортов, критерий, **Запустить расчёт** → `QUEUED` → после worker — terminal result + карта
-6. Опционально: повтор с ветром выше каталожного max → отказ `INFEASIBLE_WIND_EXCEEDS_FLEET` без вызова ядра
-
-Секреты, IP и credential-bearing URL в репозиторий не коммитить.
-
----
-
-## Карта для агента-проверяющего (EVAL)
-
-| Критерий | Куда смотреть |
+| Проверяемое | Фактическое состояние |
 |---|---|
-| `EVAL-001` обоснованность | Этот one-pager + `docs/live-grisha-f2c-iso.md` + `AGENTS.md` Current path |
-| `EVAL-002` реализация | `src/planes/backend/**`, `tools/f2c_iso/**`, `apps/web/**`, тесты `tests/backend` |
-| `EVAL-003` соответствие ТЗ | `docs/spec/REQUIREMENTS.md` + таблица «умеем» выше; OPEN не маскировать под REQ |
-| `EVAL-004` маршруты / масштаб | эвристика + честные limits; не overclaim optimum |
-| `EVAL-005` демо | smoke выше + UI + экспорт по факту tip |
+| Групповая миссия | Несколько `boards`/аэродромов, эвристическая укладка вылетов, recharge gaps и горизонтальные задержки. Глобальный оптимум не доказан. |
+| Ограничения | `constraints_kml` достигает F2C как `obstacles`, влияет на геометрию полос; не расширяет DEM rectangle и не доказывает полную 3D/NFZ safety. |
+| Рельеф | Live bridge требует валидный DEM. Недоступный OpenTopography/невалидный растр → `outcome=error`, **без** flat/mono fallback. Survey высота = DEM + AGL, длительность остаётся 2D. |
+| Результат | `mission_plan`, routes/waypoints/высоты/времена, `solver_report`, карта и raw JSON. KML/GeoJSON download в UI пока нет. |
+| Доказательство | [Actions run 36614598024](https://github.com/anabol21/planes/actions/runs/36614598024): `ubuntu-latest`, real OpenTopography HTTP 200/COP30, validated cache, real isolated F2C child, feasible final mission с DEM-зависимыми waypoint altitudes. |
+| Deployment | CI доказывает исходный terrain-enabled контур, не факт его развёртывания на действующей ВМ. Текущий deploy проверяется отдельно по [runbook](../infra/runbook.md). |
 
-Точка входа для человека и агента: **этот файл** → README quick start → briefs runtime/backend.
+Публичный путь: `POST /jobs` → `GET /jobs/{id}` → `GET /jobs/{id}/result`; compute: `/health`, Bearer `/v0/solve`. `infeasible` — допустимый исход солвера, terrain/transport failure — `error`; `timed_out` отдельно. Ограничение backend body — 10 МиБ. `min_time` оценивает `Cmax`, `min_flight_hours` — суммарное airborne time; это командная реализация открытого вопроса [OPEN-006](spec/OPEN_QUESTIONS.md).
+
+**Границы заявления:** ветер не моделируется полным вектором; `energy_wh` не является полным энергобалансом; разведение не сертифицировано; recovery зависшего `running`, экспорт KML/GeoJSON и совместимость с ПО Геоскана не доказаны. Подробная связь с ТЗ — [REQUIREMENTS](spec/REQUIREMENTS.md) и [TRACEABILITY](spec/TRACEABILITY.md). Локальный запуск — [README](../README.md), детали солвера — [live iso](live-grisha-f2c-iso.md), terrain — [TERRAIN_PIPELINE](architecture/TERRAIN_PIPELINE.md).
