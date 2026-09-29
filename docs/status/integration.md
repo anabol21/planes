@@ -11,6 +11,20 @@ contract_version: v0
 
 # Integration status
 
+## DOC-PROJECT-002 architecture-depth checkpoint (2026-09-29)
+
+- State: `review`. Base `main` `f2825e24`; branch `docs/PROJECT-DOC-002-architecture-depth`; target `dev` per governance; contract `v0` unchanged.
+- [x] Source audit: KML parsing/preview and camera choices in `apps/web`; SQLite `jobs` table and atomic claim in backend; wind prefilter in worker; HTTP `RuntimeEngineAdapter`; spectrum/DEM bridge; isolated F2C/Wave B; `scripts/run-local.sh`.
+- [x] Strengthened the existing [project documentation](../PROJECT_DOCUMENTATION.md): architecture rationale, SQLite queue, frontend policy, compute POST, algorithmic/heuristic split, outcomes, both reported metrics, environment and deployment. The one-pager now states the objective-selection limitation.
+- [x] Verification: `python scripts/validate_workspace.py` PASS; relative Markdown links checked across 52 files, 0 broken including anchors; 4 Mermaid blocks passed static fence/heading/bracket checks (Mermaid renderer not installed); `git diff --check` PASS.
+- Next: publish the docs-only branch and request independent review before integration into `dev`; algorithm/frontend discoveries require separate code tasks.
+- DOC DISCOVERY: `apps/web/src/kml.ts:outerRing` on this main still uses `Math.max(...altitudes)`; a very large altitude ring can hit a browser argument/stack limit. A separate frontend fix is required; this task does not alter code.
+- DOC DISCOVERY: `tools/f2c_iso/fields2cover_engine_iso.py` and `iso_src/wave_b.py` do not read `criterion`/`objective` when constructing swaths or sorties. `f2c_isolated_worker.py` computes both metrics and echoes the selected criterion; `grisha_f2c_bridge.py` picks `objective_value` after planning. The earlier phrase that both modes optimize different plans is unsupported. Follow-up required to make objective selection affect candidate choice and prove it with tests; this documentation task only corrects the claim.
+- DOC DISCOVERY: backend `wind_filter.py` can refuse when wind exceeds the maximum of **known** model limits even if other selected models have unknown limits. It records unknown IDs but does not let them raise the threshold. A separate policy/test review may be needed; documentation states the exact rule and does not silently claim full-fleet impossibility.
+- DOC DISCOVERY: `grisha_f2c_bridge.spectrum_mismatch_limitations` treats an unknown camera with a requested spectrum as a mismatch (`infeasible`) before the isolated worker can classify an unknown catalog ID as input `error`. A dedicated behavior/UX review should decide whether to separate these cases; documentation describes the current order.
+- Blockers/decisions: no docs blocker. Deployment of the terrain-enabled code remains unverified on a target host.
+- Interface/downstream impact: none; public API/DTO, runtime, frontend, tests and deployment scripts remain unchanged.
+
 ## DOC-PROJECT-001 documentation checkpoint (2026-09-29)
 
 - State: `done` for documentation and repository integration. Scope: `README.md`, `docs/**`, `infra/runbook.md`; contract `v0` unchanged. The user requested direct delivery to `main` after documentation validation; this is a documentation/integration exception to the usual `dev` target.
