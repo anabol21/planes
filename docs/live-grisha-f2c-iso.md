@@ -59,8 +59,12 @@ The browser does not send a DEM path.
    (COP30 GeoTIFF). The cache directory is `PLANES_DEM_CACHE` when set,
    else `PLANES_TERRAIN_CACHE_DIR`, else `/tmp/dems`. The resolved path
    is written to `scenario.dem_file` for the worker. Downloaded and cached
-   GeoTIFFs must cover the normalized request bounds. The COP30 query and
-   cache key use the same bounds.
+   COP30 HTTP request bounds expand outward by one 1-arcsecond raster cell
+   on each side to survive the service's grid alignment. This is a technical
+   raster guard, not mission padding: the canonical rectangle and solver
+   geometry remain unchanged. The cache key uses the guarded request bounds;
+   downloaded and cached GeoTIFFs must fully cover the original canonical
+   rectangle, though they need not cover the whole guard band.
 4. If the key is missing, acquisition fails, or the raster is invalid or
    incomplete, the live bridge raises an explicit terrain error before the
    worker runs (`outcome=error` through the pipeline). It never returns a

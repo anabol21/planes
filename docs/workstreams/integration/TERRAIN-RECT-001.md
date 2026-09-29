@@ -35,8 +35,11 @@ EPSG:4326, no padding. Constraints do not expand the rectangle.
 
 Reuse the existing runtime interest_rectangle/rectangle_geometry builder.
 Runtime supplies its final geometry to the integration-owned DEM hook.
-COP30 request, cache key and validation use the same normalized bounds.
-Downloaded rasters must cover the bounds, not merely intersect them.
+The canonical rectangle has zero mission padding. COP30 HTTP acquisition adds
+one 1-arcsecond raster-cell guard outward exactly once; query and cache key
+use those guarded bounds. Downloaded and cached rasters must cover the
+original canonical bounds, not merely intersect them; the guard does not
+change survey, aerodrome, constraint or route geometry.
 Pass only a local dem_file path into the existing isolated worker.
 Generate small synthetic GeoTIFFs in test temporary directories; prove
 nonzero DEM samples and terrain-dependent ASL through production route code,
@@ -68,10 +71,12 @@ GeoTIFF-to-Fields2Cover child-plan acceptance is post-merge Linux integration
 verification: no Docker or WSL distribution is available on this host, and
 the Windows source build lacks native TinyXML2. Do not claim child-plan proof.
 OT-REAL-001 direct HTTP diagnostic identified the previous 400 as a
-server-side minimum-area rejection (`0.007 km2`). A larger canonical request
-returned a real COP30 TIFF, but its pixel-grid bounds fell short of the
-canonical rectangle, so production correctly rejected it. Real full-coverage
-acquisition and cache reuse remain unproven; do not relax the coverage check
-or change canonical bounds as part of this diagnostic. See integration status.
+server-side minimum-area rejection (`0.007 km2`). A larger unguarded canonical
+request returned a real COP30 TIFF whose pixel-grid bounds fell short.
+OT-GRID-001 added a separate one-cell HTTP guard while retaining canonical
+validation. The real guarded request for the same canonical rectangle returned
+HTTP 200, a valid full-coverage GeoTIFF (400 finite elevations), and passed
+cache reuse; the real file reached `scenario.dem_file` and `_GeoTiffDem`.
+The full Fields2Cover child-plan verification remains a separate Linux task.
 Independent review is required before integration. Rollback: revert the
 task commits; no deployment or public v0 contract change is part of this task.
