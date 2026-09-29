@@ -106,7 +106,7 @@ An observed request of about `0.007 km²` returned HTTP 400 with “The selected
 
 Verified on this branch: canonical rectangle construction; deterministic guarded request and cache identity; real synthetic GeoTIFF validation, including partial rejection; `_GeoTiffDem` loading and different 200/300 m samples; production route altitude of 320/420 m ASL with 120 m AGL; fail-closed live bridge; and a real guarded COP30 request that passed coverage, cache reuse, `scenario.dem_file` handoff and `_GeoTiffDem` loading. The synthetic proof and live OpenTopography proof are distinct.
 
-The full path **real GeoTIFF → isolated Fields2Cover subprocess → child mission plan** remains unverified. The local Windows host has no Linux/Docker/WSL execution environment with compatible Fields2Cover dependencies. Do not infer a successful child plan from raster handoff or unit tests.
+The full path **real OpenTopography COP30 GeoTIFF → isolated Fields2Cover 2.1.0 subprocess → child mission plan** passed on GitHub Actions `ubuntu-latest`: [run 36613857860](https://github.com/anabol21/planes/actions/runs/36613857860). The OpenTopography response was HTTP 200; its EPSG:4326 raster covered the canonical rectangle, had 400 finite elevations, and was reused from cache without a second request. The child returned a feasible plan with one route and ten waypoints; eight survey waypoints matched terrain plus the catalog-derived 102.13 m AGL. Two ground samples, 143.03 m and 161.40 m, produced 245.16 m and 263.52 m ASL. This verifies one small real scenario on the feature branch, not a deployed service or 3D flight duration.
 
 ## Operational troubleshooting
 
@@ -138,5 +138,6 @@ The full path **real GeoTIFF → isolated Fields2Cover subprocess → child miss
 | `tests/runtime/test_iso_terrain_acquire.py` | Helper acquisition, reuse and failure policy |
 | `tests/runtime/test_terrain_rectangle.py` | Canonical bridge, guarded bounds, real raster validation and route samples |
 | `tests/runtime/test_f2c_iso_client.py` | Isolated client request/worker boundary |
+| `tests/runtime/test_terrain_real_e2e.py` | Opt-in real COP30, Linux child plan and two terrain-dependent survey altitudes |
 
-For implementation evidence and the remaining Linux acceptance task, see the historical [TERRAIN-RECT-001 brief](../workstreams/integration/TERRAIN-RECT-001.md) and [integration status](../status/integration.md).
+For implementation evidence and Linux acceptance, see the [TERRAIN-RECT-001 brief](../workstreams/integration/TERRAIN-RECT-001.md) and [integration status](../status/integration.md).

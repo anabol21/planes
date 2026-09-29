@@ -19,10 +19,10 @@ contract_version: v0
 - [x] Real synthetic GeoTIFF loads through production `_GeoTiffDem`; nonempty samples 200/300 m plus AGL 120 m produce production `_route` ASL 320/420 m. Duration remains 2D path/speed.
 - [x] Live bridge requires canonical DEM and validates any supplied GeoTIFF against the full rectangle before worker invocation. Missing key, failed download, malformed/partial raster and wrong existing DEM become errors; standalone helper fallback remains separate.
 - [x] COP30 downloader now adds one 1-arcsecond raster guard only to HTTP request/cache bounds; canonical geometry and zero mission padding remain unchanged. Real guarded COP30 download covered the original rectangle, passed production validation/cache reuse, and loaded as nonempty `_GeoTiffDem` through `scenario.dem_file`.
-- [ ] Full isolated F2C solve with synthetic GeoTIFF remains post-merge Linux integration verification; no Docker or WSL distribution is available locally.
-- Next: independent branch review and Linux child-plan verification before deployment.
-- Evidence: focused rectangle/terrain/client tests after OT-GRID-001: 36 tests, 0 failures, 1 F2C subprocess skip; pipeline `outcome=error`, guarded real COP30 download, cache reuse and `_GeoTiffDem` handoff are covered. `test_grisha_f2c_bridge` cannot import on Windows (`fcntl`). Earlier forced child run failed at `No module named 'fields2cover'` after Windows native build failed on TinyXML2.
-- Blocker: no Linux execution backend locally. Existing readable DEM coverage bypass is closed on the live canonical bridge.
+- [x] Full real COP30-to-isolated-F2C child solve passed in Linux GitHub Actions [run 36613857860](https://github.com/anabol21/planes/actions/runs/36613857860). Child Python used Fields2Cover 2.1.0 and OR-Tools 9.9.3963 without MVP/sitecustomize contamination. The real cache GeoTIFF produced a feasible final mission: one route, ten waypoints, eight survey waypoint altitudes matching `_GeoTiffDem.h + 102.13 m AGL`; ground heights 143.03/161.40 m produced 245.16/263.52 m ASL. Mono fallback was absent.
+- Next: independent feature-branch review before integration; deployment remains separate.
+- Evidence: green opt-in workflow, sanitized `terrain-e2e-report.txt` artifact, full canonical coverage, cache reuse, 61 Linux regressions and workspace validation; earlier local synthetic/negative tests remain regression evidence. Windows has no compatible native F2C stack, so the proof ran on `ubuntu-latest` without changing the host.
+- Blockers: none for the Linux child-plan acceptance. OPEN-012 2D duration modeling remains a documented limitation.
 - Decision: survey+aerodromes, zero padding is the task's team policy, not a customer REQ. OPEN-012 2D duration limitation retained.
 - Interface impact: runtime supplies geometry via internal ISO hook; public compute v0 unchanged. Rollback: revert the task commit.
 

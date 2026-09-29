@@ -77,7 +77,7 @@ cover missing key, acquisition errors, malformed/partial downloads, and
 invalid existing files with flat fallback configured; the worker is not
 called. The standalone helper retains its compatibility fallback. Full
 GeoTIFF-to-Fields2Cover child-plan acceptance passed in opt-in Linux GitHub
-Actions [run 36612463499](https://github.com/anabol21/planes/actions/runs/36612463499).
+Actions [run 36613857860](https://github.com/anabol21/planes/actions/runs/36613857860).
 The local Windows host still has no compatible native Fields2Cover environment.
 OT-REAL-001 direct HTTP diagnostic identified the previous 400 as a
 server-side minimum-area rejection (`0.007 km2`). A larger unguarded canonical

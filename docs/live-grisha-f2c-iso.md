@@ -80,10 +80,14 @@ descent time are not applied. A `terrain_corridor` request is recorded
 and not applied on this path.
 
 `OPEN-012`: the 2D-time model is a documented limitation, not a hidden
-assumption. This hook does not claim a 3D corridor. Full GeoTIFF-to-child
-Fields2Cover subprocess verification remains pending a Linux environment;
-real GeoTIFF validation, `_GeoTiffDem` loading, and production `_route`
-terrain-dependent altitudes were verified locally.
+assumption. This hook does not claim a 3D corridor. The opt-in
+[`terrain-e2e.yml`](../.github/workflows/terrain-e2e.yml) Linux run
+[36613857860](https://github.com/anabol21/planes/actions/runs/36613857860)
+verified real OpenTopography COP30 acquisition through the live bridge,
+full-coverage GeoTIFF validation, cache reuse, real isolated Fields2Cover
+2.1.0, and a feasible final mission. Eight survey waypoints matched
+`DEM.h(lat, lon) + h_agl_m`; two sampled ground heights were 143.03 m and
+161.40 m with 102.13 m AGL. The run did not test deployment or 3D duration.
 
 ## Catalog usage (CAT-001C)
 
