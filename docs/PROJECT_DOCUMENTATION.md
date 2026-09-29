@@ -249,7 +249,7 @@ Frontend отправляет фиксированный `seed=7`. Текущи�
 
 ## 12. Выходной mission plan
 
-При `feasible` `mission_plan` содержит идентификаторы/метаданные метода (`solver`, `decomposition_method`, `engine`), критерий, `routes` с `uav_id`, стартовым/посадочным `vpp_id`, индексом вылета, временем старта и `waypoints` (`lat`, `lon`, `alt_m`), `mission.mission_time_s`, `mission.total_flight_time_s`, геометрию `areas`/`obstacles`. Ограничения и метод также находятся в отдельном `solver_report`. Фактический сериализатор — [`f2c_isolated_worker.py`](../tools/f2c_iso/f2c_isolated_worker.py). `alt_m` на survey-точках относится к ASL; это не готовая проверенная команда автопилоту. Frontend показывает summary, карту и raw response JSON. Кнопки экспорта KML/GeoJSON в текущем `ResultPanel` нет.
+При `feasible` `mission_plan` содержит идентификаторы/метаданные метода (`solver`, `decomposition_method`, `engine`), критерий, `routes` с `uav_id`, стартовым/посадочным `vpp_id`, индексом вылета, временем старта и `waypoints` (`lat`, `lon`, `alt_m`), `mission.mission_time_s`, `mission.total_flight_time_s`, геометрию `areas`/`obstacles`. Ограничения и метод также находятся в отдельном `solver_report`. Фактический сериализатор — [`f2c_isolated_worker.py`](../tools/f2c_iso/f2c_isolated_worker.py). `alt_m` на survey-точках относится к ASL; это не готовая проверенная команда автопилоту. Frontend показывает summary, карту и raw response JSON. Для карты линии маршрутов обрезаются по областям съёмки: видны только участки внутри них, чтобы не нагружать карту транзитными линиями; полный `mission_plan` и raw JSON сохраняются без изменений. Кнопки экспорта KML/GeoJSON в текущем `ResultPanel` нет.
 
 ## 13. Ошибки
 
