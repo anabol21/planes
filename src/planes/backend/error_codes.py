@@ -179,7 +179,7 @@ def classify_result(payload: Mapping[str, Any] | None) -> ClassifiedOutcome:
     """Classify a compute result, failed-job envelope, or live sample snippet."""
     data = dict(payload or {})
     outcome, texts, limitations = _collect_signals(data)
-    blob = "\n".join(texts)
+    blob = "\n".join([*texts, *limitations])
     public = tuple(public_limitations(limitations))
     code, details = _match_code(outcome, blob, texts, limitations, data)
     if code is None:

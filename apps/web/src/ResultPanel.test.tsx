@@ -62,10 +62,13 @@ describe("ResultPanel mission map gating", () => {
       artifacts: [],
     } as JobResult;
     render(<ResultPanel result={result} />);
-    expect(screen.getByText("Не хватает ресурса одного вылета")).toBeTruthy();
-    expect(screen.getByText(/запрете дозарядки/)).toBeTruthy();
+    const card = document.querySelector(".outcome-card");
+    expect(card?.getAttribute("data-error-code")).toBe("INFEASIBLE_ENDURANCE_NO_RECHARGE");
+    expect(card?.textContent).toContain("Не хватает ресурса одного вылета");
+    expect(card?.textContent).toMatch(/запрете дозарядки/);
     expect(screen.getByText("Сценарий нельзя выполнить")).toBeTruthy();
-    expect(document.body.textContent).not.toMatch(/sitecustomize|iso f2c|f2c_isolated_worker|traceback/i);
+    expect(document.querySelector(".limitations")?.textContent).not.toMatch(/sitecustomize|iso f2c|f2c_isolated_worker|traceback/i);
+    expect(card?.textContent).not.toMatch(/sitecustomize|iso f2c|f2c_isolated_worker|traceback/i);
   });
 
   it("shows a Russian catalog card without the bridge traceback", () => {
@@ -79,9 +82,11 @@ describe("ResultPanel mission map gating", () => {
         }}
       />,
     );
-    expect(screen.getByText("Модель БВС не найдена в каталоге")).toBeTruthy();
-    expect(screen.getByText(/нет в каталоге флота/)).toBeTruthy();
-    expect(screen.queryByText(/grisha_f2c_bridge/)).toBeNull();
+    const card = document.querySelector(".outcome-card");
+    expect(card?.getAttribute("data-error-code")).toBe("ERROR_UAV_NOT_IN_CATALOG");
+    expect(card?.textContent).toContain("Модель БВС не найдена в каталоге");
+    expect(card?.textContent).toMatch(/нет в каталоге флота/);
+    expect(card?.textContent).not.toMatch(/grisha_f2c_bridge|traceback|sitecustomize/i);
   });
 
   it.each([

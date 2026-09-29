@@ -5,7 +5,7 @@
 - Base: `wrap/WRAP-001-shell-around-core` `d63828ee506257b2dba050c9987473ca8c1bbab6`
 - Target branch: `wrap/WRAP-001-shell-around-core`
 - Contract version: `v0`
-- State: `in_progress`
+- State: `review`
 - Requirement slice: `REQ-PROD-001`, `REQ-DOC-004`, `REQ-DOC-006`, `REQ-DELIV-I-003`
 - Open dependencies: `OPEN-008` (offline energy stub only), `OPEN-014`
 

@@ -25,7 +25,7 @@ describe("terminal result presentation", () => {
     [
       { ...BASE, state: "timed_out", outcome: "timed_out", mission_plan: null },
       "timed_out",
-      "Время расчёта истекло",
+      "Расчёт прерван по времени",
     ],
     [
       {

@@ -39,10 +39,16 @@ Live path on `main`: form `127.0.0.1:5173`, API `127.0.0.1:8000`, worker `--engi
 
 ## Next action
 
-Review the stitch on `cursor/geo-core-kml-stitch`. The listener on `main` is still the enumeration path in `docs/architecture/agent-brief-runtime.md`. This branch does not deploy it. The three-terminal fake-worker smoke remains the earlier DEMO-001 check.
+Review WRAP-002 on `cursor/infeasible-error-codes-2089` against `wrap/WRAP-001-shell-around-core`. Live browser smoke of B2 OFF / catalog-negative remains a follow-up on a machine with the compute listener.
 
 ## Evidence
 
+- WRAP-002 command: `PYTHONPATH=src python3 -m unittest discover -s tests/backend -v`
+- WRAP-002 result: `Ran 50 tests in 0.872s` / `OK`.
+- WRAP-002 command: `pnpm test` and `pnpm typecheck` in `apps/web`
+- WRAP-002 result: 76 tests passed; `tsc --noEmit` exit 0.
+- WRAP-002 command: `python3 scripts/validate_workspace.py`
+- WRAP-002 result: `Workspace validation: PASS`.
 - Command: `PYTHONPATH=src python3 -m unittest tests.runtime.test_geo_kml_stitch -v`
 - Result: `Ran 4 tests in 21.060s` / `OK`. Parser returns the constraint polygon. Mocked terrain HTTP is used once for the bbox; the cache hit does not call it again. `dem_file` is set. The route does not cross the constraint ring. Missing key and invalid raster fail explicitly.
 - Command: `PYTHONPATH=src python3 -m unittest discover -s tests/backend -v`

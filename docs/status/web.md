@@ -46,6 +46,7 @@ the computed `mission_plan` and leaves the contract at `v0`.
 - [x] Browser-smoked the submission-to-result flow against a deterministic local v0 result: the
   viewport fitted the mission, two UAV legend entries and two base markers rendered, and 26 Esri
   satellite tile requests returned HTTP 200.
+- [x] WRAP-002: Russian outcome cards for live endurance-no-recharge and catalog errors; internals filtered.
 
 ### Next action
 
@@ -55,6 +56,8 @@ limitation before deployment.
 
 ### Evidence
 
+- WRAP-002: `pnpm test` in `apps/web` — 76 tests in 10 files, passed (Vitest 5.0.1). Includes live B2 endurance card and catalog UAV card.
+- WRAP-002: `pnpm typecheck` — `tsc --noEmit` exit 0.
 - Task brief: `docs/workstreams/web/WEB-002.md`.
 - Source: `apps/web/src/MissionMap.tsx`, `apps/web/src/missionMapData.ts`, and typed additions in
   `apps/web/src/types.ts`.

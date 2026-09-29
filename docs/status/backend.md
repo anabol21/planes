@@ -44,6 +44,9 @@ Review WRAP-002 on `cursor/infeasible-error-codes-2089` against `wrap/WRAP-001-s
 
 ## Evidence
 
+- WRAP-002: `PYTHONPATH=src python3 -m unittest discover -s tests/backend -v` — `Ran 50 tests in 0.872s` / `OK` (includes live B2 + catalog_validation fixtures).
+- WRAP-002: `python3 scripts/validate_workspace.py` — `Workspace validation: PASS`.
+- WRAP-002: `git diff --check` — passed.
 - Task brief: `docs/workstreams/backend/RUS-001.md`.
 - `python -m compileall -q src/planes/backend tests/backend` — passed (exit 0).
 - `python -m unittest discover -s tests/backend -v` — passed, 20 tests, `OK`.
