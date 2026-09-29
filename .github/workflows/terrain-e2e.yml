@@ -32,6 +32,7 @@ jobs:
           tar -xzf "$RUNNER_TEMP/ortools.tar.gz" -C "$RUNNER_TEMP/ortools" --strip-components=1
           sudo cp -r "$RUNNER_TEMP/ortools/lib/." /usr/local/lib/
           sudo cp -r "$RUNNER_TEMP/ortools/include/." /usr/local/include/
+          sudo cp -r "$RUNNER_TEMP/ortools/bin/." /usr/local/bin/
           sudo cp -r "$RUNNER_TEMP/ortools/share/." /usr/local/share/
           sudo ldconfig
       - name: Install Python stack and build Fields2Cover once
