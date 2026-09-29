@@ -3,8 +3,11 @@
 Routes ``solver.solve`` for geo envelopes through the isolated F2C client,
 which spawns the embed-venv worker (ortools 9.9 + fields2cover 2.1.0) with
 PYTHONPATH cleared. ``strip_direction_deg`` is ignored; F2C uses
-``generateBestSwaths``. When ``dem_file`` is absent, the bridge acquires
-a COP30 GeoTIFF via ``ensure_dem_for_iso_scenario`` before the worker.
+``generateBestSwaths``. Board cameras are checked against
+``required_spectrum`` / catalog ``spectra`` before DEM or the worker;
+a mismatch returns ``Infeasible`` immediately. When ``dem_file`` is
+absent, the bridge acquires a COP30 GeoTIFF via
+``ensure_dem_for_iso_scenario`` before the worker.
 
 Full in-process ``mvp_optimizator`` is NOT imported here (sitecustomize/absl).
 
@@ -16,10 +19,90 @@ from __future__ import annotations
 
 import copy
 import importlib.util
+import json
 import os
 import time
 from pathlib import Path
-from typing import Any
+from typing import Any, Mapping
+
+
+_CATALOG_PATH = Path(__file__).resolve().parent / "catalog" / "fleet_catalog.json"
+_NO_SPECTRUM = "no camera covers required spectrum"
+
+
+def load_fleet_catalog(path: Path | None = None) -> dict[str, Any]:
+    catalog_path = path or _CATALOG_PATH
+    payload = json.loads(catalog_path.read_text(encoding="utf-8"))
+    if not isinstance(payload, dict):
+        raise ValueError("fleet catalog must be a JSON object")
+    return payload
+
+
+def _camera_index(catalog: Mapping[str, Any]) -> dict[str, Mapping[str, Any]]:
+    rows = catalog.get("cameras")
+    if not isinstance(rows, list):
+        return {}
+    found: dict[str, Mapping[str, Any]] = {}
+    for item in rows:
+        if isinstance(item, Mapping) and isinstance(item.get("id"), str):
+            found[item["id"]] = item
+    return found
+
+
+def _spectra(camera: Mapping[str, Any]) -> tuple[str, ...]:
+    raw = camera.get("spectra")
+    if not isinstance(raw, list):
+        return ()
+    return tuple(str(item) for item in raw if isinstance(item, str) and item.strip())
+
+
+def required_spectrum_of(scenario: Mapping[str, Any]) -> str | None:
+    for key in ("required_spectrum", "survey_type"):
+        raw = scenario.get(key)
+        if isinstance(raw, str) and raw.strip():
+            return raw.strip()
+    return None
+
+
+def spectrum_mismatch_limitations(
+    scenario: Mapping[str, Any],
+    catalog: Mapping[str, Any] | None = None,
+) -> tuple[str, ...]:
+    """Return limitation lines when any selected board camera misses the spectrum.
+
+    Prefers refusing the whole job if any board mismatches (same wording as
+    the enumeration / geo_mission helpers).
+    """
+    required = required_spectrum_of(scenario)
+    if required is None:
+        return ()
+    boards = scenario.get("boards")
+    if not isinstance(boards, list) or not boards:
+        return ()
+    cameras = _camera_index(catalog if catalog is not None else load_fleet_catalog())
+    notes: list[str] = []
+    for board in boards:
+        if not isinstance(board, Mapping):
+            continue
+        camera_id = board.get("camera_id")
+        model_id = board.get("model_id")
+        if not isinstance(camera_id, str) or not camera_id.strip():
+            continue
+        if not isinstance(model_id, str) or not model_id.strip():
+            model_id = "?"
+        record = cameras.get(camera_id)
+        spectra = _spectra(record) if record is not None else ()
+        if required in spectra:
+            continue
+        listed = ", ".join(spectra) if spectra else "(none)"
+        notes.append(
+            f"spectrum mismatch model {model_id} camera {camera_id}: "
+            f"required {required}, camera spectra {listed}"
+        )
+    if not notes:
+        return ()
+    return (_NO_SPECTRUM, *notes)
+
 
 _DEFAULT_GRISHA_ROOT = "/opt/planes-grisha-f2c"
 
@@ -95,6 +178,10 @@ def solve_via_isolated_grisha_f2c(problem: Any, deadline: float):
         scenario["survey"] = {
             k: v for k, v in scenario["survey"].items() if k != "strip_direction_deg"
         }
+
+    spectrum_notes = spectrum_mismatch_limitations(scenario)
+    if spectrum_notes:
+        return Infeasible(spectrum_notes)
 
     try:
         scenario, dem_notes = ensure_dem_for_iso_scenario(scenario)

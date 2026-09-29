@@ -209,5 +209,118 @@ class SolveBackendTest(unittest.TestCase):
         self.assertEqual(calls, ["legacy", "legacy", "legacy"])
 
 
+
+class SpectrumFilterTest(unittest.TestCase):
+    def test_mismatch_limitations_for_rgb_camera_vs_multispectral(self) -> None:
+        notes = grisha_f2c_bridge.spectrum_mismatch_limitations(
+            {
+                "required_spectrum": "multispectral",
+                "boards": [
+                    {
+                        "id": "БВС 1",
+                        "model_id": "geoscan-gemini",
+                        "camera_id": "geoscan-pf1b",
+                        "aerodrome_id": "аэродром 1",
+                        "count": 1,
+                    }
+                ],
+            }
+        )
+        self.assertTrue(notes)
+        self.assertEqual(notes[0], "no camera covers required spectrum")
+        self.assertIn("geoscan-pf1b", notes[1])
+        self.assertIn("multispectral", notes[1])
+
+    def test_matching_rgb_is_not_refused(self) -> None:
+        notes = grisha_f2c_bridge.spectrum_mismatch_limitations(
+            {
+                "required_spectrum": "RGB",
+                "boards": [
+                    {
+                        "id": "БВС 1",
+                        "model_id": "geoscan-gemini",
+                        "camera_id": "geoscan-pf1b",
+                        "aerodrome_id": "аэродром 1",
+                        "count": 1,
+                    }
+                ],
+            }
+        )
+        self.assertEqual(notes, ())
+
+    def test_pollux_covers_multispectral(self) -> None:
+        notes = grisha_f2c_bridge.spectrum_mismatch_limitations(
+            {
+                "required_spectrum": "multispectral",
+                "boards": [
+                    {
+                        "model_id": "geoscan-gemini",
+                        "camera_id": "geoscan-pollux",
+                        "aerodrome_id": "аэродром 1",
+                        "count": 1,
+                    }
+                ],
+            }
+        )
+        self.assertEqual(notes, ())
+
+    def test_bridge_refuses_before_client_on_mismatch(self) -> None:
+        class BoomClient:
+            def solve(self, request, worker=None, timeout_s=0.0):
+                del request, worker, timeout_s
+                raise AssertionError("client must not run on spectrum mismatch")
+
+        scenario = _envelope(
+            required_spectrum="multispectral",
+            boards=[
+                {
+                    "id": "БВС 1",
+                    "model_id": "geoscan-gemini",
+                    "camera_id": "geoscan-pf1b",
+                    "aerodrome_id": "аэродром 1",
+                    "count": 1,
+                }
+            ],
+        )
+        with patch.object(grisha_f2c_bridge, "_load_client", return_value=BoomClient()):
+            with patch(
+                "planes.integration.terrain.iso_acquire.ensure_dem_for_iso_scenario",
+                side_effect=AssertionError("DEM must not run on spectrum mismatch"),
+            ):
+                result = grisha_f2c_bridge.solve_via_isolated_grisha_f2c(
+                    _problem(scenario), time.monotonic() + 5
+                )
+        self.assertIsInstance(result, Infeasible)
+        assert isinstance(result, Infeasible)
+        joined = "\n".join(result.limitations)
+        self.assertIn("no camera covers required spectrum", joined)
+        self.assertIn("geoscan-pf1b", joined)
+
+    def test_bridge_matching_rgb_reaches_client(self) -> None:
+        calls: list[str] = []
+
+        class FakeClient:
+            def solve(self, request, worker=None, timeout_s=0.0):
+                del request, worker, timeout_s
+                calls.append("client")
+                return {
+                    "outcome": "infeasible",
+                    "solver_report": {"limitations": ["downstream"]},
+                }
+
+        with patch.object(grisha_f2c_bridge, "_load_client", return_value=FakeClient()):
+            with patch(
+                "planes.integration.terrain.iso_acquire.ensure_dem_for_iso_scenario",
+                side_effect=lambda scenario, **kwargs: (scenario, ["dem-ok"]),
+            ):
+                result = grisha_f2c_bridge.solve_via_isolated_grisha_f2c(
+                    _problem(_envelope(required_spectrum="RGB")),
+                    time.monotonic() + 5,
+                )
+        self.assertEqual(calls, ["client"])
+        self.assertIsInstance(result, Infeasible)
+
+
+
 if __name__ == "__main__":
     unittest.main()

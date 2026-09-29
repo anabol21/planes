@@ -53,6 +53,7 @@ import {
   resizeAerodromes,
   validateScenarioInputs,
   withModel,
+  withSurveyType,
   type AerodromeInput,
   type BoardInput,
   type ScenarioInputs,
@@ -398,6 +399,7 @@ function BoardCard({
   highlight,
   onChange,
   onRemove,
+  surveyType,
 }: {
   board: BoardInput;
   index: number;
@@ -405,8 +407,9 @@ function BoardCard({
   highlight: HighlightFields;
   onChange: (next: BoardInput) => void;
   onRemove: () => void;
+  surveyType: SurveyType;
 }) {
-  const cameras = camerasForModel(board.modelId);
+  const cameras = camerasForModel(board.modelId, surveyType);
   return (
     <article className={`uav-card ${highlight.boards || highlight.model || highlight.camera || highlight.aerodrome ? "field-flagged-card" : ""}`}>
       <div className="uav-card-head">
@@ -416,7 +419,7 @@ function BoardCard({
       <div className="uav-grid">
         <label className={highlight.model ? "field-flagged" : undefined}>
           <span>Модель</span>
-          <select value={board.modelId} onChange={(event) => onChange(withModel(board, event.target.value))} aria-invalid={highlight.model ? true : undefined}>
+          <select value={board.modelId} onChange={(event) => onChange(withModel(board, event.target.value, surveyType))} aria-invalid={highlight.model ? true : undefined}>
             <option value="">Выберите модель</option>
             {catalogModels().map((model) => <option key={model.id} value={model.id}>{model.name}</option>)}
           </select>
@@ -636,14 +639,14 @@ export default function App() {
         </section>
 
         <section className={`card workflow-section ${fieldHighlight.boards || fieldHighlight.model || fieldHighlight.camera ? "section-flagged" : ""}`} aria-labelledby="fleet-title">
-          <div className="section-heading"><div><p className="eyebrow">04 · Борта</p><h2 id="fleet-title">Борта</h2><p className="section-description">Карточка задаёт модель, совместимую с ней камеру, аэродром и количество одинаковых бортов. Список камер зависит только от модели. Потолка карточек нет.</p></div><button className="secondary-button" type="button" onClick={() => setBoards((current) => addBoard(current))}>+ Добавить борт</button></div>
-          <div className="fleet-list">{boards.map((board, index) => <BoardCard key={`board-${index}`} board={board} index={index} aerodromeCount={aerodromes.length} highlight={fieldHighlight} onChange={(next) => setBoards((current) => current.map((item, itemIndex) => itemIndex === index ? next : item))} onRemove={() => setBoards((current) => removeBoard(current, index))} />)}</div>
+          <div className="section-heading"><div><p className="eyebrow">04 · Борта</p><h2 id="fleet-title">Борта</h2><p className="section-description">Карточка задаёт модель, камеру под выбранный тип съёмки, аэродром и количество одинаковых бортов. Список камер — пересечение совместимости модели и спектра. Потолка карточек нет.</p></div><button className="secondary-button" type="button" onClick={() => setBoards((current) => addBoard(current))}>+ Добавить борт</button></div>
+          <div className="fleet-list">{boards.map((board, index) => <BoardCard key={`board-${index}`} board={board} index={index} aerodromeCount={aerodromes.length} highlight={fieldHighlight} surveyType={surveyType} onChange={(next) => setBoards((current) => current.map((item, itemIndex) => itemIndex === index ? next : item))} onRemove={() => setBoards((current) => removeBoard(current, index))} />)}</div>
         </section>
 
         <section className={`card workflow-section ${fieldHighlight.wind ? "section-flagged" : ""}`} aria-labelledby="survey-title">
-          <div className="section-heading"><div><p className="eyebrow">05 · Параметры съёмки</p><h2 id="survey-title">Сенсорный профиль и ветер</h2><p className="section-description">GSD и перекрытия задаются здесь и уходят в конверт. Единицы указаны явно. Браузер не рассчитывает покрытие, энергетику или выполнимость. Тип съёмки не фильтрует список камер.</p></div></div>
+          <div className="section-heading"><div><p className="eyebrow">05 · Параметры съёмки</p><h2 id="survey-title">Сенсорный профиль и ветер</h2><p className="section-description">GSD и перекрытия задаются здесь и уходят в конверт. Единицы указаны явно. Браузер не рассчитывает покрытие, энергетику или выполнимость. Тип съёмки фильтрует список камер на карточках бортов.</p></div></div>
           <div className="control-grid">
-            <label><span>Тип съёмки</span><select value={surveyType} onChange={(event) => setSurveyType(event.target.value as SurveyType)}><option value="RGB">RGB</option><option value="multispectral">Мультиспектральная</option><option value="infrared">Инфракрасная</option><option value="LiDAR">LiDAR</option><option value="geophysical">Геофизическая</option></select></label>
+            <label><span>Тип съёмки</span><select value={surveyType} onChange={(event) => { const next = event.target.value as SurveyType; setSurveyType(next); setBoards((current) => withSurveyType(current, next)); }}><option value="RGB">RGB</option><option value="multispectral">Мультиспектральная</option><option value="infrared">Инфракрасная</option><option value="LiDAR">LiDAR</option><option value="geophysical">Геофизическая</option></select></label>
             <NumberField label="GSD" unit="см/пикс" placeholder="3" value={gsdCmPerPx} onChange={setGsdCmPerPx} />
             <NumberField label="Перекрытие вдоль" placeholder="0.7" value={forwardOverlap} onChange={setForwardOverlap} hint="Доля кадра, от 0 до 1, не включая 1." />
             <NumberField label="Перекрытие поперёк" placeholder="0.6" value={sideOverlap} onChange={setSideOverlap} hint="Доля кадра, от 0 до 1, не включая 1." />
