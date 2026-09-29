@@ -33,7 +33,10 @@ path, not a silent fallback.
 The client strips `PYTHONPATH`, `PYTHONHOME`, `PYTHONSTARTUP`,
 `PYTHONUSERBASE`, and `PYTHONSAFEPATH`, then sets `PYTHONNOUSERSITE=1`.
 The worker refuses to start if `mvp_optimizator` is on `sys.path` or if
-Grisha's `sitecustomize.py` loaded.
+Grisha's `sitecustomize.py` loaded. Isolation provenance (`iso f2c=…`,
+`mvp_on_path`, `grisha_sitecustomize`, embed venv, catalog path) is
+logged on stderr only. `solver_report.limitations` returned to the
+web/API is product-facing (terrain, strip heading, Wave B heuristics).
 
 ## DEM hook (honest)
 

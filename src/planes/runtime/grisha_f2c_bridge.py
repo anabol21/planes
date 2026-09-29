@@ -16,11 +16,54 @@ from __future__ import annotations
 import copy
 import importlib.util
 import os
+import sys
 import time
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterable
 
 _DEFAULT_GRISHA_ROOT = "/opt/planes-grisha-f2c"
+
+# Ops/debug tokens that must not appear in user-facing limitations.
+_INTERNAL_LIMITATION_MARKERS = (
+    "grisha_f2c_bridge",
+    "mvp_on_path",
+    "grisha_sitecustomize",
+    "sitecustomize",
+    "iso f2c=",
+    "isolated embed venv",
+    "fleet_catalog=",
+    "live path:",
+    "isolation violated",
+)
+
+
+def public_limitations(lines: Iterable[str] | None) -> list[str]:
+    """Drop iso/ops plumbing from user-facing ``solver_report.limitations``."""
+    out: list[str] = []
+    seen: set[str] = set()
+    for raw in lines or ():
+        text = str(raw).strip()
+        if not text:
+            continue
+        lowered = text.lower()
+        if any(marker.lower() in lowered for marker in _INTERNAL_LIMITATION_MARKERS):
+            continue
+        if text in seen:
+            continue
+        seen.add(text)
+        out.append(text)
+    return out
+
+
+def _log_isolation(iso: dict[str, Any]) -> None:
+    print(
+        "iso isolation: "
+        f"f2c={iso.get('fields2cover_version')} "
+        f"mvp_on_path={iso.get('mvp_on_path')} "
+        f"grisha_sitecustomize={iso.get('grisha_sitecustomize')}",
+        file=sys.stderr,
+        flush=True,
+    )
 
 
 def _repo_root() -> Path:
@@ -109,14 +152,9 @@ def solve_via_isolated_grisha_f2c(problem: Any, deadline: float):
 
     outcome = raw.get("outcome")
     report = raw.get("solver_report") or {}
-    limitations = list(report.get("limitations") or [])
-    limitations.append("live path: grisha_f2c_bridge → f2c_isolated_worker (generateBestSwaths)")
     if raw.get("isolation"):
-        iso = raw["isolation"]
-        limitations.append(
-            f"iso f2c={iso.get('fields2cover_version')} mvp_on_path={iso.get('mvp_on_path')} "
-            f"grisha_sitecustomize={iso.get('grisha_sitecustomize')}"
-        )
+        _log_isolation(raw["isolation"])
+    limitations = public_limitations(report.get("limitations") or [])
 
     if outcome == "feasible":
         plan = raw.get("mission_plan")
@@ -145,4 +183,4 @@ def solve_via_isolated_grisha_f2c(problem: Any, deadline: float):
         return TimedOut(tuple(limitations) or ("isolated F2C timed out",))
     err = raw.get("error") or "isolated F2C error"
     # Surface as Infeasible-with-notes via ValueError so pipeline → outcome=error
-    raise ValueError(f"grisha_f2c_bridge: {err}")
+    raise ValueError(str(err))

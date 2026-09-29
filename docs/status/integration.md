@@ -1,15 +1,17 @@
 ---
 workstream: integration
 owner: Team
-task: INT-F2C-003
-status: review
-updated: 2026-09-28
-checkpoint: 2026-09-28
-branch: cursor/wave-b-solver-patches-c76b
+task: INT-F2C-004
+status: in_progress
+updated: 2026-09-29
+checkpoint: 2026-09-29
+branch: cursor/scrub-solver-limitations-e60b
 contract_version: v0
 ---
 
 # Integration status
+
+- `in_progress`: INT-F2C-004 — live `solver_report.limitations` is product-facing. Bridge no longer appends `grisha_f2c_bridge` / `iso f2c=… mvp_on_path=… grisha_sitecustomize=…`; those and sitecustomize / embed-venv / `fleet_catalog=` plumbing are filtered from the API path. Isolation stays on stderr. Honest terrain / strip-heading / Wave B notes remain. Covers `REQ-DOC-006`, `REQ-DEMO-003`. Depends on `OPEN-008`, `OPEN-012`, `OPEN-013`, `OPEN-015`. Brief: `docs/workstreams/integration/INT-F2C-004.md`.
 
 - `review`: INT-F2C-003 — Wave B on the live isolated Grisha+F2C path (`tools/f2c_iso/iso_src/wave_b.py`). B1 foreign landing (first takeoff stays home unless `allow_foreign_takeoff`). B2 catalog/board `recharge_time_s` in `mission_time_s`; `allow_recharge=false` is infeasible with uncovered. B3 horizontal space–time buffer with reverse/delay heuristic. Rollback `PLANES_SOLVE_BACKEND=legacy_fields2cover` unchanged. Not 3D overfly, not certified traffic, not Wh packing. Covers `REQ-IN-001`, `REQ-IN-007`, `REQ-PLAN-002`, `REQ-PLAN-006`, `REQ-OUT-004`, `REQ-OUT-005`, `REQ-OPT-001`. Depends on `OPEN-008`, `OPEN-011`, `OPEN-013`, `OPEN-015`. Brief: `docs/workstreams/integration/INT-F2C-003.md`.
 
@@ -30,13 +32,14 @@ Live path on `main`: form `127.0.0.1:5173`, API `127.0.0.1:8000`, worker `--engi
 
 ## In progress
 
+- [ ] INT-F2C-004 unit tests and PR to `main` (scrub user-facing iso plumbing).
 - [x] INT-F2C-003 Wave B unit tests and PR to `main`.
 - [x] INT-F2C-002 verification (bridge/client/catalog unit tests + workspace validate) and PR to `main`.
 - [x] INT-F2C-001 verification on the parent branch (unit + web tests).
 
 ## Next action
 
-Review/merge PR #13 into `main` if checks allow. Do not deploy or restart the live listener from this branch. Experiments should set Wave B flags on the v0 `scenario` (see `docs/live-grisha-f2c-iso.md`).
+INT-F2C-004: run bridge tests, open PR to `main`. Do not deploy or restart the live listener from this branch.
 
 ## Completed (prior)
 
@@ -127,6 +130,7 @@ Review the stitch on `cursor/geo-core-kml-stitch`. The listener on `main` is sti
 
 ## Interface changes and downstream impact
 
+- No change under `src/planes/contracts/**`. INT-F2C-004 only filters user-facing `solver_report.limitations` (iso/ops plumbing dropped; product notes kept). Isolation stays on stderr. Downstream web/API consumers see a shorter limitations list.
 - No change under `src/planes/contracts/**`. INT-F2C-003 adds optional iso `mission_plan` fields (`wave_b`, route takeoff/landing pad ids, recharge/separation seconds). `mission_time_s` on the iso path includes recharge gaps and UAV–UAV delay. Rollback `legacy_fields2cover` is unchanged.
 - No change under `src/planes/contracts/**`. Live default backend is `grisha_f2c_iso` (isolated pack/split F2C). Consumers that still need `geo_mission.solve_envelope` must set `PLANES_SOLVE_BACKEND=legacy_fields2cover`. Worker/client paths are env-overridable; deploy default root is `/opt/planes-grisha-f2c`. Iso catalog is `catalog/fleet_catalog.json` (CAT-001C). `mission_time_s` remains 2D even when `dem_file` sets ASL.
 - No change under `src/planes/contracts/**`. Scenario v0 still carries survey/wind inside `scenario`. `survey.strip_direction_deg` is no longer required and is ignored on the F2C path. `Params.angles_deg` may be empty when `decomposition` is `fields2cover` or `auto`. Auto-angle can change mission times versus fixtures that forced heading `0`.

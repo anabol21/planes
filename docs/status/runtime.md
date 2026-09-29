@@ -1,15 +1,17 @@
 ---
 workstream: runtime
 owner: Misha
-task: INT-F2C-003
-status: review
-updated: 2026-09-28
-checkpoint: 2026-09-28
-branch: cursor/wave-b-solver-patches-c76b
+task: INT-F2C-004
+status: in_progress
+updated: 2026-09-29
+checkpoint: 2026-09-29
+branch: cursor/scrub-solver-limitations-e60b
 contract_version: v0
 ---
 
 # Runtime status
+
+- `in_progress`: INT-F2C-004 overlay — `grisha_f2c_bridge.public_limitations` strips iso/ops plumbing from user-facing `solver_report.limitations`. Bridge no longer appends live-path / `iso f2c=` debug lines. Isolated worker keeps terrain / strip-heading / Wave B notes and logs isolation on stderr. No contract change.
 
 - `review`: INT-F2C-003 overlay — isolated F2C packer (`tools/f2c_iso/iso_src/wave_b.py`) may land on a foreign pad, inserts `recharge_time_s` into `mission_time_s`, and delays a later UAV for a horizontal buffer. `PLANES_SOLVE_BACKEND=legacy_fields2cover` is unchanged. Scenario flags: `allow_recharge` / `power.allow_recharge`, `recharge_time_s`, `allow_foreign_landing`, `allow_foreign_takeoff`, `min_separation_m`. Default first takeoff stays the board home pad.
 
@@ -46,7 +48,7 @@ contract_version: v0
 
 ## Next action
 
-INT-F2C-003: keep rollback `PLANES_SOLVE_BACKEND=legacy_fields2cover`. Wave B lives only on the isolated worker. Experiments set flags on the v0 `scenario` object; see `docs/live-grisha-f2c-iso.md`.
+INT-F2C-004: verify bridge/worker limitation scrub, then PR to `main`. Rollback `PLANES_SOLVE_BACKEND=legacy_fields2cover` is unchanged.
 
 ## Evidence
 
@@ -110,6 +112,7 @@ INT-F2C-003: keep rollback `PLANES_SOLVE_BACKEND=legacy_fields2cover`. Wave B li
 ## Interface changes
 
 - None under `src/planes/contracts/**`.
+- INT-F2C-004: user-facing `solver_report.limitations` no longer includes iso/ops plumbing (`grisha_f2c_bridge`, `mvp_on_path`, `grisha_sitecustomize`, `sitecustomize`, embed-venv, `fleet_catalog=`). Isolation stays on stderr. Product notes (flat DEM, strip heading, Wave B heuristics) remain. Response shape unchanged.
 - INT-F2C-003: iso `mission_plan` may add `takeoff_vpp_id`, `landing_vpp_id`, `start_time_s`, `recharge_before_s` on routes and `wave_b` / `mission.recharge_gap_s` / `mission.separation_delay_s`. `mission_time_s` is Cmax including recharge gaps and separation delays. Additive only; contract v0 unchanged. Rollback path does not emit these fields.
 - INT-F2C-002: default outer solve is isolated F2C (`method` `grisha_mvp_fields2cover_isolated`). Rollback `PLANES_SOLVE_BACKEND=legacy_fields2cover` keeps `geo_mission` (`method` `pipeline`). Deploy paths default under `/opt/planes-grisha-f2c` and are overridable. Iso catalog `catalog/fleet_catalog.json`. Battery Wh is not a packing constraint. Duration stays 2D with optional DEM ASL.
 - The live aerodromes-and-boards path calls `planner.solver.pipeline` (`method` `pipeline`). The listener no longer has a gibrid meta path. A one-card scenario and any other non-envelope raise `ValueError` (`outcome=error`) before a gibrid import. The scenario envelope carries `survey_kml` and `constraints_kml` file texts. Constraint polygons become `Obstacle` with `height_m` 0. A missing API key or an invalid raster is `outcome=error` and includes the `ValueError` text. There is no flat-terrain fallback. `mission_plan.solver` on the geo path is `pipeline`. A heuristic result is not globally optimal.

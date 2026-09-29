@@ -12,6 +12,23 @@ from support import REPO, env_vars
 from planes.runtime import grisha_f2c_bridge
 from planes.runtime.solver import Infeasible, Problem, Solution, TimedOut, _solve_outer, solve
 
+_FORBIDDEN_ISO_TOKENS = (
+    "grisha_f2c_bridge",
+    "mvp_on_path",
+    "grisha_sitecustomize",
+    "sitecustomize",
+)
+
+
+def _assert_no_iso_plumbing(test: unittest.TestCase, lines: object) -> None:
+    blob = " ".join(str(item) for item in lines)
+    for token in _FORBIDDEN_ISO_TOKENS:
+        test.assertNotIn(token, blob)
+    test.assertNotIn("iso f2c=", blob)
+    test.assertNotIn("isolated embed venv", blob)
+    test.assertNotIn("fleet_catalog=", blob)
+    test.assertNotIn("live path:", blob)
+
 
 def _envelope(**overrides: object) -> dict:
     scenario = {
@@ -90,7 +107,13 @@ class BridgeSolveTest(unittest.TestCase):
                     },
                     "solver_report": {
                         "method": "grisha_mvp_fields2cover_isolated",
-                        "limitations": ["isolated embed venv"],
+                        "limitations": [
+                            "isolated embed venv fields2cover 2.1.0 + ortools 9.9",
+                            "Strip heading is solver-chosen (generateBestSwaths); a requested strip direction is ignored.",
+                            "Grisha mvp sitecustomize NOT on worker path; F2C in clean subprocess",
+                            "temporary flat terrain; OpenTopography was not called",
+                            "fleet_catalog=/opt/planes-grisha-f2c/catalog/fleet_catalog.json",
+                        ],
                     },
                     "mission_plan": {
                         "criterion": "min_time",
@@ -113,6 +136,10 @@ class BridgeSolveTest(unittest.TestCase):
         self.assertNotIn("strip_direction_deg", request["scenario"]["survey"])
         self.assertEqual(request["scenario"]["survey"]["side_overlap"], 0.5)
         self.assertTrue(any("generateBestSwaths" in line for line in result.limitations))
+        self.assertTrue(
+            any("temporary flat terrain" in line for line in result.limitations)
+        )
+        _assert_no_iso_plumbing(self, result.limitations)
 
     def test_infeasible_and_timeout_map(self) -> None:
         class InfeasibleClient:
@@ -149,6 +176,76 @@ class BridgeSolveTest(unittest.TestCase):
             with self.assertRaises(ValueError) as caught:
                 grisha_f2c_bridge.solve_via_isolated_grisha_f2c(_problem(), time.monotonic() + 5)
         self.assertIn("embed missing", str(caught.exception))
+        self.assertNotIn("grisha_f2c_bridge", str(caught.exception))
+
+
+class PublicLimitationsTest(unittest.TestCase):
+    def test_drops_iso_plumbing_keeps_product_notes(self) -> None:
+        cleaned = grisha_f2c_bridge.public_limitations(
+            [
+                "live path: grisha_f2c_bridge → f2c_isolated_worker (generateBestSwaths)",
+                "iso f2c=2.1.0 mvp_on_path=False grisha_sitecustomize=False",
+                "Grisha mvp sitecustomize NOT on worker path; F2C in clean subprocess",
+                "isolated embed venv fields2cover 2.1.0 + ortools 9.9",
+                "fleet_catalog=/opt/planes-grisha-f2c/catalog/fleet_catalog.json",
+                "temporary flat terrain; OpenTopography was not called",
+                "dem_file: mono",
+                "Strip heading is solver-chosen (generateBestSwaths); a requested strip direction is ignored.",
+                "Wave B: recharge is a constant gap; UAV separation is a 2D horizontal heuristic",
+                "Mission duration stays 2D path/speed — climb and descent time are not applied",
+                "temporary flat terrain; OpenTopography was not called",
+                "",
+            ]
+        )
+        _assert_no_iso_plumbing(self, cleaned)
+        self.assertEqual(
+            cleaned,
+            [
+                "temporary flat terrain; OpenTopography was not called",
+                "dem_file: mono",
+                "Strip heading is solver-chosen (generateBestSwaths); a requested strip direction is ignored.",
+                "Wave B: recharge is a constant gap; UAV separation is a 2D horizontal heuristic",
+                "Mission duration stays 2D path/speed — climb and descent time are not applied",
+            ],
+        )
+
+    def test_infeasible_worker_notes_are_also_scrubbed(self) -> None:
+        class DirtyInfeasible:
+            def solve(self, request, worker=None, timeout_s=0.0):
+                del request, worker, timeout_s
+                return {
+                    "outcome": "infeasible",
+                    "isolation": {"mvp_on_path": False, "grisha_sitecustomize": False},
+                    "solver_report": {
+                        "limitations": [
+                            "iso f2c=2.1.0 mvp_on_path=False grisha_sitecustomize=False",
+                            "no swaths",
+                        ]
+                    },
+                }
+
+        with patch.object(grisha_f2c_bridge, "_load_client", return_value=DirtyInfeasible()):
+            result = grisha_f2c_bridge.solve_via_isolated_grisha_f2c(
+                _problem(), time.monotonic() + 5
+            )
+        self.assertIsInstance(result, Infeasible)
+        self.assertEqual(result.limitations, ("no swaths",))
+        _assert_no_iso_plumbing(self, result.limitations)
+
+    def test_worker_source_does_not_append_iso_plumbing(self) -> None:
+        text = grisha_f2c_bridge.isolated_worker_path().read_text(encoding="utf-8")
+        self.assertNotIn(
+            "live path: grisha_f2c_bridge → f2c_isolated_worker (generateBestSwaths)",
+            text,
+        )
+        self.assertNotIn("isolated embed venv fields2cover 2.1.0 + ortools 9.9", text)
+        self.assertNotIn(
+            "Grisha mvp sitecustomize NOT on worker path; F2C in clean subprocess",
+            text,
+        )
+        self.assertNotIn('f"fleet_catalog={_resolve_catalog_path()}"', text)
+        self.assertIn("generateBestSwaths", text)
+        self.assertIn("temporary flat terrain; OpenTopography was not called", text)
 
 
 class SolveBackendTest(unittest.TestCase):

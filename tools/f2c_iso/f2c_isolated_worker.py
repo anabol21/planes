@@ -233,15 +233,17 @@ def _load_mission_dem(scenario: dict[str, Any]) -> tuple[Any, str, list[str]]:
 
     dem = _GeoTiffDem(path)
     if dem.is_empty():
-        notes.append(f"dem_file present but unreadable → mono fallback ({dem.error})")
+        print(f"dem_file unreadable → mono fallback: {dem.error}", file=sys.stderr, flush=True)
+        notes.append("dem_file present but unreadable → mono fallback")
         notes.append("dem_file: mono")
         return _MonoDem(), "mono", notes
 
-    notes.append(f"dem_file: {path}")
-    notes.append("terrain ASL = DEM.h(lat,lon) + h_agl_m (iso path)")
-    notes.append("iso duration remains 2D path/speed — climb/descent time NOT applied")
+    print(f"dem_file applied path={path}", file=sys.stderr, flush=True)
+    notes.append("dem_file: GeoTIFF applied")
+    notes.append("Waypoint altitude is DEM height + AGL (ASL)")
+    notes.append("Mission duration stays 2D path/speed — climb and descent time are not applied")
     if scenario.get("terrain_corridor"):
-        notes.append("terrain_corridor requested but NOT applied on iso path (mvp_optimizator only)")
+        notes.append("Terrain corridor was requested but is not applied")
     return dem, str(path), notes
 
 
@@ -538,6 +540,18 @@ def solve_request(req: dict[str, Any]) -> dict[str, Any]:
             f"sitecustomize_file={iso['sitecustomize_file']} path={sys.path}"
         )
 
+    catalog = _resolve_catalog_path()
+    print(
+        "iso isolation: "
+        f"f2c={iso.get('fields2cover_version')} "
+        f"mvp_on_path={iso.get('mvp_on_path')} "
+        f"grisha_sitecustomize={iso.get('grisha_sitecustomize')} "
+        f"fleet_catalog={catalog} "
+        f"python={iso.get('python')}",
+        file=sys.stderr,
+        flush=True,
+    )
+
     scenario = req.get("scenario") or {}
     opt = req.get("optimization") or {}
     limit = float(opt.get("time_limit_seconds") or 120)
@@ -678,14 +692,11 @@ def solve_request(req: dict[str, Any]) -> dict[str, Any]:
             "runtime_seconds": wall,
             "seed": req.get("seed"),
             "limitations": [
-                "isolated embed venv fields2cover 2.1.0 + ortools 9.9",
-                "decomposition=fields2cover; angle via SG_BruteForce.generateBestSwaths (strip_direction_deg ignored)",
-                "Grisha mvp sitecustomize NOT on worker path; F2C in clean subprocess",
+                "Strip heading is solver-chosen (generateBestSwaths); a requested strip direction is ignored.",
                 *dem_notes,
                 *list(getattr(candidate, "extra_limitations", ()) or ()),
-                "heuristic result is not globally optimal",
-                f"fleet_catalog={_resolve_catalog_path()}",
-                "board speed=survey_speed_m_s when present else airspeed_m_s; endurance=flight_time_s*(1-reserve_fraction); battery Wh not used for packing",
+                "Heuristic result is not globally optimal.",
+                "Board speed uses survey_speed_m_s when present, else airspeed_m_s; endurance is flight_time_s × (1 − reserve); battery Wh is not used for packing.",
                 (
                     f"wave_b allow_recharge={flags.allow_recharge} "
                     f"allow_foreign_landing={flags.allow_foreign_landing} "
@@ -693,7 +704,8 @@ def solve_request(req: dict[str, Any]) -> dict[str, Any]:
                     f"min_separation_m={flags.min_separation_m} "
                     f"time_window_s={flags.time_window_s}"
                 ),
-                "wave_b: mission_time_s includes recharge gaps and separation delays; total_flight_time_s is airborne only",
+                "Wave B: recharge is a constant gap; UAV separation is a 2D horizontal heuristic; "
+                "mission_time_s includes recharge gaps and separation delays; total_flight_time_s is airborne only.",
             ],
         },
         "mission_plan": {
