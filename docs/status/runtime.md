@@ -1,15 +1,17 @@
 ---
 workstream: runtime
 owner: Misha
-task: INT-F2C-003
-status: review
-updated: 2026-09-28
-checkpoint: 2026-09-28
-branch: cursor/wave-b-solver-patches-c76b
+task: INT-F2C-004
+status: in_progress
+updated: 2026-09-29
+checkpoint: 2026-09-29
+branch: cursor/iso-dem-acquire-defc
 contract_version: v0
 ---
 
 # Runtime status
+
+- `in_progress`: INT-F2C-004 overlay — `grisha_f2c_bridge` calls `ensure_dem_for_iso_scenario` before the isolated worker. Missing `dem_file` → survey bbox + OpenTopography COP30 into `PLANES_DEM_CACHE` (else `/tmp/dems`). Default: mono fallback with limitations. ASL only; duration stays 2D. `legacy_fields2cover` / `geo_mission` unchanged.
 
 - `review`: INT-F2C-003 overlay — isolated F2C packer (`tools/f2c_iso/iso_src/wave_b.py`) may land on a foreign pad, inserts `recharge_time_s` into `mission_time_s`, and delays a later UAV for a horizontal buffer. `PLANES_SOLVE_BACKEND=legacy_fields2cover` is unchanged. Scenario flags: `allow_recharge` / `power.allow_recharge`, `recharge_time_s`, `allow_foreign_landing`, `allow_foreign_takeoff`, `min_separation_m`. Default first takeoff stays the board home pad.
 
@@ -46,7 +48,7 @@ contract_version: v0
 
 ## Next action
 
-INT-F2C-003: keep rollback `PLANES_SOLVE_BACKEND=legacy_fields2cover`. Wave B lives only on the isolated worker. Experiments set flags on the v0 `scenario` object; see `docs/live-grisha-f2c-iso.md`.
+INT-F2C-004: verify iso DEM unit tests. Do not restart the live listener. Rollback remains `PLANES_SOLVE_BACKEND=legacy_fields2cover`.
 
 ## Evidence
 

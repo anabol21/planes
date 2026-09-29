@@ -29,6 +29,11 @@ path, not a silent fallback.
 | `F2C_ISO_WORKER` | Alias for the worker path (client) | same as `PLANES_F2C_WORKER` |
 | `F2C_EMBED_PYTHON` | Python that has fields2cover 2.1.0 + ortools 9.9 | `$PLANES_GRISHA_ROOT/.venv-f2c-embed/bin/python` |
 | `PLANES_FLEET_CATALOG` | Catalog JSON for the worker | in-repo `catalog/fleet_catalog.json` |
+| `OPENTOPOGRAPHY_API_KEY` | Server-side COP30 download (iso path) | unset → mono fallback (default) |
+| `PLANES_DEM_CACHE` | GeoTIFF cache for the iso acquire hook | `PLANES_TERRAIN_CACHE_DIR`, else `/tmp/dems` |
+| `PLANES_TERRAIN_CACHE_DIR` | Shared cache used by `acquire_terrain_for_area` | `~/.cache/planes/terrain` when iso cache unset |
+| `PLANES_DEM_PADDING_M` | Survey-bbox pad in metres before the OT request | `200` |
+| `PLANES_DEM_FAIL_CLOSED` | `1`/`true` → acquisition failure is `outcome=error` | unset: degrade to mono with limitations |
 
 The client strips `PYTHONPATH`, `PYTHONHOME`, `PYTHONSTARTUP`,
 `PYTHONUSERBASE`, and `PYTHONSAFEPATH`, then sets `PYTHONNOUSERSITE=1`.
@@ -37,17 +42,34 @@ Grisha's `sitecustomize.py` loaded.
 
 ## DEM hook (honest)
 
-When `scenario.dem_file` (also `dem_geotiff` / `dem_path` / `dem`) points
-at a readable GeoTIFF, waypoint `alt_m` is `DEM.h(lat, lon) + h_agl_m`
-(ASL). `mission.mission_time_s` and `total_flight_time_s` stay **2D**
-path / survey speed. Climb and descent time are not applied. A
-`terrain_corridor` request is recorded and not applied on this path.
+On the live iso path (`PLANES_SOLVE_BACKEND` unset / `grisha_f2c_iso`)
+`grisha_f2c_bridge` attaches terrain **before** the isolated worker runs.
+The browser does not send a DEM path.
 
-No GeoTIFF → flat `h=0` plus a limitation line. That is not OpenTopography
-and not a claim of real terrain.
+1. If `scenario.dem_file` (also `dem_geotiff` / `dem_path` / `dem`) is
+   already a readable file, that path is kept. OpenTopography is not
+   called.
+2. Else the hook builds an EPSG:4326 bbox from `survey_kml` (or
+   `areas`), pads it by `PLANES_DEM_PADDING_M` (default 200 m), and
+   calls `planes.integration.terrain.opentopography.acquire_terrain_for_area`
+   (COP30 GeoTIFF). The cache directory is `PLANES_DEM_CACHE` when set,
+   else `PLANES_TERRAIN_CACHE_DIR`, else `/tmp/dems`. The resolved path
+   is written to `scenario.dem_file` for the worker.
+3. If the key is missing, the HTTP call fails, or the survey bbox cannot
+   be derived, the **default** is degrade-to-mono: the worker keeps
+   flat `h=0` and the result lists the failure. Set
+   `PLANES_DEM_FAIL_CLOSED=1` to fail the job instead (`outcome=error`).
+   Legacy `geo_mission` (`PLANES_SOLVE_BACKEND=legacy_fields2cover`) is
+   unchanged: missing key / bad raster stay an explicit error there.
+
+When the worker receives a readable GeoTIFF, waypoint `alt_m` is
+`DEM.h(lat, lon) + h_agl_m` (ASL). `mission.mission_time_s` and
+`total_flight_time_s` stay **2D** path / survey speed. Climb and
+descent time are not applied. A `terrain_corridor` request is recorded
+and not applied on this path.
 
 `OPEN-012`: a flat or 2D-time model is a documented limitation, not a
-hidden assumption.
+hidden assumption. This hook does not claim a 3D corridor.
 
 ## Catalog usage (CAT-001C)
 

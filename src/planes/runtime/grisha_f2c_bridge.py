@@ -3,7 +3,8 @@
 Routes ``solver.solve`` for geo envelopes through the isolated F2C client,
 which spawns the embed-venv worker (ortools 9.9 + fields2cover 2.1.0) with
 PYTHONPATH cleared. ``strip_direction_deg`` is ignored; F2C uses
-``generateBestSwaths``.
+``generateBestSwaths``. When ``dem_file`` is absent, the bridge acquires
+a COP30 GeoTIFF via ``ensure_dem_for_iso_scenario`` before the worker.
 
 Full in-process ``mvp_optimizator`` is NOT imported here (sitecustomize/absl).
 
@@ -83,6 +84,8 @@ def _load_client():
 
 def solve_via_isolated_grisha_f2c(problem: Any, deadline: float):
     """Return Solution | Infeasible | TimedOut for one geo envelope."""
+    from planes.integration.terrain.iso_acquire import ensure_dem_for_iso_scenario
+    from planes.integration.terrain.opentopography import TerrainAcquisitionError
     from planes.runtime.solver import Infeasible, Solution, TimedOut
 
     remaining = max(1.0, float(deadline) - time.monotonic())
@@ -92,6 +95,11 @@ def solve_via_isolated_grisha_f2c(problem: Any, deadline: float):
         scenario["survey"] = {
             k: v for k, v in scenario["survey"].items() if k != "strip_direction_deg"
         }
+
+    try:
+        scenario, dem_notes = ensure_dem_for_iso_scenario(scenario)
+    except TerrainAcquisitionError as exc:
+        raise ValueError(f"iso DEM acquisition failed: {exc}") from exc
 
     request = {
         "contract_version": "v0",
@@ -110,6 +118,7 @@ def solve_via_isolated_grisha_f2c(problem: Any, deadline: float):
     outcome = raw.get("outcome")
     report = raw.get("solver_report") or {}
     limitations = list(report.get("limitations") or [])
+    limitations.extend(dem_notes)
     limitations.append("live path: grisha_f2c_bridge → f2c_isolated_worker (generateBestSwaths)")
     if raw.get("isolation"):
         iso = raw["isolation"]
