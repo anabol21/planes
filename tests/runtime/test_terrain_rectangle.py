@@ -10,6 +10,7 @@ import copy
 import hashlib
 import importlib.util
 import io
+import json
 import os
 from pathlib import Path
 import sys
@@ -24,6 +25,7 @@ from planes.integration.terrain import opentopography as terrain
 from planes.integration.terrain.iso_acquire import ensure_dem_for_iso_scenario
 from planes.runtime import grisha_f2c_bridge as bridge
 from planes.runtime.interest_box import interest_rectangle, rectangle_geometry
+from planes.runtime.pipeline import run as run_pipeline
 from planes.runtime.solver import Problem, Solution
 
 REPO = Path(__file__).resolve().parents[2]
@@ -171,6 +173,18 @@ class CanonicalTest(unittest.TestCase):
                     Problem("no-key", scenario(), "min_time", 7, 30), time.monotonic() + 30
                 )
 
+    def test_pipeline_maps_missing_terrain_to_error(self):
+        request = {"contract_version": "v0", "job_id": "no-key", "seed": 7,
+                   "optimization": {"objective": "min_time", "time_limit_seconds": 30},
+                   "scenario": scenario()}
+        with tempfile.TemporaryDirectory(prefix="planes-live-no-key-") as cache, patch.dict(
+            os.environ, {"PLANES_DEM_CACHE": cache, "PLANES_DEM_FAIL_CLOSED": "0"}
+        ), patch.object(bridge, "_load_client", side_effect=AssertionError("worker must not run")):
+            os.environ.pop("OPENTOPOGRAPHY_API_KEY", None)
+            response = run_pipeline(json.dumps(request).encode("utf-8"))
+        self.assertEqual(response.outcome, "error")
+        self.assertIn("iso DEM acquisition failed", "\n".join(response.solver_report.limitations))
+
     def test_live_bridge_acquisition_error_never_reaches_worker(self):
         for reason in ("OpenTopography request failed with HTTP 503", "OpenTopography acquisition failed"):
             with self.subTest(reason=reason), patch.dict(os.environ, {"PLANES_DEM_FAIL_CLOSED": "0"}), patch(
@@ -283,6 +297,22 @@ class GeoTiffTest(unittest.TestCase):
             out, notes = ensure_dem_for_iso_scenario(scenario() | {"dem_file": str(path)}, geometry_factory=bridge._canonical_terrain_geometry, require_terrain=True)
         self.assertEqual(Path(out["dem_file"]), path.resolve())
         self.assertTrue(any("existing readable" in note for note in notes))
+
+    def test_live_bridge_hands_real_validated_dem_to_client_and_reuses_cache(self):
+        client = CaptureClient()
+        with patch.object(terrain.urllib.request, "urlopen", self.opener), patch.object(
+            bridge, "_load_client", return_value=client
+        ), patch.dict(os.environ, {"PLANES_DEM_FAIL_CLOSED": "0"}):
+            for _ in range(2):
+                result = bridge.solve_via_isolated_grisha_f2c(
+                    Problem("real-dem", scenario(), "min_time", 7, 30), time.monotonic() + 30
+                )
+                self.assertIsInstance(result, Solution)
+                path = Path(client.request["scenario"]["dem_file"])
+                terrain._validate_geotiff(path, self.expected)
+                self.assertTrue(path.is_file())
+                self.assertFalse(any("mono" in note for note in result.limitations))
+        self.assertEqual(len(self.queries), 1)
 
     def test_live_bridge_rejects_invalid_existing_dem(self):
         partial = terrain.SurveyBounds(37.65, 55.7, 37.8, 55.85)
