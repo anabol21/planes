@@ -33,9 +33,6 @@ if str(_ISO_SRC) not in sys.path:
 if str(_HERE) not in sys.path:
     sys.path.insert(0, str(_HERE))
 
-# Import ortools BEFORE fields2cover (ABI preference for embed stack).
-import ortools  # noqa: F401
-
 from fields2cover_engine_iso import (  # noqa: E402
     BoardCamera,
     BudgetExhausted,
@@ -503,6 +500,10 @@ def _hav_m(a: dict[str, Any], b: dict[str, Any]) -> float:
 
 
 def solve_request(req: dict[str, Any]) -> dict[str, Any]:
+    # Import ortools BEFORE fields2cover (ABI preference for embed stack).
+    # DEM loading can be tested independently of these solve dependencies.
+    import ortools  # noqa: F401
+
     t0 = time.perf_counter()
     # Prove isolation environment
     iso = {

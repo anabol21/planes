@@ -2,8 +2,9 @@
 
 The live iso path does not require the browser to send a DEM path. When
 ``dem_file`` / aliases are already a readable file, this helper leaves
-them alone. Otherwise it builds a survey bbox and calls
-``acquire_terrain_for_area``.
+them alone. The live bridge supplies its canonical rectangle geometry;
+that geometry is acquired with zero padding. Standalone callers without
+a geometry factory retain the historical survey-bbox policy.
 
 Default policy is degrade-to-mono: acquisition failures become limitation
 lines and the worker keeps flat ``h=0``. Set ``PLANES_DEM_FAIL_CLOSED``
@@ -90,6 +91,7 @@ def ensure_dem_for_iso_scenario(
     scenario: dict[str, Any],
     *,
     acquire: Callable[..., Path] | None = None,
+    geometry_factory: Callable[[dict[str, Any]], dict[str, Any]] | None = None,
 ) -> tuple[dict[str, Any], list[str]]:
     """Set ``scenario.dem_file`` when a GeoTIFF can be reused or acquired.
 
@@ -106,14 +108,18 @@ def ensure_dem_for_iso_scenario(
         return scenario, notes
 
     try:
-        geometry = survey_geometry_from_scenario(scenario)
+        geometry = (
+            geometry_factory(scenario)
+            if geometry_factory is not None
+            else survey_geometry_from_scenario(scenario)
+        )
         crs = str(scenario.get("crs") or "EPSG:4326")
         acquire_fn = acquire or acquire_terrain_for_area
         path = Path(
             acquire_fn(
                 geometry,
                 survey_crs=crs,
-                padding_m=dem_padding_m(),
+                padding_m=0.0 if geometry_factory is not None else dem_padding_m(),
                 cache_dir=dem_cache_dir(),
             )
         )

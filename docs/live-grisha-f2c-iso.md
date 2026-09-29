@@ -32,7 +32,7 @@ path, not a silent fallback.
 | `OPENTOPOGRAPHY_API_KEY` | Server-side COP30 download (iso path) | unset → mono fallback (default) |
 | `PLANES_DEM_CACHE` | GeoTIFF cache for the iso acquire hook | `PLANES_TERRAIN_CACHE_DIR`, else `/tmp/dems` |
 | `PLANES_TERRAIN_CACHE_DIR` | Shared cache used by `acquire_terrain_for_area` | `~/.cache/planes/terrain` when iso cache unset |
-| `PLANES_DEM_PADDING_M` | Survey-bbox pad in metres before the OT request | `200` |
+| `PLANES_DEM_PADDING_M` | Standalone survey-only hook padding; live bridge ignores it | `200` for standalone callers, `0` on live canonical path |
 | `PLANES_DEM_FAIL_CLOSED` | `1`/`true` → acquisition failure is `outcome=error` | unset: degrade to mono with limitations |
 
 The client strips `PYTHONPATH`, `PYTHONHOME`, `PYTHONSTARTUP`,
@@ -49,12 +49,17 @@ The browser does not send a DEM path.
 1. If `scenario.dem_file` (also `dem_geotiff` / `dem_path` / `dem`) is
    already a readable file, that path is kept. OpenTopography is not
    called.
-2. Else the hook builds an EPSG:4326 bbox from `survey_kml` (or
-   `areas`), pads it by `PLANES_DEM_PADDING_M` (default 200 m), and
-   calls `planes.integration.terrain.opentopography.acquire_terrain_for_area`
+2. Else the bridge uses `interest_rectangle` to build the EPSG:4326
+   rectangle from survey outer-ring vertices (`survey_kml` or `areas`)
+   and every aerodrome point. Constraints do not expand the rectangle.
+   `rectangle_geometry` passes this exact box to the hook. The live hook
+   uses zero padding and calls
+   `planes.integration.terrain.opentopography.acquire_terrain_for_area`
    (COP30 GeoTIFF). The cache directory is `PLANES_DEM_CACHE` when set,
    else `PLANES_TERRAIN_CACHE_DIR`, else `/tmp/dems`. The resolved path
-   is written to `scenario.dem_file` for the worker.
+   is written to `scenario.dem_file` for the worker. Downloaded and cached
+   GeoTIFFs must cover the normalized request bounds. A pre-existing
+   readable `dem_file` still bypasses that bounds check.
 3. If the key is missing, the HTTP call fails, or the survey bbox cannot
    be derived, the **default** is degrade-to-mono: the worker keeps
    flat `h=0` and the result lists the failure. Set

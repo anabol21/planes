@@ -1,15 +1,26 @@
 ---
 workstream: runtime
 owner: Misha
-task: WRAP-001
+task: TERRAIN-RECT-001
 status: review
 updated: 2026-09-28
 checkpoint: 2026-09-28
-branch: cursor/dedupe-limitations-829a
+branch: integration/TERRAIN-RECT-001-canonical-dem
 contract_version: v0
 ---
 
 # Runtime status
+
+## TERRAIN-RECT-001 checkpoint
+
+- [x] Runtime bridge builds the canonical EPSG:4326 rectangle with existing `interest_rectangle`, using survey outer rings and all aerodromes, and supplies its GeoJSON geometry to terrain integration. Existing constraint inputs to ISO worker are unchanged.
+- [x] Production `_route` test proves waypoint ASL changes with DEM.h while duration remains unchanged; isolated worker `_GeoTiffDem` test is prepared pending rasterio.
+- [ ] Full isolated F2C solve with synthetic GeoTIFF requires compatible runtime dependencies; no installation or deployment has occurred.
+- Next: verify pending raster/worker tests in a compatible environment, independent review before merge.
+- Evidence: combined rectangle/ISO/client/bridge run 39 tests, 0 failures/errors, 7 dependency skips; workspace validation PASS.
+- Blocker: rasterio/shapely/pyproj and compatible Fields2Cover/ortools absent locally; permission to install temporary raster test dependencies requested. Existing readable DEM has no rectangle coverage check.
+- Decision: survey+aerodromes, zero padding is the task's team policy, not a customer REQ. OPEN-012 2D duration limitation retained.
+- Interface impact: runtime supplies geometry via internal ISO hook; public compute v0 unchanged. Rollback: revert the task commit.
 
 Live path on `main` (post-PR#18): `apps/web` (aerodromes + boards) → API `POST /jobs` → worker `--engine runtime` → compute `POST /v0/solve`. Default backend `PLANES_SOLVE_BACKEND=grisha_f2c_iso` via `grisha_f2c_bridge` + isolated F2C workers + `catalog/fleet_catalog.json` (`docs/live-grisha-f2c-iso.md`). CLI default remains `fake`. SQLite stores the scenario unchanged. Listener health is `live`, contract `v0`. Do not treat git `da3da56` / `runtime/MIS-002-external-enumeration` / `solver_choice` `meta` as the live tip. Product-honest limitations: flat/mono DEM when OpenTopography is unavailable; heuristic packing / separation is not a global optimum. Briefs: `docs/architecture/agent-brief-runtime.md`, `docs/architecture/agent-brief-backend.md`.
 

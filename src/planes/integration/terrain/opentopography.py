@@ -178,15 +178,19 @@ def _validate_geotiff(path: Path, expected: SurveyBounds) -> None:
             west, south, east, north = transform_bounds(
                 dataset.crs, "EPSG:4326", *dataset.bounds, densify_pts=21
             )
-            intersects = not (
-                east < expected.west
-                or west > expected.east
-                or north < expected.south
-                or south > expected.north
+            # Allow only coordinate representation / 8-decimal request rounding,
+            # not a missing pixel strip. Partial coverage must not rely on a
+            # worker clamping samples to the raster edge.
+            tolerance_deg = 1e-8
+            covers = (
+                west <= expected.west + tolerance_deg
+                and south <= expected.south + tolerance_deg
+                and east >= expected.east - tolerance_deg
+                and north >= expected.north - tolerance_deg
             )
-            if not intersects:
+            if not covers:
                 raise TerrainAcquisitionError(
-                    "Downloaded raster does not intersect the survey bounds"
+                    "Downloaded raster does not cover the survey bounds"
                 )
             values = dataset.read(1, masked=True)
             finite = np.isfinite(values.compressed())

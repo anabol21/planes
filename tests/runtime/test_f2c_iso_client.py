@@ -9,7 +9,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from support import REPO
+REPO = Path(__file__).resolve().parents[2]
 
 
 def _load_client():

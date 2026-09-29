@@ -20,6 +20,7 @@ from __future__ import annotations
 import copy
 import importlib.util
 import json
+import math
 import os
 import time
 from pathlib import Path
@@ -165,6 +166,43 @@ def _load_client():
     return mod
 
 
+def _canonical_terrain_geometry(scenario: dict[str, Any]) -> dict[str, Any]:
+    """Existing survey + all aerodromes rectangle, EPSG:4326, no padding.
+
+    Constraints remain worker inputs; they never set the terrain bounds.
+    Integration receives GeoJSON, not a runtime-owned rectangle type.
+    """
+    from planes.integration.terrain.iso_acquire import survey_geometry_from_scenario
+    from planes.runtime.interest_box import interest_rectangle, rectangle_geometry
+
+    if str(scenario.get("crs") or "EPSG:4326").strip().upper() != "EPSG:4326":
+        raise ValueError("terrain rectangle CRS must be EPSG:4326")
+    geometry = survey_geometry_from_scenario(scenario)
+    polygons = (
+        [geometry["coordinates"]]
+        if geometry["type"] == "Polygon"
+        else geometry["coordinates"]
+    )
+    survey_rings = [polygon[0] for polygon in polygons]
+    aerodromes = scenario.get("aerodromes")
+    if not isinstance(aerodromes, list) or not aerodromes:
+        raise ValueError("terrain rectangle needs aerodromes")
+    points = []
+    for item in aerodromes:
+        if not isinstance(item, dict):
+            raise ValueError("terrain aerodrome must be an object")
+        lon, lat = item.get("lon"), item.get("lat")
+        if (
+            isinstance(lon, bool) or isinstance(lat, bool)
+            or not isinstance(lon, (int, float)) or not isinstance(lat, (int, float))
+            or not math.isfinite(lon) or not math.isfinite(lat)
+            or not -180 <= lon <= 180 or not -90 <= lat <= 90
+        ):
+            raise ValueError("terrain aerodrome coordinates must be finite WGS84 lon/lat")
+        points.append((lon, lat))
+    return rectangle_geometry(interest_rectangle(survey_rings, points))
+
+
 def solve_via_isolated_grisha_f2c(problem: Any, deadline: float):
     """Return Solution | Infeasible | TimedOut for one geo envelope."""
     from planes.integration.terrain.iso_acquire import ensure_dem_for_iso_scenario
@@ -184,7 +222,9 @@ def solve_via_isolated_grisha_f2c(problem: Any, deadline: float):
         return Infeasible(spectrum_notes)
 
     try:
-        scenario, dem_notes = ensure_dem_for_iso_scenario(scenario)
+        scenario, dem_notes = ensure_dem_for_iso_scenario(
+            scenario, geometry_factory=_canonical_terrain_geometry
+        )
     except TerrainAcquisitionError as exc:
         raise ValueError(f"iso DEM acquisition failed: {exc}") from exc
 

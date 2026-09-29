@@ -5,10 +5,22 @@ from __future__ import annotations
 import tempfile
 import time
 import unittest
+import os
+from contextlib import contextmanager
 from pathlib import Path
 from unittest.mock import patch
 
-from support import env_vars
+
+@contextmanager
+def env_vars(**updates):
+    # Terrain tests do not need support's POSIX HTTP listener import.
+    with patch.dict(os.environ):
+        for key, value in updates.items():
+            if value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = value
+        yield
 
 from planes.integration.terrain.iso_acquire import (
     DEFAULT_PADDING_M,
@@ -169,7 +181,7 @@ class EnsureDemTest(unittest.TestCase):
         self.assertEqual(calls[0]["survey_crs"], "EPSG:4326")
         self.assertEqual(calls[0]["padding_m"], 200.0)
         self.assertEqual(Path(str(calls[0]["cache_dir"])), Path("/tmp/dems"))
-        self.assertEqual(out["dem_file"], "/tmp/dems/COP30_fake.tif")
+        self.assertEqual(Path(out["dem_file"]), Path("/tmp/dems/COP30_fake.tif"))
         self.assertTrue(any("OpenTopography COP30 acquired" in line for line in notes))
         self.assertTrue(any("2D" in line for line in notes))
         geometry = calls[0]["area"]
@@ -206,7 +218,7 @@ class EnsureDemTest(unittest.TestCase):
             _scenario(dem_file="mono"), acquire=fake_acquire
         )
         self.assertEqual(calls, ["acquire"])
-        self.assertEqual(out["dem_file"], "/tmp/dems/from-mono-alias.tif")
+        self.assertEqual(Path(out["dem_file"]), Path("/tmp/dems/from-mono-alias.tif"))
 
     def test_missing_api_key_falls_back_to_mono(self) -> None:
         with tempfile.TemporaryDirectory(prefix="planes-dem-empty-") as cache:
@@ -268,7 +280,7 @@ class BridgeDemHookTest(unittest.TestCase):
         self.assertIsInstance(result, Solution)
         request = captured["request"]
         assert isinstance(request, dict)
-        self.assertEqual(request["scenario"]["dem_file"], "/tmp/dems/bridge.tif")
+        self.assertEqual(Path(request["scenario"]["dem_file"]), Path("/tmp/dems/bridge.tif"))
         assert isinstance(result, Solution)
         self.assertTrue(any("OpenTopography COP30 acquired" in line for line in result.limitations))
         self.assertTrue(any("2D" in line for line in result.limitations))

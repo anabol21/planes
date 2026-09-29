@@ -1,15 +1,27 @@
 ---
 workstream: integration
 owner: Team
-task: WRAP-002
+task: TERRAIN-RECT-001
 status: review
-updated: 2026-09-28
-checkpoint: 2026-09-27
-branch: cursor/infeasible-error-codes-2089
+updated: 2026-09-29
+checkpoint: 2026-09-29
+branch: integration/TERRAIN-RECT-001-canonical-dem
 contract_version: v0
 ---
 
 # Integration status
+
+## TERRAIN-RECT-001 checkpoint
+
+- [x] Live bridge passes the existing Misha survey+aerodromes rectangle to the ISO hook; its padding is zero. Constraints remain solver inputs and never expand terrain bounds.
+- [x] Downloader validates full coverage for both new and cached GeoTIFFs; request/cache logic still uses normalized COP30 bounds.
+- [x] Existing readable DEM reuse and mono/fail-closed policy remain. The pre-existing readable path bypasses coverage validation; this is an explicit limitation.
+- [x] Focused dependency-free tests verify builder inputs, bridge handoff, production route sampling (180/230 m ground + 120 m AGL = 300/350 m ASL), ISO hook and isolated client.
+- [ ] Synthetic raster/worker tests: prepared, but local rasterio/shapely/pyproj and compatible F2C environment are absent. No dependency was installed; permission for a temporary test environment is pending.
+- Next: run pending synthetic GeoTIFF/isolated F2C tests in a compatible environment, then independently review before merge.
+- Evidence: combined rectangle/ISO/client/bridge run: 39 tests, 0 failures/errors, 7 dependency skips; workspace validator PASS; `git diff --check` PASS.
+- Interface impact: new internal optional geometry factory on ISO acquisition; no frontend, backend HTTP or v0 contract change. OPEN-012 remains: duration is 2D.
+- Rollback: revert TERRAIN-RECT-001 commit; no server change.
 
 - `review`: WRAP-002 — стабильные `error_code` на API + русские карточки на wrap-оболочке. Оптимизатор и VPS не менялись. Бриф: `docs/workstreams/integration/WRAP-002.md`. Заметка: `docs/architecture/API_RESULT_CODES_V0.md`.
 - `review`: сшивка на `cursor/geo-core-kml-stitch`. Тракт рельефа скопирован из `origin/integration/TER-GRI-001` (`src/planes/integration/terrain/`, `opentopography.py`). Разбор KML съёмки и ограничений — `src/planes/integration/kml/`. Браузер отправляет тексты `survey_kml` и `constraints_kml`; третья загрузка препятствий снята. Полигоны ограничений идут в ядро как препятствия: у `MissionInput` отдельного типа запретной зоны нет. Высотный текст копируется и не толкуется. Ключ OpenTopography и скачанные растры в git не входят.
