@@ -17,7 +17,7 @@ WRAP-001, сводка и карта. Список «Задание backend» с
 
 WRAP-001, шаг 2, заблокирован на слушателе. Поле «Направление полос» убрано из формы. `buildPrototypeScenario` больше не требует угол и не кладёт `survey.strip_direction_deg`. Ноль не подставляется. Слушатель `geo_mission._params` по-прежнему читает `survey.strip_direction_deg` через `_angle` и отклоняет конверт без этого ключа. Ядро не патчилось. Это не требование заказчика: направление полос было полем формы.
 
-On `test_merge` the form sends raw `survey_kml` and `constraints_kml`. The picture is `docs/architecture/STITCH_PICTURE.md`. The sentence below is the pre-stitch path on `main`.
+Historical stitch notes: `docs/architecture/STITCH_PICTURE.md`. Current live contour is post-PR#18 `grisha_f2c_iso` (`docs/live-grisha-f2c-iso.md`).
 
 ## WEB-002 review handoff
 
@@ -99,7 +99,7 @@ limitation before deployment.
 
 ## WEB-001 historical status
 
-Live path on `main`: the form at `http://127.0.0.1:5173` sends `aerodromes` and `boards`, not `pads` or `uav_types`. GSD, overlaps, and strip direction come from the form. The API is `http://127.0.0.1:8000`. The live worker is `--engine runtime` (CLI default remains `fake`). SQLite stores the scenario unchanged; catalog numbers are applied only on the listener. `fleet_catalog.json` is filled from Grisha's `data.json`; `geoscan-801` is his 1.5 kg quadcopter. The listener is `planes-compute.service` at `/opt/planes`, git `da3da56` on `runtime/MIS-002-external-enumeration`, health `live`, contract `v0`, `solver_choice` `meta`. Documentation commit `794fb2d` was not deployed there. Pairs that reach `run()` and the remaining approximations are in `docs/architecture/agent-brief-runtime.md`. The backend path is `docs/architecture/agent-brief-backend.md`.
+Live path on `main` (post-PR#18): `apps/web` (aerodromes + boards) → API `POST /jobs` → worker `--engine runtime` → compute `POST /v0/solve`. Default backend `PLANES_SOLVE_BACKEND=grisha_f2c_iso` via `grisha_f2c_bridge` + isolated F2C workers + `catalog/fleet_catalog.json` (`docs/live-grisha-f2c-iso.md`). CLI default remains `fake`. SQLite stores the scenario unchanged. Listener health is `live`, contract `v0`. Do not treat git `da3da56` / `runtime/MIS-002-external-enumeration` / `solver_choice` `meta` as the live tip. Product-honest limitations: flat/mono DEM when OpenTopography is unavailable; heuristic packing / separation is not a global optimum. Briefs: `docs/architecture/agent-brief-runtime.md`, `docs/architecture/agent-brief-backend.md`.
 
 ## Completed
 

@@ -1,9 +1,17 @@
 
 # Бриф: runtime и model
 
-На ветке `test_merge` живой конверт — `docs/architecture/STITCH_PICTURE.md`. Текст ниже — снимок `main` на `da3da56`: внешний перебор и `solver_choice` `meta`. На `test_merge` конверт с `aerodromes` и `boards` считает `src/planes/runtime/geo_mission.py` одним вызовом `planner.solver.pipeline`. Одиночный `takeoff` плюс `uav` остаётся на `meta`. Слушатель для живого прогона сшивки стоял на `debcd9c`. Коммит `c04786a` добавляет тесты и на unit не переносился.
+Контракт `v0`. Тело оптимизатора Гриши этим брифом не меняется.
 
-Источник этого брифа: коммит `da3da562b3d38d92dcc3dfc2f3b46636331cb8fc`, ветка `runtime/MIS-002-external-enumeration`, дерево `/tmp/mis-002-catalog`. Контракт `v0`. Тело оптимизатора Гриши этим путём не меняется.
+## Живой контур на main (после PR#18)
+
+`apps/web` (aerodromes + boards) → API `POST /jobs` → worker `--engine runtime` → compute `POST /v0/solve`.
+
+По умолчанию `PLANES_SOLVE_BACKEND=grisha_f2c_iso`: `src/planes/runtime/grisha_f2c_bridge.py` → изолированные F2C-воркеры (`tools/f2c_iso/`) + `catalog/fleet_catalog.json`. Подробности и честные ограничения (mono DEM при недоступном OpenTopography; эвристика ≠ глобальный оптимум): `docs/live-grisha-f2c-iso.md`. Откат: `PLANES_SOLVE_BACKEND=legacy_fields2cover` (`geo_mission`).
+
+Не считать живым кончиком git `da3da56`, ветку `runtime/MIS-002-external-enumeration` или вызов ядра с `solver_choice` `meta`. Историческая картина сшивки (`test_merge` / `geo_mission` + mvp pipeline): `docs/architecture/STITCH_PICTURE.md`.
+
+Разделы ниже сохраняют справочник и правила внешнего перебора (MIS-002 / gibrid `meta`) как исторический и rollback-контекст; они не описывают живой iso-контур.
 
 ## Правила
 
@@ -15,9 +23,11 @@
 - Новая камера — объект в `cameras` и ребро в `compatibility`. Токен спектра: `RGB`, `multispectral`, `infrared`, `LiDAR` или `geophysical`. Отдельной ветки под имя камеры нет. Камеры LiDAR и geophysical в этом каталоге нет.
 - Числа с единицами. В `InputData` ветер — `speed_ms` и `direction_deg`, GSD — `gsd_cm_per_px`, перекрытия — доли, полосы — `strip_direction_deg`, оптика — мм и пиксели, борт — кг, с, Вт·ч, м/с. Координаты взлёта — `lat`, `lon`. `area` копируется как пришла: список точек `[[lon, lat], ...]`.
 
-## Путь
+## Путь слушателя (общий)
 
-Слушатель на сервере — unit `planes-compute.service` с этого коммита. `git HEAD` — `da3da56`, ветка `runtime/MIS-002-external-enumeration`. `GET /health` без токена отвечает `{"status": "live", "contract_version": "v0"}`. Unit: `WorkingDirectory=/opt/planes`, `PYTHONPATH=/opt/planes/src`, `ExecStart` — `python -m planes.runtime.http_server --host 0.0.0.0 --port 8080`. `POST /v0/solve` проверяет `Authorization: Bearer`. Слушатель сам миссию не считает: на запрос поднимает `python -m planes.runtime.cli solve`. Занят один слот — HTTP 503 `busy`.
+Слушатель на сервере — unit `planes-compute.service`. `GET /health` без токена отвечает `{"status": "live", "contract_version": "v0"}`. Unit: `WorkingDirectory` checkout compute, `PYTHONPATH=…/src`, `ExecStart` — `python -m planes.runtime.http_server --host 0.0.0.0 --port 8080`. `POST /v0/solve` проверяет `Authorization: Bearer`. Слушатель сам миссию не считает: на запрос поднимает `python -m planes.runtime.cli solve`. Занят один слот — HTTP 503 `busy`. Живой backend солвера — `grisha_f2c_iso` (см. выше), не `solver_choice` `meta`.
+
+## Исторический / rollback путь: внешний перебор (MIS-002)
 
 CLI идёт в `pipeline.run`: ingest, bind, compile, `solver.solve`, judge, emit. `compile` хранит `scenario` объектом и не переписывает его. Из запроса в задачу попадают `job_id`, весь `scenario`, `optimization.objective`, `optimization.time_limit_seconds` и `seed`.
 

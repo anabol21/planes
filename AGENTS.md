@@ -65,8 +65,14 @@ Status text is evidence-aware: “done” without a command, artifact, or test r
 
 A PR to `dev` must include: task ID, scope, contract changes, verification commands and results, limitations, status-file update, and rollback note. The author may not be the only reviewer. Integration must rerun the vertical-slice smoke test before `dev → main`.
 
-## Current path at main da3da56
+## Current path (post-PR#18 main)
 
-At `main` `da3da562b3d38d92dcc3dfc2f3b46636331cb8fc`, the current path for teammate agents is `docs/architecture/agent-brief-runtime.md` and `docs/architecture/agent-brief-backend.md`. Those briefs do not replace or weaken the rules above. Model agents must not edit the optimizer body. Backend agents must not fill optics or power.
+Live contour on `main`:
 
-On branch `test_merge`, read `docs/architecture/STITCH_PICTURE.md` first. Those two briefs describe `main` at `da3da56` and are not the stitched envelope. On `test_merge` the form sends raw `survey_kml` and `constraints_kml`. An envelope with `aerodromes` and `boards` is solved in `src/planes/runtime/geo_mission.py`.
+`apps/web` (aerodromes + boards) → API `POST /jobs` → worker `--engine runtime` → compute `POST /v0/solve`
+
+Default solve backend is `PLANES_SOLVE_BACKEND=grisha_f2c_iso` via `src/planes/runtime/grisha_f2c_bridge.py`, isolated F2C workers under `tools/f2c_iso/`, and `catalog/fleet_catalog.json`. Details: `docs/live-grisha-f2c-iso.md`. Teammate briefs: `docs/architecture/agent-brief-runtime.md` and `docs/architecture/agent-brief-backend.md`. Those briefs do not replace or weaken the rules above. Model agents must not edit the optimizer body. Backend agents must not fill optics or power.
+
+Honest product limitations on this path include flat/mono DEM when OpenTopography is unavailable, and heuristic (not globally optimal) packing / separation. Do not treat git `da3da56`, branch `runtime/MIS-002-external-enumeration`, or `solver_choice` `meta` as the live tip — that was the pre-iso enumeration listener.
+
+Historical stitch notes on branch `test_merge` remain in `docs/architecture/STITCH_PICTURE.md` (geo_mission / mvp pipeline). Rollback from iso is explicit: `PLANES_SOLVE_BACKEND=legacy_fields2cover`.

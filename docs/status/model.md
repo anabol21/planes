@@ -15,9 +15,9 @@ contract_version: v0
 
 - `planned`: GRI-002 — непрямоугольная зона и отдельный KML ограничений полётной зоны. Бриф: `docs/workstreams/model/GRI-002.md`.
 
-On `test_merge` the aerodromes-and-boards envelope calls `planner.solver.pipeline` from `src/planes/runtime/geo_mission.py`. The one-card path still calls `run(data, "meta", seed=...)`. Read `docs/architecture/STITCH_PICTURE.md` before the `da3da56` briefs. This note does not authorize edits to the optimizer body.
+Historical stitch notes: `docs/architecture/STITCH_PICTURE.md` (geo_mission / mvp). This note does not authorize edits to the optimizer body. Backend agents do not fill optics or power.
 
-Live path on `main` before the stitch: runtime calls `run(data, "meta", seed=...)`. `fleet_catalog.json` is filled from this package's `data.json` and applied only on the listener. `geoscan-801` there is the 1.5 kg quadcopter from that file. The form sends `aerodromes` and `boards`, not `pads` or `uav_types`. GSD, overlaps, and strip direction come from the form. The listener `planes-compute.service` at `/opt/planes` is git `da3da56` on `runtime/MIS-002-external-enumeration`, health `live`, contract `v0`. Documentation commit `794fb2d` was not deployed there. Pairs that reach `run()` and the remaining approximations are in `docs/architecture/agent-brief-runtime.md`. This note does not authorize edits to the optimizer body. Backend agents do not fill optics or power.
+Live path on `main` (post-PR#18): `apps/web` (aerodromes + boards) → API `POST /jobs` → worker `--engine runtime` → compute `POST /v0/solve`. Default backend `PLANES_SOLVE_BACKEND=grisha_f2c_iso` via `grisha_f2c_bridge` + isolated F2C workers + `catalog/fleet_catalog.json` (`docs/live-grisha-f2c-iso.md`). CLI default remains `fake`. SQLite stores the scenario unchanged. Listener health is `live`, contract `v0`. Do not treat git `da3da56` / `runtime/MIS-002-external-enumeration` / `solver_choice` `meta` as the live tip. Product-honest limitations: flat/mono DEM when OpenTopography is unavailable; heuristic packing / separation is not a global optimum. Briefs: `docs/architecture/agent-brief-runtime.md`, `docs/architecture/agent-brief-backend.md`.
 
 ## Completed
 

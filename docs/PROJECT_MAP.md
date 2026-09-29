@@ -18,13 +18,11 @@ Grisha's current simplified task may collapse candidate generation and optimizat
 
 ## Running path on main
 
-`main` is the enumeration path. The form at `127.0.0.1:5173` sends `aerodromes` and `boards`, not `pads` or `uav_types`. The API is `127.0.0.1:8000`. The live worker is `--engine runtime`; the CLI default remains `fake`. SQLite stores the scenario unchanged. Catalog numbers are applied only on the listener.
+`main` (post-PR#18) live contour: `apps/web` (aerodromes + boards) → API `POST /jobs` → worker `--engine runtime` → compute `POST /v0/solve`. Default backend `PLANES_SOLVE_BACKEND=grisha_f2c_iso` via `grisha_f2c_bridge` + isolated F2C workers + `catalog/fleet_catalog.json` (`docs/live-grisha-f2c-iso.md`). The CLI default remains `fake`. SQLite stores the scenario unchanged. Catalog numbers are applied on the compute side.
 
-The listener unit `planes-compute.service` uses `WorkingDirectory=/opt/planes`, git `da3da562b3d38d92dcc3dfc2f3b46636331cb8fc` (`da3da56`), branch `runtime/MIS-002-external-enumeration`. Health is `live`, contract version is `v0`, and the core call uses `solver_choice` `meta`. Documentation commit `794fb2d71e8b9635798e59fba1d363e2988222eb` was not deployed to that unit.
+Listener: `planes-compute.service`, health `live`, contract `v0`. Do not treat git `da3da56` / `runtime/MIS-002-external-enumeration` / `solver_choice` `meta` as the live tip. Rollback: `PLANES_SOLVE_BACKEND=legacy_fields2cover`.
 
-`fleet_catalog.json` is filled from Grisha's `data.json`. `geoscan-801` is his 1.5 kg quadcopter. GSD, overlaps, and strip direction come from the form. Pairs that reach `run()` and pairs that do not, and the remaining approximations, are listed in `docs/architecture/agent-brief-runtime.md`. The backend path is `docs/architecture/agent-brief-backend.md`. Those briefs do not replace `AGENTS.md`.
-
-Remaining approximations on that path: `geoscan-201` receives `kh`/`kv`/`kw` `90`/`0.02`/`0.008` instead of `220` W, `turn_time_s` is `5.0`, `apply_turn_to_base` is `false`, and zones and obstacles are not copied into `InputData`.
+Product-honest limitations: flat/mono DEM when OpenTopography is unavailable; heuristic packing / separation is not a global optimum. Details: `docs/architecture/agent-brief-runtime.md`, `docs/architecture/agent-brief-backend.md`. Those briefs do not replace `AGENTS.md`.
 
 ## Human workstreams
 

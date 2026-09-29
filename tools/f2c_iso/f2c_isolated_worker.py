@@ -678,13 +678,12 @@ def solve_request(req: dict[str, Any]) -> dict[str, Any]:
             "runtime_seconds": wall,
             "seed": req.get("seed"),
             "limitations": [
-                "isolated embed venv fields2cover 2.1.0 + ortools 9.9",
+                # Product-honest only. Do not append embed-venv / sitecustomize /
+                # absolute fleet_catalog / iso plumbing into solver_report.limitations.
                 "decomposition=fields2cover; angle via SG_BruteForce.generateBestSwaths (strip_direction_deg ignored)",
-                "Grisha mvp sitecustomize NOT on worker path; F2C in clean subprocess",
                 *dem_notes,
                 *list(getattr(candidate, "extra_limitations", ()) or ()),
                 "heuristic result is not globally optimal",
-                f"fleet_catalog={_resolve_catalog_path()}",
                 "board speed=survey_speed_m_s when present else airspeed_m_s; endurance=flight_time_s*(1-reserve_fraction); battery Wh not used for packing",
                 (
                     f"wave_b allow_recharge={flags.allow_recharge} "

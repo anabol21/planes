@@ -1,6 +1,10 @@
 # Протокол ядра оптимизации
 
-Агенты Миши, Гриши и Руслана читают этот файл первым, затем свой бриф. Контракт `v0`. Код солвера этим документом не меняется. Слушатель на ВМ — unit `planes-compute.service`, каталог `/opt/planes`, git `da3da562b3d38d92dcc3dfc2f3b46636331cb8fc` (`da3da56`), ветка `runtime/MIS-002-external-enumeration`. `GET /health` без токена отвечает `{"status": "live", "contract_version": "v0"}`. Живой вызов ядра идёт с `solver_choice` `meta`. Перебор снаружи читает `aerodromes` и `boards` и справочник `fleet_catalog.json`. Коммит документации `5761f17bfc96f75cdab7a9403a94f86167cf86de` слушатель не переводил.
+Агенты Миши, Гриши и Руслана читают этот файл первым, затем свой бриф. Контракт `v0`. Код солвера этим документом не меняется.
+
+Живой контур на `main` после PR#18 — `PLANES_SOLVE_BACKEND=grisha_f2c_iso` (`docs/live-grisha-f2c-iso.md`), не `solver_choice` `meta` и не tip `da3da56` / `runtime/MIS-002-external-enumeration`. Слушатель — unit `planes-compute.service`, `GET /health` → `{"status": "live", "contract_version": "v0"}`, `POST /v0/solve`.
+
+Текст ниже — протокол библиотечного ядра `gibrid-optimizer` и швов MIS/GRI/RUS (исторический / rollback-контекст). Живой iso-путь его `run(..., "meta")` не вызывает.
 
 Ядро сейчас — пакет `src/planes/model/basic_model/gibrid-optimizer/`. Поток зафиксирован в `src/planes/model/basic_model/gibrid-optimizer/docs/architecture.md`: `geometry` → `precompute` → MILP или метаэвристика → общий `routes_raw` → `route_builder` → `validator`. CLI `optimizer/main.py` читает `input.json` и пишет `output.json`.
 
