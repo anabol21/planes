@@ -1,21 +1,23 @@
 ---
 workstream: runtime
 owner: Misha
-task: INT-F2C-003
+task: WRAP-001
 status: review
 updated: 2026-09-28
 checkpoint: 2026-09-28
-branch: cursor/wave-b-solver-patches-c76b
+branch: cursor/dedupe-limitations-829a
 contract_version: v0
 ---
 
 # Runtime status
 
-- `review`: INT-F2C-003 overlay — isolated F2C packer (`tools/f2c_iso/iso_src/wave_b.py`) may land on a foreign pad, inserts `recharge_time_s` into `mission_time_s`, and delays a later UAV for a horizontal buffer. `PLANES_SOLVE_BACKEND=legacy_fields2cover` is unchanged. Scenario flags: `allow_recharge` / `power.allow_recharge`, `recharge_time_s`, `allow_foreign_landing`, `allow_foreign_takeoff`, `min_separation_m`. Default first takeoff stays the board home pad.
+- `review`: WRAP-001, повтор строк в `solver_report.limitations`. ISO-паковщик на `main` пишет одну и ту же фразу на каждую непокрытую полосу (`БВС 1: one swath exceeds endurance even with best pads`) и ещё раз кладёт сводку `uncovered swaths=N` в `CoverageInfeasible.limitations`. Ядро и `fields2cover_engine.py` не менялись. Обвязка оставляет первое вхождение каждой одинаковой строки: `unique_limitations` в `make_response` и `parse_response`, сборка строк в `geo_mission`, слияние в `physical_check`. Разные тексты (`uncovered swaths=N: …` и `uncovered_swaths=N`) остаются. Это гигиена канала ограничений, не новый расчёт. Зависит от `REQ-PROD-001`. `OPEN-008` не закрыт: текст про выносливость не доказывает модель заряда.
 
-- `review`: INT-F2C-002 overlay — live envelope default is isolated F2C (`grisha_f2c_bridge` / `tools/f2c_iso`). `PLANES_SOLVE_BACKEND=legacy_fields2cover` keeps `geo_mission.solve_envelope`. Worker isolation: clean PYTHONPATH, no Grisha sitecustomize. DEM GeoTIFF hook is ASL-only; duration stays 2D. Not full mvp LNS.
+- `review`: WRAP-001, коды физичности. Модуль `physical_check` читает готовый план и вход и дописывает код с коротким русским текстом в уже существующие `limitations`. Маршрут заново не строится, `fields2cover_engine.py` не менялся. Коды: `PHYS-ENDURANCE`, `PHYS-VPP-INSIDE`, `PHYS-AIRSPACE`, `PHYS-DEM`, `PHYS-TIMEOUT`, `PHYS-NO-PLAN`. Неразобранный текст высоты остаётся консервативным отказом и называется кодом только если готовый план уже содержит это нарушение. Сравнение AGL/AMSL с `alt_m` и перевод FL (1 FL = 100 ft, 1 ft = 0.3048 m) — командные допущения, не требования заказчика (`OPEN-012`). Выносливость здесь — `flight_time_s` справочника, не заряд (`OPEN-008`, `REQ-PLAN-002` не закрыт). Зависит от `REQ-PLAN-001`, `REQ-PLAN-003`, `REQ-PLAN-005`, `REQ-PLAN-006`. `OPEN-004` не закрыт: код не объявляет маршрут допустимым.
 
-- `review`: INT-F2C-001 overlay — `geo_mission._params` no longer requires `survey.strip_direction_deg` and does not copy it into `angles_deg`. `fields2cover_engine.plan` uses `generateBestSwaths` when angles are empty; a leftover request heading is ignored. Wind, GSD, and overlaps stay required.
+- `review`: WRAP-001, прямоугольник интереса. Пул рамки — вершины колец съёмки и точки аэродромов, EPSG:4326, без отступа. Вершины ограничений, маршруты и прочие placemark рамку не задают. Полигон ограничения остаётся, только если пересекает рамку, включая полигон, который накрывает её целиком. Точка вне рамки отбрасывается и в солвер не уходит. Запрос COP30 и ключ кэша строятся по этой же рамке, до `acquire_terrain_for_area`. Это обвязка `geo_mission`; `fields2cover_engine.py` не менялся. Зависит от `REQ-IN-001`, `REQ-IN-003`, `REQ-IN-006`. `OPEN-012` не закрыт: обрезка рамки не является моделью рельефа.
+
+- `review`: слушатель считает полосы через Python-привязки Fields2Cover `2.1.0` (`src/planes/runtime/fields2cover_engine.py`), без отдельного сервиса. Живой путь больше не вызывает `planner.solver.pipeline` и `planner.solver.routing`. До движка остаются разбор KML, пустые ограничения, проверка спектра и типа съёмки, COP30 и допуск бортов. Промах спектра — `infeasible`, Fields2Cover не вызывается. Один угол из `strip_direction_deg` (`SG_BruteForce`, радианы), порядок `RP_Boustrophedon`, без Dubins и без OR-Tools. Ширина полосы считается по камере каждого борта. Несколько бортов делят ленту сплошными блоками по числу бортов и выносливости справочника. `mission_plan.solver` — `fields2cover`. Ограничение `heuristic result is not globally optimal` сохранено. Потолок расчёта — 300 с. Прежний цикл `run_one_angle` остаётся в `run_angle_pipeline` и слушателем не вызывается.
 
 - `review`: сшивка геоядра `724d1da` и тракта рельефа. Конверт с аэродромами и бортами вызывает `planner.solver.pipeline` скопированного ядра. У слушателя больше нет пути gibrid `meta`. Однокарточный `takeoff` + `uav` и любой другой сценарий, который не является внешним конвертом, поднимает `ValueError` до импорта gibrid: слушатель принимает только геоконверт. Пайплайн превращает это в `outcome=error`. `pads` и `uav_types` по-прежнему отклоняются. Исходы задания: `feasible`, `infeasible`, `timed_out`, `error`; план в `mission_plan`. Тексты KML съёмки и ограничений уходят на сервер. Ограничения разбирает `planes.integration.kml`, не оптимизатор. Полигоны ограничений становятся `Obstacle` с `height_m` 0. Рамка полигона съёмки запрашивает COP30; `Params.dem_file` — путь кэшированного GeoTIFF. Повтор той же рамки сеть не трогает. Нет ключа или негодный растр — явная ошибка, без плоского рельефа. Матрица справочника: `docs/architecture/FLEET_CATALOG_SWEEP.md`. Синтетические числа в `fleet_catalog.json` не добавлялись. `dem.py` и пакет `dem/` ядра на месте.
 
@@ -39,23 +41,20 @@ contract_version: v0
 - [x] Geo-core stitch. Envelope with aerodromes and boards calls `planner.solver.pipeline` of the copied core at `724d1da` (`src/planes/model/itog_model/mvp_optimizator`). Outcomes stay `feasible` / `infeasible` / `timed_out` / `error`; the plan is `mission_plan`. GeoTIFF is loaded with `planner.io.dem.loader.load_dem`. A `FlatDEM` is an explicit error. `dem.py` and the `dem/` package were not deleted. Adapter builds `MissionInput`: survey polygon EPSG:4326, constraint polygons as `Obstacle` (`height_m` 0), aerodromes as `VPP` (`alt_m` 0), boards as `UAVConfig` with id translation, GSD, criterion, wind, side overlap as `overlap_x`, forward overlap as `overlap_long`, `dem_file`. Fleet matrix is `docs/architecture/FLEET_CATALOG_SWEEP.md`. `fleet_catalog.json` was not filled with synthetic values.
 - [x] Listener geo-core only. `solver.solve` does not call `run`, `run_optimizer`, `solve_milp`, or `solve_metaheuristic`. An envelope with `aerodromes` and `boards` stays on `geo_mission.solve_envelope` (`run_one_angle`, trapezoid by default, OR-Tools routing). A one-card `takeoff` + `uav` scenario, and any other scenario that is not that envelope, raises `ValueError` before any gibrid import. The message says the listener only accepts the geo envelope. `pads` and `uav_types` stay rejected. `enumeration/outer.py` stays. `is_outer_scenario` and `load_catalog` stay. The listener does not call `run_candidates` or `select_winner`. `src/planes/model/itog_model/**` and the gibrid package body were not edited.
 - [x] MIS-002 outer enumeration reads the fleet catalog. A candidate is one board card whose camera `spectra` contain `required_spectrum`. The server checks the model–camera compatibility edge. `InputData.takeoff` is the chosen aerodrome. `uav` is the model flight fields with `count` equal to the card count. `camera` is that camera's five optic numbers. A spectrum mismatch is recorded (model id, camera id, required spectrum, camera spectra) and does not call the core. If no board covers the spectrum, the result is infeasible (`no camera covers required spectrum`), even when some of those cards also lack numbers. A spectrum match with incomplete optics or flight numbers is skipped with model id, camera id, and the missing fields, and does not call the core. No runnable card that did cover the spectrum does not call the core (`no runnable board`). More than 16 runnable cards is an error. A camera with no edge to the selected model is rejected. Calls stay independent and follow card order. A single takeoff/uav scenario stays on the one-call path and does not read the catalog. An envelope that still has `pads` or `uav_types` is rejected. `solver.solve` still picks the best successful call (`min_time` → `mission.mission_time_s`, `min_flight_hours` → `mission.total_flight_time_s`) and writes the winning aerodrome id, board id, model id, and camera id into `limitations`.
+- [x] WRAP-001 unique limitations. `unique_limitations` keeps first-seen identical strings in `make_response`, `parse_response`, `geo_mission` line assembly, and `physical_check` merge. `fields2cover_engine.py` and the optimizer body were not edited.
 
 ## In progress
 
-- None for the stitch code. Teammate picture: `docs/architecture/STITCH_PICTURE.md`. The listener `planes-compute.service` was fast-forwarded to `debcd9c` for the live stitch run (health `live`, contract `v0`). Commit `c04786a` adds tests only and was not deployed. Paragraphs that name git `da3da56` describe the listener before that move. The form sends `survey_kml` and `constraints_kml` with `aerodromes` and `boards`. SQLite stores the scenario unchanged.
+- None. Limitation-string unique is on `cursor/dedupe-limitations-829a` from `wrap/WRAP-001-shell-around-core`.
 
 ## Next action
 
-INT-F2C-003: keep rollback `PLANES_SOLVE_BACKEND=legacy_fields2cover`. Wave B lives only on the isolated worker. Experiments set flags on the v0 `scenario` object; see `docs/live-grisha-f2c-iso.md`.
+Review the unique-limitations landing on `cursor/dedupe-limitations-829a`. The ISO packer on `main` still appends one endurance line per uncovered swath; this wrap shell drops repeats at the report boundary. The optimizer body was not patched.
 
 ## Evidence
 
-- Command: `PYTHONPATH=src:tests/runtime python3 -m unittest tests.runtime.test_wave_b_iso tests.runtime.test_grisha_f2c_bridge tests.runtime.test_f2c_iso_client -v`
-- Result: `Ran 23 tests in 0.043s` / `OK`. Wave B packer tested without fields2cover. Rollback `legacy_fields2cover` still calls `geo_mission`.
-- Command: `python3 scripts/validate_workspace.py`
-- Result: `Workspace validation: PASS`.
-- PR: https://github.com/anabol21/planes/pull/13
-
+- Command: `PYTHONPATH=src python3 -m unittest tests.runtime.test_limitations -v`
+- Result: `Ran 5 tests in 0.001s` / `OK`. Identical endurance/uncovered-swath lines collapse to first-seen order; `uncovered swaths=N: …` and `uncovered_swaths=N` stay distinct; `make_response`, `parse_response`, `annotate_result`, and `pipeline.judge` emit the unique list.
 - Command: `PYTHONPATH=src python3 -m unittest discover -s tests/runtime -v`
 - Result: `Ran 90 tests in 66.983s` / `FAILED (failures=9)`. Interpreter is the project venv, Python 3.11.13. The nine failures are the same geo-core assertions on base `aac3d69`: `test_bbox_requests_terrain_and_the_plan_avoids_constraints`, five `test_core_does_not_invent_optics_for_ambiguous_or_blank_cameras` cases, two `test_distinct_fleet_focals_stay_distinct_on_the_mission` cases, and `test_joint_swath_height_does_not_follow_board_order`. Those assertions were not weakened. One-card tests expect `ValueError` and the text that the listener only accepts the geo envelope.
 - Stitch command: `PYTHONPATH=src python3 -m unittest tests.runtime.test_geo_kml_stitch -v`
@@ -110,8 +109,6 @@ INT-F2C-003: keep rollback `PLANES_SOLVE_BACKEND=legacy_fields2cover`. Wave B li
 ## Interface changes
 
 - None under `src/planes/contracts/**`.
-- INT-F2C-003: iso `mission_plan` may add `takeoff_vpp_id`, `landing_vpp_id`, `start_time_s`, `recharge_before_s` on routes and `wave_b` / `mission.recharge_gap_s` / `mission.separation_delay_s`. `mission_time_s` is Cmax including recharge gaps and separation delays. Additive only; contract v0 unchanged. Rollback path does not emit these fields.
-- INT-F2C-002: default outer solve is isolated F2C (`method` `grisha_mvp_fields2cover_isolated`). Rollback `PLANES_SOLVE_BACKEND=legacy_fields2cover` keeps `geo_mission` (`method` `pipeline`). Deploy paths default under `/opt/planes-grisha-f2c` and are overridable. Iso catalog `catalog/fleet_catalog.json`. Battery Wh is not a packing constraint. Duration stays 2D with optional DEM ASL.
 - The live aerodromes-and-boards path calls `planner.solver.pipeline` (`method` `pipeline`). The listener no longer has a gibrid meta path. A one-card scenario and any other non-envelope raise `ValueError` (`outcome=error`) before a gibrid import. The scenario envelope carries `survey_kml` and `constraints_kml` file texts. Constraint polygons become `Obstacle` with `height_m` 0. A missing API key or an invalid raster is `outcome=error` and includes the `ValueError` text. There is no flat-terrain fallback. `mission_plan.solver` on the geo path is `pipeline`. A heuristic result is not globally optimal.
 - None under `src/planes/contracts/**` for the earlier listener work.
 - Runtime-local dataclasses and one JSON fixture only.

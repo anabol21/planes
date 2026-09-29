@@ -1,17 +1,21 @@
 ---
 workstream: web
 owner: Integration / Web
-task: WEB-002
+task: WRAP-002
 status: review
 updated: 2026-09-28
-checkpoint: 2026-09-22
-branch: cursor/f2c-auto-strip-angle-d388
+checkpoint: 2026-09-28
+branch: cursor/infeasible-error-codes-2089
 contract_version: v0
 ---
 
 # Web status
 
-- INT-F2C-001: the form no longer has a strip-direction field and `scenario.ts` does not send `survey.strip_direction_deg`. GSD, overlaps, and wind stay on the form with the same defaults.
+WRAP-002, карточки исходов. Панель результата показывает `error_code` из API (или выводит его из live-сигналов `limitations`/`error`) русским title/body/CTA. `INFEASIBLE_*` — отказ сценария, не падение. `INFEASIBLE_WIND_EXCEEDS_FLEET` подсвечивает скорость ветра и модели. `ERROR_*` подсвечивает поля модели/камеры/аэродрома. `TIMED_OUT_*` предлагает упростить сценарий. Строки `iso`/`f2c`/`sitecustomize`/traceback в ограничениях скрыты. Дубликаты строк в «Ограничения и замечания» убираются (`publicLimitations` / ранее WRAP-001 unique limitations).
+
+WRAP-001, сводка и карта. Список «Задание backend» снят. Панель показывает исход, число БВС, число вылетов, метрику, которую солвер уже вернул (`C_max` как `mission_time_s` при `min_time`, суммарный налёт как `total_flight_time_s` при `min_flight_hours`), и коды `PHYS-*`. На карте рисуются только участки маршрута внутри полигонов съёмки, один цвет на `uav_id`. Веер транзитов не рисуется. `mission_plan` в ответе не переписывается. Сырой JSON остаётся свёрнутым. Это отображение, не новый расчёт маршрута.
+
+WRAP-001, шаг 2, заблокирован на слушателе. Поле «Направление полос» убрано из формы. `buildPrototypeScenario` больше не требует угол и не кладёт `survey.strip_direction_deg`. Ноль не подставляется. Слушатель `geo_mission._params` по-прежнему читает `survey.strip_direction_deg` через `_angle` и отклоняет конверт без этого ключа. Ядро не патчилось. Это не требование заказчика: направление полос было полем формы.
 
 On `test_merge` the form sends raw `survey_kml` and `constraints_kml`. The picture is `docs/architecture/STITCH_PICTURE.md`. The sentence below is the pre-stitch path on `main`.
 
@@ -42,15 +46,21 @@ the computed `mission_plan` and leaves the contract at `v0`.
 - [x] Browser-smoked the submission-to-result flow against a deterministic local v0 result: the
   viewport fitted the mission, two UAV legend entries and two base markers rendered, and 26 Esri
   satellite tile requests returned HTTP 200.
+- [x] WRAP-001 unique limitations in «Ограничения и замечания». Identical strings are shown once,
+  first-seen order, distinct endurance/uncovered-swath lines stay.
+- [x] WRAP-002: Russian outcome cards for live endurance-no-recharge and catalog errors; internals filtered.
 
 ### Next action
 
-Review this landing on `frontend/WEB-002-on-test-merge` from `test_merge` `dc8bbc7`. A live form
-check on a Mac or VPS is the step after this landing. Esri production terms remain a documented
+Review WRAP-002 cards on `cursor/infeasible-error-codes-2089`. A live form check against a real
+infeasible solve is still the step after this landing. Esri production terms remain a documented
 limitation before deployment.
 
 ### Evidence
 
+- WRAP-002: `pnpm test` in `apps/web` — 78 tests in 10 files, passed (Vitest 5.0.1). Includes live B2 endurance card, catalog UAV card, and wind-exceeds-fleet card.
+- WRAP-002: `pnpm typecheck` — `tsc --noEmit` exit 0.
+- WRAP-001 unique limitations: `pnpm exec vitest run src/ResultPanel.test.tsx` from `apps/web` — 1 file, 7 tests, passed. Repeated endurance/uncovered-swath strings render once; distinct lines stay.
 - Task brief: `docs/workstreams/web/WEB-002.md`.
 - Source: `apps/web/src/MissionMap.tsx`, `apps/web/src/missionMapData.ts`, and typed additions in
   `apps/web/src/types.ts`.
@@ -77,6 +87,8 @@ limitation before deployment.
 
 ### Interface changes and downstream impact
 
+- WRAP-002 reads optional API fields `error_code`, `message_ru`, `message_en`, `details` and still
+  infers the two live sample families from `limitations`/`error` when the fields are absent.
 - No backend, runtime, optimizer, KML, database, or public contract was changed.
 - The frontend now reads optional `mission_plan.routes`, `areas`, `obstacles`, and confirmed
   `constraint_polygons` fields from an existing terminal result.
@@ -129,6 +141,7 @@ Use the live path in `docs/architecture/agent-brief-backend.md`: form `127.0.0.1
 
 ## Blockers / limitations
 
+- WRAP-001 step 2 is blocked: the listener still requires `survey.strip_direction_deg`. The form no longer sends a user-chosen angle and does not invent `0`. The kernel was not patched.
 - Shared domain contracts remain unfrozen; the client must use backend HTTP contract version `v0` without inventing domain semantics.
 - Earlier WEB-001 note: backend RUS-001 PR #4 targeted `dev`, and this task branch was based on its verified commit. The enumeration form is on `main`. See the agent briefs.
 - Local backend and worker startup currently require `PYTHONPATH=src`.

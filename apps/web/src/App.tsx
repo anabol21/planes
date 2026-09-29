@@ -24,6 +24,14 @@ import {
   type KmlFileRecord,
 } from "./kml";
 import { formatDecimalInput, normalizeDecimalDraft, parseDecimalInput } from "./numberInput";
+import {
+  detailLines,
+  highlightFromResult,
+  publicLimitations,
+  resolveOutcomeCard,
+  type HighlightFields,
+  type OutcomeCardCopy,
+} from "./errorCards";
 import { getResultPresentation } from "./presentation";
 import {
   DEFAULT_AERODROMES,
@@ -104,17 +112,25 @@ function readNumber(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
+function uniqueStrings(items: string[]): string[] {
+  const seen = new Set<string>();
+  const ordered: string[] = [];
+  for (const item of items) {
+    if (seen.has(item)) continue;
+    seen.add(item);
+    ordered.push(item);
+  }
+  return ordered;
+}
+
 function getLimitations(report: JsonObject): string[] {
-  return Array.isArray(report.limitations)
-    ? report.limitations.filter((item): item is string => typeof item === "string")
-    : [];
+  return publicLimitations(report);
 }
 
 function SolverSummary({ report }: { report: JsonObject }) {
   const method = readString(report.method);
   const objective = readString(report.objective);
   const runtime = readNumber(report.runtime_seconds);
-  const limitations = getLimitations(report);
   return (
     <div className="result-section">
       <h3>Сводка расчёта</h3>
@@ -123,58 +139,104 @@ function SolverSummary({ report }: { report: JsonObject }) {
         <div><dt>Цель</dt><dd>{objective ?? "Не указана"}</dd></div>
         <div><dt>Время работы</dt><dd>{runtime === null ? "Не указано" : `${runtime.toFixed(2)} с`}</dd></div>
       </dl>
-      <div className="limitations">
-        <h4>Ограничения и замечания</h4>
-        {limitations.length ? <ul>{limitations.map((item) => <li key={item}>{item}</li>)}</ul> : <p>Backend не передал дополнительных ограничений.</p>}
-      </div>
     </div>
   );
 }
 
-function MissionPlanSummary({ plan }: { plan: MissionPlan }) {
-  const assignments = Array.isArray(plan.routes)
-    ? plan.routes
-    : Array.isArray(plan.sorties)
-      ? plan.sorties
-      : null;
-  const explicitAssignments = assignments?.flatMap((sortie, index) => {
-    if (typeof sortie !== "object" || sortie === null || Array.isArray(sortie)) return [];
-    const item = sortie as JsonObject;
-    const uavId = readString(item.uav_id) ?? readString(item.aircraft_id);
-    return uavId ? [{ key: `${uavId}-${index}`, uavId }] : [];
-  }) ?? [];
+function diagnosticCodes(report: JsonObject): string[] {
+  return uniqueStrings(
+    getLimitations(report)
+      .map((item) => item.split(":", 1)[0])
+      .filter((code) => /^PHYS-[A-Z0-9-]+$/.test(code)),
+  );
+}
+
+function objectiveMetric(plan: MissionPlan): { label: string; value: string } {
+  const criterion = readString(plan.criterion);
+  const mission = plan.mission;
+  const record = typeof mission === "object" && mission !== null && !Array.isArray(mission)
+    ? mission as JsonObject
+    : null;
+  if (criterion === "min_flight_hours") {
+    const total = record ? readNumber(record.total_flight_time_s) : null;
+    return { label: "Суммарный налёт", value: total === null ? "—" : `${total.toFixed(2)} с` };
+  }
+  const cmax = record ? readNumber(record.mission_time_s) : null;
+  return { label: "C_max", value: cmax === null ? "—" : `${cmax.toFixed(2)} с` };
+}
+
+function MissionSummary({ result }: { result: Exclude<JobResult, { state: "failed" }> }) {
+  const plan = result.mission_plan;
+  const routes = plan?.routes ?? [];
+  const uavCount = new Set(routes.map((route) => route.uav_id)).size;
+  const metric = plan ? objectiveMetric(plan) : { label: "C_max", value: "—" };
+  const codes = diagnosticCodes(result.solver_report);
+  const errorCode = readString(result.error_code);
   return (
     <div className="result-section mission-summary">
       <h3>План миссии</h3>
-      <div className="mission-summary-grid">
-        <div><strong>{assignments ? assignments.length : "—"}</strong><span>полётных заданий</span></div>
-        <p>План показан без браузерных расчётов. Привязка к БВС отображается только при наличии явного идентификатора в ответе backend.</p>
-      </div>
-      {explicitAssignments.length > 0 && (
-        <ul className="assignment-list">
-          {explicitAssignments.map((assignment) => <li key={assignment.key}>Задание backend: <strong>{assignment.uavId}</strong></li>)}
-        </ul>
+      <dl className="result-facts">
+        <div><dt>Исход</dt><dd>{result.outcome}</dd></div>
+        <div><dt>БВС</dt><dd>{uavCount}</dd></div>
+        <div><dt>Вылеты</dt><dd>{routes.length}</dd></div>
+        <div><dt>{metric.label}</dt><dd>{metric.value}</dd></div>
+        <div><dt>Коды</dt><dd>{errorCode ?? (codes.length ? codes.join(", ") : "нет")}</dd></div>
+      </dl>
+    </div>
+  );
+}
+
+function OutcomeCard({ card, details, jobId }: { card: OutcomeCardCopy; details?: JsonObject; jobId: string }) {
+  const facts = detailLines(details);
+  return (
+    <div className={`outcome-card tone-${card.tone}`} data-error-code={card.code} role="status">
+      <p className="eyebrow">{card.tone === "infeasible" ? "Сценарий нельзя выполнить" : card.tone === "timed_out" ? "Лимит времени" : card.tone === "offline" ? "Справка UX" : "Ошибка ввода"}</p>
+      <h3>{card.title}</h3>
+      <p>{card.body}</p>
+      <p className="outcome-cta">{card.cta}</p>
+      {(facts.length > 0 || card.code === "ERROR_WORKER_EXCEPTION") && (
+        <dl className="outcome-details">
+          <div><dt>Код</dt><dd>{card.code}</dd></div>
+          {facts.map((item) => (
+            <div key={item.key}><dt>{item.key}</dt><dd>{item.value}</dd></div>
+          ))}
+          {card.code === "ERROR_WORKER_EXCEPTION" && (
+            <div><dt>job_id</dt><dd>{jobId}</dd></div>
+          )}
+        </dl>
       )}
     </div>
   );
 }
 
-function failureMessage(error: JsonObject | null): string {
+function failureMessage(result: Extract<JobResult, { state: "failed" }>): string {
+  const card = resolveOutcomeCard(result);
+  if (card) return card.body;
+  if (result.message_ru) return result.message_ru;
+  const error = result.error;
   if (!error) return "Backend не передал описание ошибки.";
-  const directMessage = readString(error.message);
-  if (directMessage) return directMessage;
+  const classified = readString(error.message_ru);
+  if (classified) return classified;
   const report = error.solver_report;
   if (typeof report === "object" && report !== null && !Array.isArray(report)) {
     const limitations = getLimitations(report as JsonObject);
     if (limitations.length) return limitations[0];
+  }
+  const directMessage = readString(error.message);
+  if (directMessage && !/traceback|sitecustomize|iso f2c|f2c_isolated/i.test(directMessage)) {
+    return directMessage;
   }
   return "Вычислительный контур не смог сформировать результат.";
 }
 
 export function ResultPanel({ result }: { result: JobResult }) {
   const presentation = getResultPresentation(result);
+  const card = resolveOutcomeCard(result);
   const synthetic = result.state !== "failed" && result.mission_plan !== null && result.mission_plan.test_data === true;
   const icon = presentation.badge === "feasible" ? "✓" : presentation.badge === "infeasible" ? "—" : presentation.badge === "timed_out" ? "◷" : "!";
+  const details = result.details ?? (result.state === "failed" && result.error && typeof result.error.details === "object" && result.error.details !== null
+    ? result.error.details as JsonObject
+    : undefined);
   return (
     <section className={`card result-card result-${presentation.badge}`} aria-labelledby="result-title">
       <div className="result-hero">
@@ -183,11 +245,12 @@ export function ResultPanel({ result }: { result: JobResult }) {
         <span className={`status-badge ${presentation.badge}`}>{presentation.badge}</span>
       </div>
       {synthetic && <div className="synthetic-notice"><strong>Демонстрационные данные</strong><span>Backend пометил этот план как синтетический — это не реальное полётное задание.</span></div>}
+      {card && <OutcomeCard card={card} details={details} jobId={result.job_id} />}
       {result.state === "failed" ? (
-        <div className="result-section error-detail"><h3>Сообщение вычислительного контура</h3><p>{failureMessage(result.error)}</p></div>
+        !card && <div className="result-section error-detail"><h3>Сообщение вычислительного контура</h3><p>{failureMessage(result)}</p></div>
       ) : (
         <>
-          {result.mission_plan && <MissionPlanSummary plan={result.mission_plan} />}
+          <MissionSummary result={result} />
           {result.state === "completed" && result.outcome === "feasible" && result.mission_plan && (
             <div className="result-section mission-map-section">
               <div className="mission-map-heading">
@@ -332,45 +395,49 @@ function BoardCard({
   board,
   index,
   aerodromeCount,
+  highlight,
   onChange,
   onRemove,
 }: {
   board: BoardInput;
   index: number;
   aerodromeCount: number;
+  highlight: HighlightFields;
   onChange: (next: BoardInput) => void;
   onRemove: () => void;
 }) {
   const cameras = camerasForModel(board.modelId);
   return (
-    <article className="uav-card">
+    <article className={`uav-card ${highlight.boards || highlight.model || highlight.camera || highlight.aerodrome ? "field-flagged-card" : ""}`}>
       <div className="uav-card-head">
         <div><strong>БВС {index + 1}</strong></div>
         <button className="text-button danger" type="button" onClick={onRemove}>Удалить</button>
       </div>
       <div className="uav-grid">
-        <label>
+        <label className={highlight.model ? "field-flagged" : undefined}>
           <span>Модель</span>
-          <select value={board.modelId} onChange={(event) => onChange(withModel(board, event.target.value))}>
+          <select value={board.modelId} onChange={(event) => onChange(withModel(board, event.target.value))} aria-invalid={highlight.model ? true : undefined}>
             <option value="">Выберите модель</option>
             {catalogModels().map((model) => <option key={model.id} value={model.id}>{model.name}</option>)}
           </select>
         </label>
-        <label>
+        <label className={highlight.camera ? "field-flagged" : undefined}>
           <span>Камера</span>
           <select
             value={board.cameraId}
             disabled={!board.modelId}
+            aria-invalid={highlight.camera ? true : undefined}
             onChange={(event) => onChange({ ...board, cameraId: event.target.value })}
           >
             <option value="">Выберите камеру</option>
             {cameras.map((camera) => <option key={camera.id} value={camera.id}>{cameraOptionLabel(camera)}</option>)}
           </select>
         </label>
-        <label>
+        <label className={highlight.aerodrome ? "field-flagged" : undefined}>
           <span>Аэродром</span>
           <select
             value={board.aerodromeIndex ?? ""}
+            aria-invalid={highlight.aerodrome ? true : undefined}
             onChange={(event) => onChange({
               ...board,
               aerodromeIndex: event.target.value === "" ? null : Number(event.target.value),
@@ -517,6 +584,7 @@ export default function App() {
 
   const backendLabel = job ? STATE_LABELS[job.state] : error ? "Ошибка запроса" : "Ожидает запуска";
   const backendTone = job?.state ?? (error ? "failed" : "idle");
+  const fieldHighlight = highlightFromResult(result);
 
   return (
     <main className="app-shell">
@@ -544,7 +612,7 @@ export default function App() {
           <label className="scenario-id-field"><span>Идентификатор сценария</span><input value={scenarioId} onChange={(event) => setScenarioId(event.target.value)} placeholder="demo-multi-uav-001" /></label>
         </section>
 
-        <section className="card workflow-section" aria-labelledby="geo-title">
+        <section className={`card workflow-section ${fieldHighlight.survey ? "section-flagged" : ""}`} aria-labelledby="geo-title">
           <div className="section-heading"><div><p className="eyebrow">02 · Геоданные</p><h2 id="geo-title">KML-файлы организатора</h2><p className="section-description">На сервер уходит текст задания на съёмку. Файл зон ограничений необязателен: без него полигонов ограничений нет. Кольца разбирает сервер.</p></div><span className="step-chip">.kml</span></div>
           <div className="upload-grid">
             <UploadCard category="survey_task" title="Границы задания на съёмку" description="Основная область работ. Один файл обязателен для запуска." sourceHint="Границы полетов.kml" files={surveyTask ? [surveyTask] : []} loading={loadingCategory === "survey_task"} onFiles={(files) => void handleKmlFiles("survey_task", files)} onRemove={() => setSurveyTask(null)} />
@@ -552,7 +620,7 @@ export default function App() {
           </div>
         </section>
 
-        <section className="card workflow-section" aria-labelledby="aerodrome-title">
+        <section className={`card workflow-section ${fieldHighlight.aerodrome ? "section-flagged" : ""}`} aria-labelledby="aerodrome-title">
           <div className="section-heading"><div><p className="eyebrow">03 · Аэродромы</p><h2 id="aerodrome-title">Аэродромы</h2><p className="section-description">Число от 1 до 4. У каждой строки долгота и широта, EPSG:4326. Подпись «аэродром 1» ставит система.</p></div></div>
           <label className="bounded-count"><span>Число аэродромов</span><select value={aerodromes.length} onChange={(event) => changeAerodromeCount(Number(event.target.value))}><option value={1}>1</option><option value={2}>2</option><option value={3}>3</option><option value={4}>4</option></select></label>
           <div className="fleet-list">{aerodromes.map((aerodrome, index) => (
@@ -567,19 +635,21 @@ export default function App() {
           ))}</div>
         </section>
 
-        <section className="card workflow-section" aria-labelledby="fleet-title">
+        <section className={`card workflow-section ${fieldHighlight.boards || fieldHighlight.model || fieldHighlight.camera ? "section-flagged" : ""}`} aria-labelledby="fleet-title">
           <div className="section-heading"><div><p className="eyebrow">04 · Борта</p><h2 id="fleet-title">Борта</h2><p className="section-description">Карточка задаёт модель, совместимую с ней камеру, аэродром и количество одинаковых бортов. Список камер зависит только от модели. Потолка карточек нет.</p></div><button className="secondary-button" type="button" onClick={() => setBoards((current) => addBoard(current))}>+ Добавить борт</button></div>
-          <div className="fleet-list">{boards.map((board, index) => <BoardCard key={`board-${index}`} board={board} index={index} aerodromeCount={aerodromes.length} onChange={(next) => setBoards((current) => current.map((item, itemIndex) => itemIndex === index ? next : item))} onRemove={() => setBoards((current) => removeBoard(current, index))} />)}</div>
+          <div className="fleet-list">{boards.map((board, index) => <BoardCard key={`board-${index}`} board={board} index={index} aerodromeCount={aerodromes.length} highlight={fieldHighlight} onChange={(next) => setBoards((current) => current.map((item, itemIndex) => itemIndex === index ? next : item))} onRemove={() => setBoards((current) => removeBoard(current, index))} />)}</div>
         </section>
 
-        <section className="card workflow-section" aria-labelledby="survey-title">
-          <div className="section-heading"><div><p className="eyebrow">05 · Параметры съёмки</p><h2 id="survey-title">Сенсорный профиль и ветер</h2><p className="section-description">GSD, перекрытия и ветер задаются здесь и уходят в конверт. Направление полос выбирает ядро Fields2Cover. Единицы указаны явно. Браузер не рассчитывает покрытие, энергетику или выполнимость. Тип съёмки не фильтрует список камер.</p></div></div>
+        <section className={`card workflow-section ${fieldHighlight.wind ? "section-flagged" : ""}`} aria-labelledby="survey-title">
+          <div className="section-heading"><div><p className="eyebrow">05 · Параметры съёмки</p><h2 id="survey-title">Сенсорный профиль и ветер</h2><p className="section-description">GSD и перекрытия задаются здесь и уходят в конверт. Единицы указаны явно. Браузер не рассчитывает покрытие, энергетику или выполнимость. Тип съёмки не фильтрует список камер.</p></div></div>
           <div className="control-grid">
             <label><span>Тип съёмки</span><select value={surveyType} onChange={(event) => setSurveyType(event.target.value as SurveyType)}><option value="RGB">RGB</option><option value="multispectral">Мультиспектральная</option><option value="infrared">Инфракрасная</option><option value="LiDAR">LiDAR</option><option value="geophysical">Геофизическая</option></select></label>
             <NumberField label="GSD" unit="см/пикс" placeholder="3" value={gsdCmPerPx} onChange={setGsdCmPerPx} />
             <NumberField label="Перекрытие вдоль" placeholder="0.7" value={forwardOverlap} onChange={setForwardOverlap} hint="Доля кадра, от 0 до 1, не включая 1." />
             <NumberField label="Перекрытие поперёк" placeholder="0.6" value={sideOverlap} onChange={setSideOverlap} hint="Доля кадра, от 0 до 1, не включая 1." />
-            <NumberField label="Скорость ветра" unit="м/с" placeholder="3" value={windSpeed} onChange={setWindSpeed} />
+            <div className={fieldHighlight.wind ? "field-flagged" : undefined}>
+              <NumberField label="Скорость ветра" unit="м/с" placeholder="3" value={windSpeed} onChange={setWindSpeed} />
+            </div>
             <NumberField label="Направление ветра, откуда · °" placeholder="270" value={windDirection} onChange={setWindDirection} hint="0 — север. Значение 360 записывается как 0." />
           </div>
         </section>
@@ -588,13 +658,15 @@ export default function App() {
           <div className="section-heading"><div><p className="eyebrow">06 · Критерий оптимизации</p><h2 id="optimization-title">Настройки расчёта</h2><p className="section-description">Значения передаются в существующем envelope v0 без браузерной оптимизации.</p></div></div>
           <div className="control-grid">
             <label><span>Критерий</span><select value={objective} onChange={(event) => setObjective(event.target.value)}><option value="min_time">Минимальное время выполнения</option><option value="min_total_flight_time">Минимальный суммарный налёт</option></select><small className="field-hint">scenario.criterion: {objective === "min_total_flight_time" ? "min_flight_hours" : objective}</small></label>
-            <NumberField label="Лимит расчёта, с" placeholder={DEFAULT_TIME_LIMIT} value={timeLimit} onChange={setTimeLimit} hint={timeLimit > MAX_TIME_LIMIT_SECONDS ? TIME_LIMIT_TOO_LONG : `Не больше ${MAX_TIME_LIMIT_SECONDS}`} />
+            <div className={fieldHighlight.timeLimit ? "field-flagged" : undefined}>
+              <NumberField label="Лимит расчёта, с" placeholder={DEFAULT_TIME_LIMIT} value={timeLimit} onChange={setTimeLimit} hint={timeLimit > MAX_TIME_LIMIT_SECONDS ? TIME_LIMIT_TOO_LONG : `Не больше ${MAX_TIME_LIMIT_SECONDS}`} />
+            </div>
             <NumberField label="Seed" placeholder="7" integer value={Number(seedText)} onChange={(value) => setSeedText(formatDecimalInput(value))} hint="Для воспроизводимого запуска." />
           </div>
 
           <details className="advanced-panel">
             <summary><span>Расширенные настройки / Raw scenario</span><small>Фактическое тело запроса для инженерной проверки</small></summary>
-            <p className="advanced-note">Сценарий формируется из полей выше. Исходные KML остаются в памяти браузера; в запрос уходят кольца, аэродромы, борты, GSD, перекрытия, направление полос и ветер. Коэффициенты мощности читает сервер из записи модели.</p>
+            <p className="advanced-note">Сценарий формируется из полей выше. Исходные KML остаются в памяти браузера; в запрос уходят кольца, аэродромы, борты, GSD, перекрытия и ветер. Коэффициенты мощности читает сервер из записи модели.</p>
             {scenarioPreview.error && <p className="file-error">{scenarioPreview.error}</p>}
             <div className="editor-grid"><label><span>Scenario JSON · только чтение</span><textarea readOnly value={scenarioPreview.text} spellCheck={false} rows={18} /></label><label><span>Optimization JSON · только чтение</span><textarea readOnly value={optimizationText} spellCheck={false} rows={18} /></label></div>
           </details>

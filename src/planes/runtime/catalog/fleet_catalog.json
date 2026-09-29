@@ -5,93 +5,392 @@
       "id": "geoscan-gemini",
       "name": "Геоскан Gemini",
       "kind": "multirotor",
-      "mass_kg": {"value": 2, "mark": "passport"},
-      "payload_mass_kg": null,
-      "airspeed_m_s": {"value": 15, "mark": "passport"},
+      "mass_kg": {
+        "value": 2,
+        "mark": "passport"
+      },
+      "payload_mass_kg": {
+        "value": 0.5,
+        "unit": "kg",
+        "mark": "synthetic",
+        "source": "CAT-001C MVP assumption; https://www.geoscan.ru/ru/products/gemini has no additional payload-capacity scalar. Older Geoscan seminar table: https://www.geoscan.ru/themes/geoscan/assets/seminary/geoscan-weekend-2019/%D0%9A%D0%BB%D0%B5%D1%81%D1%82%D0%BE%D0%B2.%D0%9C%D0%B0%D1%80%D0%BA%D1%88%D0%B5%D0%B9%D0%B4%D0%B5%D1%80%D0%B8%D1%8F.pdf (different historical configuration).",
+        "note": "Conservative additional payload metadata only, not a certified operating limit. Assumed plausible range 0.25–2.0 kg; 0.5 kg chosen conservatively for this MVP. Not added to solver mass; selected-camera mass remains outside current physics. Revalidate before operational load planning."
+      },
+      "airspeed_m_s": {
+        "value": 15,
+        "mark": "passport",
+        "note": "Maximum horizontal speed, not live working/survey speed."
+      },
       "airspeed_estimate_m_s": {
         "value": 12,
         "mark": "estimate",
         "note": "оценка (0,8 · 15); не подменяет airspeed_m_s"
       },
-      "climb_m_s": {"value": 5, "mark": "passport"},
-      "descent_m_s": null,
-      "max_wind_m_s": {"value": 10, "mark": "passport"},
-      "flight_time_s": {"value": 2400, "mark": "passport"},
+      "climb_m_s": {
+        "value": 5,
+        "unit": "m/s",
+        "mark": "passport",
+        "source": "https://www.geoscan.ru/ru/products/gemini (verified 2026-09-28); repository specs",
+        "note": "Vertical maximum used as MVP climb scalar; no detailed launch profile."
+      },
+      "descent_m_s": {
+        "value": 5,
+        "unit": "m/s",
+        "mark": "estimate",
+        "source": "docs/mvp.pdf sections 6, 8, 12; data.json mvp_estimates",
+        "note": "Repository section 6.2 explicitly assumes symmetric vertical ascent/descent; descent is an assumption, not independently confirmed passport."
+      },
+      "max_wind_m_s": {
+        "value": 10,
+        "mark": "passport"
+      },
+      "flight_time_s": {
+        "value": 2400,
+        "mark": "passport"
+      },
       "battery": {
-        "energy_wh": {"value": 144.7, "mark": "passport"}
+        "chemistry": "Li-Ion",
+        "nominal_voltage_v": {"value":21.6,"unit":"V","mark":"passport","source":"https://www.geoscan.ru/ru/products/gemini (verified 2026-09-28)","note":"Manufacturer battery specification."},
+        "capacity_ah": {"value":6.7,"unit":"Ah","mark":"passport","source":"https://www.geoscan.ru/ru/products/gemini (verified 2026-09-28)","note":"Converted from 6700 mAh."},
+        "energy_wh": {
+          "value": 144.7,
+          "unit": "Wh",
+          "mark": "passport",
+          "source": "https://www.geoscan.ru/ru/products/gemini (verified 2026-09-28); repository specs",
+          "note": "Manufacturer battery energy; deterministic aircraft configuration, not fallback."
+        }
       },
       "power_coeffs": {
-        "kh": {"value": 90.0, "mark": "estimate"},
-        "kv": {"value": 0.02, "mark": "estimate"},
-        "kw": {"value": 0.008, "mark": "estimate"}
+        "kh": {
+          "value": 90,
+          "mark": "estimate"
+        },
+        "kv": {
+          "value": 0.02,
+          "mark": "estimate"
+        },
+        "kw": {
+          "value": 0.008,
+          "mark": "estimate"
+        }
       },
       "turn_time_s": [
-        {"value": 5, "mark": "estimate"},
-        {"value": 3, "mark": "estimate"},
-        {"value": 1, "mark": "estimate"}
+        {
+          "value": 5,
+          "mark": "estimate"
+        },
+        {
+          "value": 3,
+          "mark": "estimate"
+        },
+        {
+          "value": 1,
+          "mark": "estimate"
+        }
       ],
-      "takeoff": null,
-      "landing": null,
-      "source": "Geoscan Gemini specification sheet. mvp_estimates holds kh, kv, kw and turn times, and a 12 m/s airspeed estimate that does not replace the passport 15 m/s.",
-      "gaps": ["payload_mass_kg", "descent_m_s", "takeoff", "landing"]
+      "takeoff": "vertical",
+      "landing": "vertical",
+      "source": "Geoscan Gemini specification sheet. mvp_estimates holds kh, kv, kw and turn times, and a 12 m/s airspeed estimate that does not replace the passport 15 m/s. CAT-001B: live physical source is model aircraft.physics; flight_time_s is converted maximum duration; max speed and working speed differ; legacy turn alternatives retained, live_turn_time_s is the live scalar.",
+      "gaps": [],
+      "mass_semantics": "aircraft_with_battery_and_propellers",
+      "survey_speed_m_s": {
+        "value": 12,
+        "unit": "m/s",
+        "mark": "estimate",
+        "source": "docs/mvp.pdf sections 6, 8, 12; data.json mvp_estimates",
+        "note": "Existing MVP uses survey speed = working airspeed, not maximum speed."
+      },
+      "reserve_fraction": {
+        "value": 0.05,
+        "unit": "fraction",
+        "mark": "estimate",
+        "source": "docs/mvp.pdf sections 6, 8, 12; data.json mvp_estimates",
+        "note": "Existing MVP 5% reserve policy, not hardware specification."
+      },
+      "takeoff_overhead_s": {
+        "value": 0,
+        "unit": "s",
+        "mark": "estimate",
+        "source": "docs/mvp.pdf sections 6, 8, 12; data.json mvp_estimates",
+        "note": "Vertical launch has no additional fixed overhead in existing MVP; h/climb accounts for launch."
+      },
+      "landing_overhead_s": {
+        "value": 0,
+        "unit": "s",
+        "mark": "estimate",
+        "source": "docs/mvp.pdf sections 6, 8, 12; data.json mvp_estimates",
+        "note": "Vertical landing has no additional fixed overhead in existing MVP; h/descent accounts for landing."
+      },
+      "recharge_time_s": {
+        "value": 6300,
+        "unit": "s",
+        "mark": "calculation",
+        "source": "https://www.geoscan.ru/ru/products/gemini (verified 2026-09-28); repository specs",
+        "note": "105 min * 60, full-charge cycle."
+      },
+      "live_turn_time_s": {
+        "value": 5,
+        "unit": "s",
+        "mark": "estimate",
+        "source": "docs/mvp.pdf sections 6, 8, 12; data.json mvp_estimates",
+        "note": "Choose conservative 5 s from existing MVP alternatives [5,3,1]; fixed turn penalty."
+      }
     },
     {
       "id": "geoscan-201",
       "name": "Геоскан 201",
       "kind": "fixed_wing",
-      "mass_kg": {"value": 8.5, "mark": "passport"},
-      "payload_mass_kg": {"value": 1.5, "mark": "passport"},
-      "airspeed_m_s": {"value": 25, "mark": "estimate", "note": "середина диапазона 18–36 м/с"},
-      "climb_m_s": {"value": 3, "mark": "estimate"},
-      "descent_m_s": null,
-      "max_wind_m_s": {"value": 12, "mark": "passport"},
-      "flight_time_s": {"value": 10800, "mark": "passport"},
-      "battery": {
-        "energy_wh": {"value": 740, "mark": "calculation", "note": "расчёт: 40 А·ч × 18.5 В"}
+      "mass_kg": {
+        "value": 8.5,
+        "mark": "passport"
       },
-      "power_const_w": {"value": 220, "mark": "estimate", "note": "оценка из 180 мин при батарее 740 Вт·ч"},
-      "stall_speed_m_s": {"value": 15, "mark": "estimate"},
-      "turn_radius_m": {"value": 110, "mark": "calculation", "note": "расчёт при v = 25, φ = 30°"},
-      "catapult_time_s": {"value": 10, "mark": "estimate"},
-      "parachute_time_s": {"value": 120, "mark": "estimate"},
+      "payload_mass_kg": {
+        "value": 1.5,
+        "mark": "passport"
+      },
+      "airspeed_m_s": {
+        "value": 25,
+        "mark": "estimate",
+        "note": "Chosen working speed 25 m/s within 64-130 km/h, not exact midpoint."
+      },
+      "climb_m_s": {
+        "value": 3,
+        "unit": "m/s",
+        "mark": "estimate",
+        "source": "docs/mvp.pdf sections 6, 8, 12; data.json mvp_estimates",
+        "note": "Repository unconfirmed climb estimate."
+      },
+      "descent_m_s": {
+        "value": 2,
+        "unit": "m/s",
+        "mark": "synthetic",
+        "source": "CAT-001B explicit MVP assumption",
+        "note": "Required for descent/landing timing; no confirmed scalar in repository/manufacturer excerpts. Plausible MVP range 1-5 m/s, choose conservative 2 m/s independently of 3 m/s climb. Not a measured parachute sink rate."
+      },
+      "max_wind_m_s": {
+        "value": 12,
+        "mark": "passport"
+      },
+      "flight_time_s": {
+        "value": 10800,
+        "mark": "passport"
+      },
+      "battery": {
+        "chemistry": "LiPo 5S",
+        "nominal_voltage_v": {"value":18.5,"unit":"V","mark":"passport","source":"Geoscan 201 Russian manual p116; existing committed battery specification.","note":"Nominal pack voltage for the selected 40 Ah battery configuration."},
+        "capacity_ah": {"value":40,"unit":"Ah","mark":"passport","source":"Geoscan 201 Russian manual p116; existing committed battery specification.","note":"Converted from 40,000 mAh."},
+        "energy_wh": {
+          "value": 740,
+          "unit": "Wh",
+          "mark": "calculation",
+          "source": "https://download.geoscan.ru/site-files/201/Geoscan_201_Manual.pdf appendix p115 (verified 2026-09-28); repository specs",
+          "note": "40 Ah * 18.5 V = 740 Wh (repository configuration, confirmed Russian manual p116). Older English manual p98 specifies a different 34 Ah battery; that variant is not selected."
+        }
+      },
+      "power_const_w": {
+        "value": 220,
+        "mark": "estimate",
+        "note": "Existing constant-flight-power approximation; 220 W motor rating is NOT a measured average. 740 Wh / 3 h = 246.67 W, so equality is not claimed."
+      },
+      "stall_speed_m_s": {
+        "value": 15,
+        "mark": "estimate"
+      },
+      "turn_radius_m": {
+        "value": 110,
+        "mark": "calculation",
+        "note": "расчёт при v = 25, φ = 30°"
+      },
+      "catapult_time_s": {
+        "value": 10,
+        "mark": "estimate"
+      },
+      "parachute_time_s": {
+        "value": 120,
+        "mark": "estimate"
+      },
       "takeoff": "catapult",
       "landing": "parachute",
-      "source": "Geoscan 201 manual appendix. Flight speed phrase 64-130 km/h is not one number. Engine phrase electric brushless, 220 W stays here; the 220 W flight-power estimate is power_const_w.",
-      "gaps": ["descent_m_s"]
+      "source": "Geoscan 201 manual appendix. Flight speed phrase 64-130 km/h is not one number. Engine phrase electric brushless, 220 W stays here; the 220 W flight-power estimate is power_const_w. CAT-001B: live physical source is model aircraft.physics; flight_time_s is converted maximum duration; max speed and working speed differ; legacy turn alternatives retained, live_turn_time_s is the live scalar.",
+      "gaps": [],
+      "mass_semantics": "MTOW_including_payload",
+      "survey_speed_m_s": {
+        "value": 25,
+        "unit": "m/s",
+        "mark": "estimate",
+        "source": "docs/mvp.pdf sections 6, 8, 12; data.json mvp_estimates",
+        "note": "Existing MVP uses survey speed = working airspeed, not maximum speed."
+      },
+      "reserve_fraction": {
+        "value": 0.05,
+        "unit": "fraction",
+        "mark": "estimate",
+        "source": "docs/mvp.pdf sections 6, 8, 12; data.json mvp_estimates",
+        "note": "Existing MVP 5% reserve policy, not hardware specification."
+      },
+      "takeoff_overhead_s": {
+        "value": 10,
+        "unit": "s",
+        "mark": "estimate",
+        "source": "docs/mvp.pdf sections 6, 8, 12; data.json mvp_estimates",
+        "note": "Existing catapult allowance; ascent h/climb is added separately."
+      },
+      "landing_overhead_s": {
+        "value": 120,
+        "unit": "s",
+        "mark": "estimate",
+        "source": "docs/mvp.pdf sections 6, 8, 12; data.json mvp_estimates",
+        "note": "Existing parachute allowance plus independent h/descent approximation; no detailed deployment dynamics."
+      },
+      "recharge_time_s": {
+        "value": 0,
+        "unit": "s",
+        "mark": "synthetic",
+        "source": "CAT-001B explicit legacy spare-battery timing assumption",
+        "note": "Required by repeated-sortie timing; no confirmed cycle time. MVP assumes immediate replacement by precharged spare (0 s downtime, not instant battery charging). Nonnegative handling range 0-600 s; choose zero to preserve existing schedule. Spare logistics are not modeled."
+      },
+      "live_turn_time_s": {
+        "value": 13.823,
+        "unit": "s",
+        "mark": "calculation",
+        "source": "docs/mvp.pdf sections 6, 8, 12; data.json mvp_estimates",
+        "note": "180-degree turn approximation: pi * repository rounded radius 110 m / 25 m/s = 13.823 s. Radius/bank are MVP assumptions, not measured turn performance."
+      }
     },
     {
       "id": "geoscan-801",
       "name": "Геоскан 801",
       "kind": "quadcopter",
-      "mass_kg": {"value": 1.5, "mark": "passport"},
-      "payload_mass_kg": null,
-      "airspeed_m_s": {"value": 15, "mark": "passport"},
+      "mass_kg": {
+        "value": 1.5,
+        "mark": "passport"
+      },
+      "payload_mass_kg": {
+        "status": "not_applicable",
+        "unit": "kg",
+        "semantics": "additional_payload_capacity_for_fixed_integrated_camera_configuration",
+        "source": "https://www.geoscan.ru/ru/products/geoscan801 (verified 2026-09-28); CAT-001B aircraft mass semantics",
+        "note": "This selectable 801 entry is the integrated visible/thermal-camera configuration. The 1.5 kg published mass is treated as complete maximum takeoff mass; no separate user payload is represented or added by the live model."
+      },
+      "airspeed_m_s": {
+        "value": 15,
+        "mark": "passport",
+        "note": "Maximum horizontal speed, not live working/survey speed."
+      },
       "airspeed_estimate_m_s": {
         "value": 12,
         "mark": "estimate",
         "note": "оценка; не подменяет airspeed_m_s"
       },
-      "climb_m_s": {"value": 4, "mark": "estimate"},
-      "descent_m_s": null,
-      "max_wind_m_s": {"value": 10, "mark": "passport"},
-      "flight_time_s": {"value": 2400, "mark": "passport"},
+      "climb_m_s": {
+        "value": 4,
+        "unit": "m/s",
+        "mark": "estimate",
+        "source": "docs/mvp.pdf sections 6, 8, 12; data.json mvp_estimates",
+        "note": "Repository unconfirmed climb estimate."
+      },
+      "descent_m_s": {
+        "value": 0.5,
+        "unit": "m/s",
+        "mark": "estimate",
+        "source": "https://download.geoscan.ru/site-files/801/Geoscan_801_Manual.pdf p82 (verified 2026-09-28)",
+        "note": "Conservative single-rate approximation using the slow 0.5 m/s manual landing stage (manual p82; 1 m/s from 10 to 3 m, 0.5 below 3 m). Applied to all descent because phased descent is out of scope; not a passport maximum."
+      },
+      "max_wind_m_s": {
+        "value": 10,
+        "mark": "passport"
+      },
+      "flight_time_s": {
+        "value": 2400,
+        "mark": "passport"
+      },
       "battery": {
-        "energy_wh": {"value": 90, "mark": "estimate", "note": "оценка из 40 мин при ~135 Вт"}
+        "chemistry": "Li-Po",
+        "nominal_voltage_v": {"value":15.4,"unit":"V","mark":"passport","source":"https://download.geoscan.ru/site-files/801/Geoscan_801_Manual.pdf p90 (verified 2026-09-28)","note":"Manufacturer nominal flight-battery voltage; not the controller battery."},
+        "capacity_ah": {"value":8.2,"unit":"Ah","mark":"passport","source":"https://download.geoscan.ru/site-files/801/Geoscan_801_Manual.pdf p90 (verified 2026-09-28)","note":"Converted from 8200 mAh."},
+        "energy_wh": {
+          "value": 126.28,
+          "unit": "Wh",
+          "mark": "passport",
+          "source": "https://www.geoscan.ru/ru/products/geoscan801 and https://download.geoscan.ru/site-files/801/Geoscan_801_Manual.pdf pp88-90 (verified 2026-09-28)",
+          "note": "Manufacturer UAV battery (NOT controller battery): 126.28 Wh, 15.4 V, 8200 mAh, manual p90; replaces unconfirmed repository 90 Wh estimate."
+        }
       },
       "power_coeffs": {
-        "kh": {"value": 90.0, "mark": "estimate"},
-        "kv": {"value": 0.02, "mark": "estimate"},
-        "kw": {"value": 0.008, "mark": "estimate"}
+        "kh": {
+          "value": 90,
+          "mark": "estimate"
+        },
+        "kv": {
+          "value": 0.02,
+          "mark": "estimate"
+        },
+        "kw": {
+          "value": 0.008,
+          "mark": "estimate"
+        }
       },
       "turn_time_s": [
-        {"value": 5, "mark": "estimate"},
-        {"value": 3, "mark": "estimate"},
-        {"value": 1, "mark": "estimate"}
+        {
+          "value": 5,
+          "mark": "estimate"
+        },
+        {
+          "value": 3,
+          "mark": "estimate"
+        },
+        {
+          "value": 1,
+          "mark": "estimate"
+        }
       ],
-      "takeoff": null,
-      "landing": null,
-      "source": "Geoscan 801 specification sheet, quadcopter. Sony A6000 and Pollux are not on this aircraft.",
-      "gaps": ["payload_mass_kg", "descent_m_s", "takeoff", "landing"]
+      "takeoff": "vertical",
+      "landing": "vertical",
+      "source": "Geoscan 801 specification sheet, quadcopter. Sony A6000 and Pollux are not on this aircraft. CAT-001B: live physical source is model aircraft.physics; flight_time_s is converted maximum duration; max speed and working speed differ; legacy turn alternatives retained, live_turn_time_s is the live scalar.",
+      "gaps": [],
+      "mass_semantics": "complete_aircraft_mass_including_integrated_equipment_MVP",
+      "survey_speed_m_s": {
+        "value": 12,
+        "unit": "m/s",
+        "mark": "estimate",
+        "source": "docs/mvp.pdf sections 6, 8, 12; data.json mvp_estimates",
+        "note": "Existing MVP uses survey speed = working airspeed, not maximum speed."
+      },
+      "reserve_fraction": {
+        "value": 0.05,
+        "unit": "fraction",
+        "mark": "estimate",
+        "source": "docs/mvp.pdf sections 6, 8, 12; data.json mvp_estimates",
+        "note": "Existing MVP 5% reserve policy, not hardware specification."
+      },
+      "takeoff_overhead_s": {
+        "value": 0,
+        "unit": "s",
+        "mark": "estimate",
+        "source": "docs/mvp.pdf sections 6, 8, 12; data.json mvp_estimates",
+        "note": "Vertical launch has no additional fixed overhead in existing MVP; h/climb accounts for launch."
+      },
+      "landing_overhead_s": {
+        "value": 0,
+        "unit": "s",
+        "mark": "estimate",
+        "source": "docs/mvp.pdf sections 6, 8, 12; data.json mvp_estimates",
+        "note": "Vertical landing has no additional fixed overhead in existing MVP; h/descent accounts for landing."
+      },
+      "recharge_time_s": {
+        "value": 0,
+        "unit": "s",
+        "mark": "synthetic",
+        "source": "CAT-001B explicit legacy spare-battery timing assumption",
+        "note": "Required by repeated-sortie timing; no confirmed cycle time. MVP assumes immediate replacement by precharged spare (0 s downtime, not instant battery charging). Nonnegative handling range 0-600 s; choose zero to preserve existing schedule. Spare logistics are not modeled."
+      },
+      "live_turn_time_s": {
+        "value": 5,
+        "unit": "s",
+        "mark": "estimate",
+        "source": "docs/mvp.pdf sections 6, 8, 12; data.json mvp_estimates",
+        "note": "Choose conservative 5 s from existing MVP alternatives [5,3,1]; fixed turn penalty."
+      }
     }
   ],
   "cameras": [
@@ -99,50 +398,53 @@
       "id": "geoscan-pf1b",
       "name": "Geoscan PF1B",
       "spectra": ["RGB"],
-      "sensor_width_mm": {"value": 23.5, "mark": "passport"},
-      "sensor_height_mm": {"value": 15.6, "mark": "passport"},
-      "focal_length_mm": {"value": 20, "mark": "passport"},
-      "image_width_px": {"value": 6000, "mark": "passport"},
-      "image_height_px": {"value": 4000, "mark": "passport"},
-      "bands": null,
-      "source": "Geoscan Gemini specification sheet",
+      "sensor_width_mm": {"value":23.5,"mark":"passport"},
+      "sensor_height_mm": {"value":15.6,"mark":"passport"},
+      "focal_length_mm": {"value":20,"mark":"passport"},
+      "image_width_px": {"value":6000,"mark":"passport"},
+      "image_height_px": {"value":4000,"mark":"passport"},
+      "bands": [],
+      "bands_note": "not applicable: RGB camera; no discrete multispectral band-centre list is modeled.",
+      "source": "Existing model specs; docs/mvp.pdf pp.12-13; docs/cameras.pdf p.1 (Gemini specification summary).",
       "gaps": []
     },
     {
       "id": "sony-umc-r10c-16",
       "name": "Sony UMC-R10C 16 mm",
       "spectra": ["RGB"],
-      "sensor_width_mm": {"value": 23.2, "mark": "estimate"},
-      "sensor_height_mm": {"value": 15.4, "mark": "estimate"},
-      "focal_length_mm": {"value": 16, "mark": "estimate"},
-      "image_width_px": {"value": 5456, "mark": "estimate"},
-      "image_height_px": {"value": 3632, "mark": "estimate"},
-      "bands": null,
-      "source": "Geoscan Gemini specification sheet footnote. Phrase «16 или 20 mm» is not one number. Данные оценочные, в PDF ТТХ отсутствуют.",
+      "sensor_width_mm": {"value":23.2,"mark":"estimate","note":"Repository estimate; UMC passport not present in committed manufacturer PDFs. Explicit 16 mm mission configuration."},
+      "sensor_height_mm": {"value":15.4,"mark":"estimate","note":"Repository estimate; UMC passport not present in committed manufacturer PDFs. Explicit 16 mm mission configuration."},
+      "focal_length_mm": {"value":16,"mark":"estimate","note":"Repository estimate; UMC passport not present in committed manufacturer PDFs. Explicit 16 mm mission configuration."},
+      "image_width_px": {"value":5456,"mark":"estimate","note":"Repository estimate; UMC passport not present in committed manufacturer PDFs. Explicit 16 mm mission configuration."},
+      "image_height_px": {"value":3632,"mark":"estimate","note":"Repository estimate; UMC passport not present in committed manufacturer PDFs. Explicit 16 mm mission configuration."},
+      "bands": [],
+      "bands_note": "not applicable: RGB camera; no discrete multispectral band-centre list is modeled.",
+      "source": "docs/cameras.pdf p.1 and docs/mvp.pdf p.13; body plus explicitly selected 16 mm lens.",
       "gaps": []
     },
     {
       "id": "sony-umc-r10c-20",
       "name": "Sony UMC-R10C 20 mm",
       "spectra": ["RGB"],
-      "sensor_width_mm": {"value": 23.2, "mark": "estimate"},
-      "sensor_height_mm": {"value": 15.4, "mark": "estimate"},
-      "focal_length_mm": {"value": 20, "mark": "estimate"},
-      "image_width_px": {"value": 5456, "mark": "estimate"},
-      "image_height_px": {"value": 3632, "mark": "estimate"},
-      "bands": null,
-      "source": "Geoscan Gemini specification sheet footnote. Phrase «16 или 20 mm» is not one number. Данные оценочные, в PDF ТТХ отсутствуют.",
+      "sensor_width_mm": {"value":23.2,"mark":"estimate","note":"Repository estimate; UMC passport not present in committed manufacturer PDFs. Explicit 20 mm mission configuration."},
+      "sensor_height_mm": {"value":15.4,"mark":"estimate","note":"Repository estimate; UMC passport not present in committed manufacturer PDFs. Explicit 20 mm mission configuration."},
+      "focal_length_mm": {"value":20,"mark":"estimate","note":"Repository estimate; UMC passport not present in committed manufacturer PDFs. Explicit 20 mm mission configuration."},
+      "image_width_px": {"value":5456,"mark":"estimate","note":"Repository estimate; UMC passport not present in committed manufacturer PDFs. Explicit 20 mm mission configuration."},
+      "image_height_px": {"value":3632,"mark":"estimate","note":"Repository estimate; UMC passport not present in committed manufacturer PDFs. Explicit 20 mm mission configuration."},
+      "bands": [],
+      "bands_note": "not applicable: RGB camera; no discrete multispectral band-centre list is modeled.",
+      "source": "docs/cameras.pdf p.1 and docs/mvp.pdf p.13; body plus explicitly selected 20 mm lens.",
       "gaps": []
     },
     {
       "id": "geoscan-pollux",
       "name": "Geoscan Pollux",
       "spectra": ["multispectral", "RGB"],
-      "sensor_width_mm": {"value": 5.04, "mark": "calculation"},
-      "sensor_height_mm": {"value": 3.78, "mark": "calculation"},
-      "focal_length_mm": {"value": 8, "mark": "passport"},
-      "image_width_px": {"value": 1440, "mark": "passport"},
-      "image_height_px": {"value": 1080, "mark": "passport"},
+      "sensor_width_mm": {"value":5.04,"mark":"calculation","note":"6.3 mm diagonal and 1440:1080 aspect: width = 6.3 * 4/5 = 5.04 mm."},
+      "sensor_height_mm": {"value":3.78,"mark":"calculation","note":"6.3 mm diagonal and 1440:1080 aspect: height = 6.3 * 3/5 = 3.78 mm."},
+      "focal_length_mm": {"value":8,"mark":"passport"},
+      "image_width_px": {"value":1440,"mark":"passport"},
+      "image_height_px": {"value":1080,"mark":"passport"},
       "bands": [
         {"value": 470, "mark": "passport"},
         {"value": 560, "mark": "passport"},
@@ -150,112 +452,122 @@
         {"value": 720, "mark": "passport"},
         {"value": 840, "mark": "passport"}
       ],
-      "source": "Geoscan Gemini specification sheet and Geoscan 201 manual. Sensor diagonal 6.3 mm stays here and is not a side. Sides are the 4:3 rectangle of that diagonal.",
+      "source": "Existing model specs; docs/mvp.pdf pp.12-13.",
       "gaps": []
     },
     {
       "id": "riebo-r4",
       "name": "Riebo R4",
       "spectra": ["RGB"],
-      "sensor_width_mm": {"value": 35.9, "mark": "passport"},
-      "sensor_height_mm": {"value": 24, "mark": "passport"},
-      "focal_length_mm": {"value": 40, "mark": "passport"},
-      "image_width_px": {"value": 8204, "mark": "calculation"},
-      "image_height_px": {"value": 5485, "mark": "calculation"},
-      "bands": null,
-      "source": "Geoscan 201 manual appendix. 45 MP is not a width and height; pixels are the nearest integers of a 45e6 rectangle in the sensor proportion with a square pixel.",
+      "sensor_width_mm": {"value":35.9,"mark":"passport"},
+      "sensor_height_mm": {"value":24,"mark":"passport"},
+      "focal_length_mm": {"value":40,"mark":"passport"},
+      "image_width_px": {"value":8204,"mark":"calculation","note":"W = round(sqrt(45e6 * 35.9/24)) = 8204; square-pixel assumption. Chosen existing fleet derivation; PDF approx 8192 differs."},
+      "image_height_px": {"value":5485,"mark":"calculation","note":"H = round(sqrt(45e6 * 24/35.9)) = 5485; square-pixel assumption. PDF approx 5464 differs; not passport."},
+      "bands": [],
+      "bands_note": "not applicable: RGB camera; no discrete multispectral band-centre list is modeled.",
+      "source": "Existing model specs (45 MP, 35.9 x 24 mm, 40 mm); existing fleet sensor-aspect derivation.",
       "gaps": []
     },
     {
       "id": "riebo-r6",
       "name": "Riebo R6",
       "spectra": ["RGB"],
-      "sensor_width_mm": {"value": 35.9, "mark": "passport"},
-      "sensor_height_mm": {"value": 24, "mark": "passport"},
-      "focal_length_mm": {"value": 40, "mark": "passport"},
-      "image_width_px": {"value": 9552, "mark": "calculation"},
-      "image_height_px": {"value": 6386, "mark": "calculation"},
-      "bands": null,
-      "source": "Geoscan 201 manual appendix. 61 MP is not a width and height; pixels are the nearest integers of a 61e6 rectangle in the sensor proportion with a square pixel.",
+      "sensor_width_mm": {"value":35.9,"mark":"passport"},
+      "sensor_height_mm": {"value":24,"mark":"passport"},
+      "focal_length_mm": {"value":40,"mark":"passport"},
+      "image_width_px": {"value":9552,"mark":"calculation","note":"W = round(sqrt(61e6 * 35.9/24)) = 9552; square-pixel assumption; not passport."},
+      "image_height_px": {"value":6386,"mark":"calculation","note":"H = round(sqrt(61e6 * 24/35.9)) = 6386; chosen existing fleet sensor-aspect derivation. PDF approx 6368 differs; not passport."},
+      "bands": [],
+      "bands_note": "not applicable: RGB camera; no discrete multispectral band-centre list is modeled.",
+      "source": "Existing model specs (61 MP, 35.9 x 24 mm, 40 mm); existing fleet sensor-aspect derivation.",
       "gaps": []
     },
     {
       "id": "sony-dsc-rx1rm2",
       "name": "Sony DSC-RX1RM2",
       "spectra": ["RGB"],
-      "sensor_width_mm": {"value": 35.9, "mark": "passport"},
-      "sensor_height_mm": {"value": 24, "mark": "passport"},
-      "focal_length_mm": null,
-      "image_width_px": null,
-      "image_height_px": null,
-      "bands": null,
-      "source": "Geoscan 201 manual appendix. 43.6 MP stays in the source text. Focal length is absent, so frame pixels are not derived.",
-      "gaps": ["focal_length_mm", "image_width_px", "image_height_px"]
+      "sensor_width_mm": {"value":35.9,"mark":"passport"},
+      "sensor_height_mm": {"value":24,"mark":"passport"},
+      "focal_length_mm": {"value":35,"mark":"estimate","note":"35 mm fixed lens from repository camera summaries; no new manufacturer verification."},
+      "image_width_px": {"value":7952,"mark":"estimate","note":"7952 px is the repository table estimate, not computed from marketing 43.6 MP and not passport."},
+      "image_height_px": {"value":5304,"mark":"estimate","note":"5304 px is the repository table estimate for approx 42.4 MP effective image, not passport."},
+      "bands": [],
+      "bands_note": "not applicable: RGB camera; no discrete multispectral band-centre list is modeled.",
+      "source": "Sensor from existing model specs and docs/mvp.pdf p.12; lens/pixels from docs/cameras.pdf p.1 and docs/mvp.pdf p.13.",
+      "gaps": []
     },
     {
       "id": "sony-dsc-rx1rm3",
       "name": "Sony DSC-RX1RM3",
       "spectra": ["RGB"],
-      "sensor_width_mm": {"value": 35.9, "mark": "passport"},
-      "sensor_height_mm": {"value": 24, "mark": "passport"},
-      "focal_length_mm": null,
-      "image_width_px": null,
-      "image_height_px": null,
-      "bands": null,
-      "source": "Geoscan 201 manual appendix. 61 MP stays in the source text. Focal length is absent, so frame pixels are not derived.",
-      "gaps": ["focal_length_mm", "image_width_px", "image_height_px"]
+      "sensor_width_mm": {"value":35.7,"mark":"passport","note":"Official Sony sensor width supersedes conflicting 35.9 mm in old model/mvp.pdf; cameras.pdf has 35.7 mm."},
+      "sensor_height_mm": {"value":23.8,"mark":"passport","note":"Official Sony sensor height supersedes conflicting 24 mm in old model/mvp.pdf; cameras.pdf has 23.8 mm."},
+      "focal_length_mm": {"value":35,"mark":"estimate","note":"35 mm fixed lens from repository summaries."},
+      "image_width_px": {"value":9504,"mark":"estimate","note":"9504 px from repository estimated camera table; not MP substituted for width."},
+      "image_height_px": {"value":6336,"mark":"estimate","note":"6336 px from repository estimated camera table."},
+      "bands": [],
+      "bands_note": "not applicable: RGB camera; no discrete multispectral band-centre list is modeled.",
+      "source": "Sensor conflict resolved 2026-09-28 with https://www.sony.co.uk/electronics/cyber-shot-compact-cameras/dsc-rx1rm3/specifications ; lens/pixels from repository docs/cameras.pdf p.1 and docs/mvp.pdf p.13.",
+      "gaps": []
     },
     {
       "id": "sony-zv-e10",
       "name": "Sony ZV-E10",
       "spectra": ["RGB"],
-      "sensor_width_mm": {"value": 23.5, "mark": "passport"},
-      "sensor_height_mm": {"value": 15.6, "mark": "passport"},
-      "focal_length_mm": null,
-      "image_width_px": null,
-      "image_height_px": null,
-      "bands": null,
-      "source": "Geoscan 201 manual appendix. 24.3 MP stays in the source text. Focal length is absent, so frame pixels are not derived.",
-      "gaps": ["focal_length_mm", "image_width_px", "image_height_px"]
+      "sensor_width_mm": {"value":23.5,"mark":"passport"},
+      "sensor_height_mm": {"value":15.6,"mark":"passport"},
+      "focal_length_mm": {"value":16,"mark":"synthetic","source":"CAT-001C explicit mission-lens assumption; Sony ZV-E10 official specifications confirm E-mount and reference E PZ 16–50 mm OSS as a lens configuration.","note":"Explicit Sony E PZ 16–50 mm OSS mission configuration at 16 mm wide end. Repository does not prove this lens is installed on every Geoscan 201; assumed range 16–50 mm, chosen 16 mm for a wide aerial-survey field of view. This is not a body focal length."},
+      "image_width_px": {"value":6000,"mark":"passport","source":"https://www.sony.com/electronics/support/e-mount-body-zv-e-series/zv-e10/specifications (verified 2026-09-28)","note":"Maximum still-image L size, 3:2: 6000 × 4000 pixels."},
+      "image_height_px": {"value":4000,"mark":"passport","source":"https://www.sony.com/electronics/support/e-mount-body-zv-e-series/zv-e10/specifications (verified 2026-09-28)","note":"Maximum still-image L size, 3:2: 6000 × 4000 pixels."},
+      "bands": [],
+      "bands_note": "not applicable: RGB camera; no discrete multispectral band-centre list is modeled.",
+      "lens_configuration": "Sony E PZ 16–50 mm OSS at 16 mm (explicit MVP assumption; installed Geoscan 201 lens not confirmed).",
+      "source": "Sony official ZV-E10 specifications for 23.5 × 15.6 mm sensor, 6000 × 4000 still image and E-mount; lens configuration is a CAT-001C synthetic assumption.",
+      "gaps": []
     },
     {
       "id": "geoscan-801-visible-4-35",
       "name": "Geoscan 801 visible 4.35 mm",
       "spectra": ["RGB"],
-      "sensor_width_mm": null,
-      "sensor_height_mm": null,
-      "focal_length_mm": {"value": 4.35, "mark": "passport"},
-      "image_width_px": {"value": 4000, "mark": "estimate"},
-      "image_height_px": {"value": 3000, "mark": "estimate"},
-      "bands": null,
-      "source": "Geoscan 801 specification sheet. Sensor class 1/2.3\" is not converted to millimetres. Frame 4000×3000 is an estimate at 4:3.",
-      "gaps": ["sensor_width_mm", "sensor_height_mm"]
+      "sensor_width_mm": {"value":6.17,"mark":"estimate","note":"Approx 6.17 mm from repository nominal 1/2.3 optical-format estimate; NOT a direct inch conversion or exact measured sensor."},
+      "sensor_height_mm": {"value":4.55,"mark":"estimate","note":"Approx 4.55 mm from repository optical-format estimate; physical height not used by current geometry."},
+      "focal_length_mm": {"value":4.35,"mark":"passport"},
+      "image_width_px": {"value":4000,"mark":"estimate","note":"4000 px repository 12 MP 4:3 frame estimate."},
+      "image_height_px": {"value":3000,"mark":"estimate","note":"3000 px repository 12 MP 4:3 frame estimate."},
+      "bands": [],
+      "bands_note": "not applicable: RGB camera; no discrete multispectral band-centre list is modeled.",
+      "source": "Lens from existing model specs; approximate sensor/frame from docs/cameras.pdf p.1 and docs/mvp.pdf p.13.",
+      "gaps": []
     },
     {
       "id": "geoscan-801-visible-16",
       "name": "Geoscan 801 visible 16 mm",
       "spectra": ["RGB"],
-      "sensor_width_mm": null,
-      "sensor_height_mm": null,
-      "focal_length_mm": {"value": 16, "mark": "passport"},
-      "image_width_px": {"value": 4000, "mark": "estimate"},
-      "image_height_px": {"value": 3000, "mark": "estimate"},
-      "bands": null,
-      "source": "Geoscan 801 specification sheet. Sensor class 1/2.3\" is not converted to millimetres. Frame 4000×3000 is an estimate at 4:3.",
-      "gaps": ["sensor_width_mm", "sensor_height_mm"]
+      "sensor_width_mm": {"value":6.17,"mark":"estimate","note":"Approx 6.17 mm from repository nominal 1/2.3 optical-format estimate; NOT a direct inch conversion or exact measured sensor."},
+      "sensor_height_mm": {"value":4.55,"mark":"estimate","note":"Approx 4.55 mm from repository optical-format estimate; physical height not used by current geometry."},
+      "focal_length_mm": {"value":16,"mark":"passport"},
+      "image_width_px": {"value":4000,"mark":"estimate","note":"4000 px repository 12 MP 4:3 frame estimate."},
+      "image_height_px": {"value":3000,"mark":"estimate","note":"3000 px repository 12 MP 4:3 frame estimate."},
+      "bands": [],
+      "bands_note": "not applicable: RGB camera; no discrete multispectral band-centre list is modeled.",
+      "source": "Lens from existing model specs; approximate sensor/frame from docs/cameras.pdf p.1 and docs/mvp.pdf p.13.",
+      "gaps": []
     },
     {
       "id": "geoscan-801-thermal",
       "name": "Geoscan 801 thermal",
       "spectra": ["infrared"],
-      "sensor_width_mm": {"value": 10.88, "mark": "calculation"},
-      "sensor_height_mm": {"value": 8.704, "mark": "calculation"},
-      "focal_length_mm": {"value": 9.1, "mark": "passport"},
-      "image_width_px": {"value": 640, "mark": "passport"},
-      "image_height_px": {"value": 512, "mark": "passport"},
-      "pixel_pitch_um": {"value": 17, "mark": "calculation", "note": "типовое для класса 640 × 512"},
-      "bands": null,
-      "source": "Geoscan 801 specification sheet. Spectral range 8–14 µm is not one number. Sensor sides are the frame times the 17 µm class pitch.",
+      "sensor_width_mm": {"value":10.88,"mark":"calculation","note":"640 px * 17 um / 1000 = 10.88 mm. 17 um is a repository typical-class estimate, not confirmed sensor passport."},
+      "sensor_height_mm": {"value":8.704,"mark":"calculation","note":"512 px * 17 um / 1000 = 8.704 mm. Conditional calculation using estimated pitch, not pixel counts as mm."},
+      "focal_length_mm": {"value":9.1,"mark":"passport"},
+      "image_width_px": {"value":640,"mark":"passport"},
+      "image_height_px": {"value":512,"mark":"passport"},
+      "pixel_pitch_um": {"value": 17, "mark": "estimate", "note": "repository typical-class assumption, not a manufacturer measurement"},
+      "bands": [],
+      "bands_note": "not applicable: thermal response is represented as a continuous wavelength range, not discrete multispectral band centres.",
+      "spectral_range_um": {"value":[8,14],"unit":"µm","mark":"passport","source":"https://www.geoscan.ru/ru/products/geoscan801 (verified 2026-09-28)","note":"Manufacturer-published infrared observation range; separate from discrete band centres."},
+      "source": "Existing model specs; docs/cameras.pdf pp.1-2; physical dimensions use the repository's assumed 17 um pitch; spectral range from official Geoscan 801 page.",
       "gaps": []
     }
   ],

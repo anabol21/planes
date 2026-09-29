@@ -160,6 +160,22 @@ def dump_response(response: ComputeResponse) -> str:
     return json.dumps(response_to_dict(response), ensure_ascii=False) + "\n"
 
 
+def unique_limitations(items: list[str] | tuple[str, ...]) -> tuple[str, ...]:
+    """Keep the first copy of each identical limitation string.
+
+    Pack loops may append the same endurance/uncovered-swath line once per
+    swath or UAV. Distinct messages stay in their original order.
+    """
+    seen: set[str] = set()
+    ordered: list[str] = []
+    for item in items:
+        if item in seen:
+            continue
+        seen.add(item)
+        ordered.append(item)
+    return tuple(ordered)
+
+
 def make_response(
     *,
     job_id: str,
@@ -188,7 +204,7 @@ def make_response(
             objective=objective,
             runtime_seconds=elapsed,
             seed=seed,
-            limitations=tuple(limitations),
+            limitations=unique_limitations(limitations),
         ),
         artifacts=tuple(artifacts),
     )
@@ -257,7 +273,7 @@ def _parse_report(value: Any) -> SolverReport:
         objective=objective,
         runtime_seconds=float(runtime),
         seed=seed,
-        limitations=tuple(limitations),
+        limitations=unique_limitations(limitations),
     )
 
 

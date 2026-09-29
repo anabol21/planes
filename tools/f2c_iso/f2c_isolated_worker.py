@@ -227,7 +227,7 @@ def _load_mission_dem(scenario: dict[str, Any]) -> tuple[Any, str, list[str]]:
     notes: list[str] = []
     path = _scenario_dem_path(scenario)
     if path is None:
-        notes.append("temporary flat terrain; OpenTopography was not called")
+        notes.append("temporary flat terrain; no readable dem_file on scenario (mono h=0)")
         notes.append("dem_file: mono")
         return _MonoDem(), "mono", notes
 

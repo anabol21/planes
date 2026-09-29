@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import socket
 import sys
 import time
 import unittest
@@ -10,6 +11,7 @@ import urllib.request
 
 from support import TOKEN, env_vars, load_fixture, post_json, vps_listener
 
+from planes.runtime.http_server import MAX_BODY_BYTES
 from planes.runtime.lock import JobLock
 
 
@@ -46,6 +48,27 @@ class HttpListenerTest(unittest.TestCase):
         self.assertEqual(body["outcome"], "error")
         self.assertNotEqual(body["outcome"], "infeasible")
         self.assertNotIn("mission_plan", body)
+
+    def test_body_over_old_mebibyte_ceiling_is_accepted(self) -> None:
+        self.assertEqual(32 * 1024 * 1024, MAX_BODY_BYTES)
+        payload = {"pad": "x" * 1_100_000}
+        encoded = json.dumps(payload).encode("utf-8")
+        self.assertGreater(len(encoded), 1_048_576)
+        self.assertLessEqual(len(encoded), MAX_BODY_BYTES)
+        with vps_listener():
+            status, body = post_json(payload, TOKEN)
+        self.assertEqual(status, 200)
+        self.assertNotEqual(body.get("error"), "body_too_large")
+        self.assertNotIn("1048576", json.dumps(body))
+        self.assertNotIn(TOKEN, json.dumps(body))
+
+    def test_body_over_32_mib_is_rejected(self) -> None:
+        with vps_listener():
+            status, body = _post_declared_length(MAX_BODY_BYTES + 1, TOKEN)
+        self.assertEqual(status, 400)
+        self.assertEqual(body["error"], "body_too_large")
+        self.assertEqual(body["contract_version"], "v0")
+        self.assertNotIn(TOKEN, json.dumps(body))
 
     def test_missing_token_is_401(self) -> None:
         with vps_listener():
@@ -95,6 +118,31 @@ class HttpListenerTest(unittest.TestCase):
         self.assertGreater(runtime, limit + WRAPPER_SLACK_SECONDS - 0.15)
         self.assertLess(runtime, limit + WRAPPER_SLACK_SECONDS + 1.0)
         self.assertLess(elapsed, limit + WRAPPER_SLACK_SECONDS + _CLI_BUFFER_SECONDS + 1.5)
+
+
+def _post_declared_length(length: int, token: str) -> tuple[int, dict]:
+    request = (
+        "POST /v0/solve HTTP/1.1\r\n"
+        "Host: 127.0.0.1:8080\r\n"
+        f"Authorization: Bearer {token}\r\n"
+        "Content-Type: application/json\r\n"
+        f"Content-Length: {length}\r\n"
+        "Connection: close\r\n"
+        "\r\n"
+    ).encode("ascii")
+    with socket.create_connection(("127.0.0.1", 8080), timeout=5) as sock:
+        sock.sendall(request)
+        sock.shutdown(socket.SHUT_WR)
+        chunks: list[bytes] = []
+        while True:
+            chunk = sock.recv(4096)
+            if not chunk:
+                break
+            chunks.append(chunk)
+    raw = b"".join(chunks)
+    head, _, payload = raw.partition(b"\r\n\r\n")
+    status = int(head.split(b" ", 2)[1])
+    return status, json.loads(payload.decode("utf-8"))
 
 
 if __name__ == "__main__":

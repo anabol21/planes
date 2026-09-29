@@ -63,14 +63,11 @@ def solve(problem: Problem, deadline: float) -> Solution | Infeasible | TimedOut
 
     An envelope with ``aerodromes`` and ``boards`` calls
     ``grisha_f2c_bridge.solve_via_isolated_grisha_f2c`` (isolated F2C
-    generateBestSwaths / auto-angle; strip_direction_deg ignored) when
-    ``PLANES_SOLVE_BACKEND`` is unset or ``grisha_f2c_iso``. Rollback via
-    ``PLANES_SOLVE_BACKEND=legacy_fields2cover`` calls
-    ``geo_mission.solve_envelope``. An envelope that still has ``pads`` or
-    ``uav_types`` is rejected. A one-card ``takeoff`` + ``uav`` scenario,
-    and any other scenario that is not that envelope, raises ``ValueError``
-    before any gibrid import. The message says the listener only accepts
-    the geo envelope. The pipeline turns that into ``outcome=error``.
+    generateBestSwaths / auto-angle; strip_direction_deg ignored). An
+    envelope that still has ``pads`` or ``uav_types`` is rejected. A one-card ``takeoff`` + ``uav`` scenario, and any other
+    scenario that is not that envelope, raises ``ValueError`` before any
+    gibrid import. The message says the listener only accepts the geo
+    envelope. The pipeline turns that into ``outcome=error``.
 
     ``deadline`` is ``time.monotonic()`` plus the problem time limit. The
     geo envelope observes it. This function does not call ``run``,
@@ -90,7 +87,6 @@ def _solve_outer(problem: Problem, deadline: float) -> Solution | Infeasible | T
 
     Falls back to legacy ``geo_mission.solve_envelope`` only when env
     ``PLANES_SOLVE_BACKEND=legacy_fields2cover`` is set (rollback).
-    This is pack/split F2C, not full mvp LNS/assignment.
     """
     import os
 

@@ -8,7 +8,7 @@ const plan = fixture.mission_plan as MissionPlan;
 
 describe("missionPlanToGeoJson", () => {
   it("keeps one route as one LineString with exact waypoint order", () => {
-    const oneRoute: MissionPlan = { routes: [plan.routes![0]] };
+    const oneRoute: MissionPlan = { routes: [plan.routes![0]], areas: plan.areas };
     const result = missionPlanToGeoJson(oneRoute);
 
     expect(result.features).toHaveLength(1);
@@ -24,6 +24,13 @@ describe("missionPlanToGeoJson", () => {
 
   it("uses GeoJSON longitude-latitude order", () => {
     const result = missionPlanToGeoJson({
+      areas: [{
+        id: "survey",
+        polygon: {
+          type: "Polygon",
+          coordinates: [[[37.59, 55.74], [37.62, 55.74], [37.62, 55.77], [37.59, 55.77], [37.59, 55.74]]],
+        },
+      }],
       routes: [{
         uav_id: "UAV",
         flight_index: 0,
@@ -63,6 +70,13 @@ describe("missionPlanToGeoJson", () => {
 
   it("preserves consecutive duplicate XY waypoints", () => {
     const result = missionPlanToGeoJson({
+      areas: [{
+        id: "survey",
+        polygon: {
+          type: "Polygon",
+          coordinates: [[[37.59, 55.74], [37.62, 55.74], [37.62, 55.77], [37.59, 55.77], [37.59, 55.74]]],
+        },
+      }],
       routes: [{
         uav_id: "UAV",
         flight_index: 0,
@@ -152,5 +166,55 @@ describe("missionPlanToGeoJson", () => {
     expect(different.obstacles.features[0].properties.id).toBe("mast-zero");
     expect(different.obstacles.features[0].properties.height_m).toBe(0);
     expect(different.constraints.features).toHaveLength(1);
+  });
+
+  it("draws one color per UAV and no line from a far pad outside the survey", () => {
+    const survey = [
+      [37.6, 55.75],
+      [37.61, 55.75],
+      [37.61, 55.76],
+      [37.6, 55.76],
+      [37.6, 55.75],
+    ];
+    const source: MissionPlan = {
+      areas: [{
+        id: "survey-1",
+        polygon: { type: "Polygon", coordinates: [survey] },
+      }],
+      routes: [
+        {
+          uav_id: "БВС 1",
+          flight_index: 0,
+          vpp_id: "дальняя 1",
+          waypoints: [
+            { lat: 54.0, lon: 36.0, alt_m: 100 },
+            { lat: 55.755, lon: 37.605, alt_m: 200 },
+          ],
+        },
+        {
+          uav_id: "БВС 2",
+          flight_index: 0,
+          vpp_id: "дальняя 2",
+          waypoints: [
+            { lat: 54.2, lon: 36.2, alt_m: 100 },
+            { lat: 55.752, lon: 37.602, alt_m: 180 },
+          ],
+        },
+      ],
+    };
+    const result = missionPlanToGeoJson(source);
+    expect(result.features).toHaveLength(2);
+    expect(new Set(result.features.map((feature) => feature.properties.color)).size).toBe(2);
+    expect(result.features[0].properties.uav_id).not.toBe(result.features[1].properties.uav_id);
+    const drawn = result.features.flatMap((feature) => feature.geometry.coordinates);
+    expect(drawn.some(([lon, lat]) => lon === 36.0 && lat === 54.0)).toBe(false);
+    expect(drawn.some(([lon, lat]) => lon === 36.2 && lat === 54.2)).toBe(false);
+    for (const [lon, lat] of drawn) {
+      expect(lon).toBeGreaterThanOrEqual(37.6);
+      expect(lon).toBeLessThanOrEqual(37.61);
+      expect(lat).toBeGreaterThanOrEqual(55.75);
+      expect(lat).toBeLessThanOrEqual(55.76);
+    }
+    expect(source.routes?.[0].waypoints[0]).toEqual({ lat: 54.0, lon: 36.0, alt_m: 100 });
   });
 });

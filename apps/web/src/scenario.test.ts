@@ -266,7 +266,7 @@ describe("prototype scenario", () => {
     expect(String(built.survey_kml)).toContain("South");
   });
 
-  it("writes GSD and overlaps from the form and does not send strip direction", () => {
+  it("writes GSD and overlaps and does not send a user-chosen strip angle", () => {
     const custom = inputs();
     custom.gsdCmPerPx = 4.5;
     custom.forwardOverlap = 0.8;
@@ -278,6 +278,7 @@ describe("prototype scenario", () => {
       side_overlap: 0.5,
     });
     expect(built.survey).not.toHaveProperty("strip_direction_deg");
+    expect(JSON.stringify(built)).not.toContain("strip_direction_deg");
     expect(built).not.toHaveProperty("power_coeffs");
   });
 

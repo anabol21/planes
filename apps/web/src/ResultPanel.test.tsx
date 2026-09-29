@@ -3,6 +3,8 @@
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import enduranceFixture from "./test-fixtures/B2_recharge_OFF.response.json";
+import catalogFixture from "./test-fixtures/catalog_validation.json";
 import fixture from "./test-fixtures/mission-result-v0.json";
 import type { JobResult } from "./types";
 
@@ -15,9 +17,125 @@ import { ResultPanel } from "./App";
 afterEach(cleanup);
 
 describe("ResultPanel mission map gating", () => {
+  it("summarizes the solver metric without a backend assignment list", () => {
+    const result = {
+      ...fixture,
+      mission_plan: {
+        ...fixture.mission_plan,
+        criterion: "min_time",
+        mission: { mission_time_s: 120.5, total_flight_time_s: 400 },
+      },
+      solver_report: {
+        ...fixture.solver_report,
+        limitations: ["PHYS-DEM: Рельеф отсутствует или нечисловой"],
+      },
+    };
+    render(<ResultPanel result={result as JobResult} />);
+    expect(screen.getByText("C_max")).toBeTruthy();
+    expect(screen.getByText("120.50 с")).toBeTruthy();
+    expect(screen.getByText("PHYS-DEM")).toBeTruthy();
+    expect(screen.queryByText(/Задание backend/)).toBeNull();
+  });
+
+  it("shows a physical diagnostic code in the mission summary", () => {
+    const result = {
+      ...fixture,
+      solver_report: {
+        ...fixture.solver_report,
+        limitations: ["PHYS-AIRSPACE: Маршрут входит в зону, активную на высоте сегмента"],
+      },
+    };
+    render(<ResultPanel result={result as JobResult} />);
+    expect(screen.getByText("PHYS-AIRSPACE")).toBeTruthy();
+    expect(document.querySelector(".limitations")).toBeNull();
+  });
+
+  it("does not render the limitations list panel", () => {
+    const reason = "uncovered swaths=5378: a swath exceeds endurance even with recharge and best pads";
+    const perUav = "БВС 1: one swath exceeds endurance even with best pads";
+    const result = {
+      ...fixture,
+      solver_report: {
+        ...fixture.solver_report,
+        limitations: [
+          reason,
+          reason,
+          "uncovered_swaths=5378",
+          perUav,
+          perUav,
+          "PHYS-ENDURANCE: Вылет длиннее выносливости борта",
+        ],
+      },
+    };
+    render(<ResultPanel result={result as JobResult} />);
+    expect(document.querySelector(".limitations")).toBeNull();
+    expect(screen.queryByText("Ограничения и замечания")).toBeNull();
+    expect(screen.getByText("PHYS-ENDURANCE")).toBeTruthy();
+  });
+
   it("renders the map for a completed feasible result", async () => {
     render(<ResultPanel result={fixture as JobResult} />);
     expect(await screen.findByTestId("mission-map")).toBeTruthy();
+  });
+
+  it("shows a Russian refusal card for the live endurance-no-recharge capture", () => {
+    const result = {
+      ...enduranceFixture,
+      state: "completed",
+      mission_plan: null,
+      artifacts: [],
+    } as JobResult;
+    render(<ResultPanel result={result} />);
+    const card = document.querySelector(".outcome-card");
+    expect(card?.getAttribute("data-error-code")).toBe("INFEASIBLE_ENDURANCE_NO_RECHARGE");
+    expect(card?.textContent).toContain("Не хватает ресурса одного вылета");
+    expect(card?.textContent).toMatch(/запрете дозарядки/);
+    expect(screen.getByText("Сценарий нельзя выполнить")).toBeTruthy();
+    expect(document.querySelector(".limitations")).toBeNull();
+    expect(screen.queryByText("Ограничения и замечания")).toBeNull();
+    expect(card?.textContent).not.toMatch(/sitecustomize|iso f2c|f2c_isolated_worker|traceback/i);
+  });
+
+  it("shows a Russian wind-limit refusal card", () => {
+    render(
+      <ResultPanel
+        result={{
+          contract_version: "v0",
+          job_id: "job-wind",
+          state: "completed",
+          outcome: "infeasible",
+          mission_plan: null,
+          artifacts: [],
+          solver_report: {
+            limitations: [
+              "wind_mps=13.0 exceeds fleet_max_wind_mps=12.0 (limiting model_id=geoscan-201)",
+            ],
+          },
+        }}
+      />,
+    );
+    const card = document.querySelector(".outcome-card");
+    expect(card?.getAttribute("data-error-code")).toBe("INFEASIBLE_WIND_EXCEEDS_FLEET");
+    expect(card?.textContent).toContain("Ветер выше предела флота");
+    expect(card?.textContent).toMatch(/ветроустойчив/);
+  });
+
+  it("shows a Russian catalog card without the bridge traceback", () => {
+    render(
+      <ResultPanel
+        result={{
+          contract_version: "v0",
+          job_id: "cat-uav",
+          state: "failed",
+          error: { outcome: "error", message: catalogFixture.invalid_uav.message },
+        }}
+      />,
+    );
+    const card = document.querySelector(".outcome-card");
+    expect(card?.getAttribute("data-error-code")).toBe("ERROR_UAV_NOT_IN_CATALOG");
+    expect(card?.textContent).toContain("Модель БВС не найдена в каталоге");
+    expect(card?.textContent).toMatch(/нет в каталоге флота/);
+    expect(card?.textContent).not.toMatch(/grisha_f2c_bridge|traceback|sitecustomize/i);
   });
 
   it.each([
