@@ -17,7 +17,7 @@ contract_version: v0
 - [x] Production `_route` test proves waypoint ASL changes with DEM.h while duration remains unchanged; isolated worker `_GeoTiffDem` test is prepared pending rasterio.
 - [ ] Full isolated F2C solve with synthetic GeoTIFF requires compatible runtime dependencies; no installation or deployment has occurred.
 - Next: verify pending raster/worker tests in a compatible environment, independent review before merge.
-- Evidence: combined rectangle/ISO/client/bridge run 39 tests, 0 failures/errors, 7 dependency skips; workspace validation PASS.
+- Evidence: combined rectangle/ISO/client/bridge run 40 tests, 0 failures/errors, 7 dependency skips; exact COP30 query/cache spy; workspace validation PASS.
 - Blocker: rasterio/shapely/pyproj and compatible Fields2Cover/ortools absent locally; permission to install temporary raster test dependencies requested. Existing readable DEM has no rectangle coverage check.
 - Decision: survey+aerodromes, zero padding is the task's team policy, not a customer REQ. OPEN-012 2D duration limitation retained.
 - Interface impact: runtime supplies geometry via internal ISO hook; public compute v0 unchanged. Rollback: revert the task commit.

@@ -83,6 +83,44 @@ def raster_bytes(bounds, *, heights=None):
 
 
 class CanonicalTest(unittest.TestCase):
+    def test_actual_downloader_query_and_cache_identity_without_raster(self):
+        geometry = bridge._canonical_terrain_geometry(scenario())
+        expected = terrain.bbox_from_geojson(geometry, crs="EPSG:4326")
+        queries = []
+        validated = []
+
+        def opener(request, **kwargs):
+            parsed = urllib.parse.urlsplit(request.full_url)
+            queries.append({k: v for k, v in urllib.parse.parse_qs(parsed.query).items() if k != "API_Key"})
+            return io.BytesIO(b"II*\x00controlled downloader bytes")
+
+        def validate(path, bounds):
+            validated.append(bounds)
+            self.assertEqual(bounds, expected)
+            self.assertTrue(path.is_file())
+
+        with tempfile.TemporaryDirectory(prefix="planes-query-") as cache, patch.dict(
+            os.environ, {"OPENTOPOGRAPHY_API_KEY": "test-key-not-a-secret"}
+        ), patch.object(terrain, "_validate_geotiff", validate):
+            path = terrain.acquire_terrain_for_area(
+                geometry, survey_crs="EPSG:4326", padding_m=0,
+                cache_dir=cache, opener=opener,
+            )
+            again = terrain.acquire_terrain_for_area(
+                geometry, survey_crs="EPSG:4326", padding_m=0,
+                cache_dir=cache, opener=opener,
+            )
+            self.assertEqual(path, again)
+        self.assertEqual(queries, [{
+            "demtype": ["COP30"], "west": ["37.60000000"],
+            "south": ["55.70000000"], "east": ["37.80000000"],
+            "north": ["55.85000000"], "outputFormat": ["GTiff"],
+        }])
+        material = "COP30|37.60000000|55.70000000|37.80000000|55.85000000"
+        digest = hashlib.sha256(material.encode("ascii")).hexdigest()[:24]
+        self.assertEqual(path.name, f"COP30_{digest}.tif")
+        self.assertEqual(validated, [expected, expected])
+
     def test_builder_inputs_are_survey_and_all_aerodromes(self):
         s = scenario()
         with patch("planes.runtime.interest_box.interest_rectangle", wraps=interest_rectangle) as builder:

@@ -54,7 +54,10 @@ installation without permission, deployment or merge.
 Code reviewable; full synthetic raster/isolated F2C acceptance remains
 unverified until compatible dependencies are available. Rectangle,
 terrain-hook, route, ISO/client/bridge regressions ran: 39 tests, 0
-failures/errors, 7 dependency skips. Workspace validation and git diff
+failures/errors, 7 dependency skips. A dependency-free downloader spy checks
+the exact COP30 query and cache identity; raster validation remains mocked
+in that test and is tested separately when rasterio is available.
+Workspace validation and git diff
 --check passed. No dependency was installed. Next action: run the pending
 synthetic GeoTIFF and real isolated F2C tests in a compatible environment;
 do not label the complete path proven from source inspection alone.

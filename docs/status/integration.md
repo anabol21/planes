@@ -19,7 +19,7 @@ contract_version: v0
 - [x] Focused dependency-free tests verify builder inputs, bridge handoff, production route sampling (180/230 m ground + 120 m AGL = 300/350 m ASL), ISO hook and isolated client.
 - [ ] Synthetic raster/worker tests: prepared, but local rasterio/shapely/pyproj and compatible F2C environment are absent. No dependency was installed; permission for a temporary test environment is pending.
 - Next: run pending synthetic GeoTIFF/isolated F2C tests in a compatible environment, then independently review before merge.
-- Evidence: combined rectangle/ISO/client/bridge run: 39 tests, 0 failures/errors, 7 dependency skips; workspace validator PASS; `git diff --check` PASS.
+- Evidence: combined rectangle/ISO/client/bridge run: 40 tests, 0 failures/errors, 7 dependency skips; exact COP30 query/cache checked with a mocked raster validator; workspace validator PASS; `git diff --check` PASS.
 - Interface impact: new internal optional geometry factory on ISO acquisition; no frontend, backend HTTP or v0 contract change. OPEN-012 remains: duration is 2D.
 - Rollback: revert TERRAIN-RECT-001 commit; no server change.
 
