@@ -2,7 +2,7 @@
 workstream: integration
 owner: Team
 task: INT-F2C-004
-status: in_progress
+status: review
 updated: 2026-09-29
 checkpoint: 2026-09-29
 branch: cursor/iso-dem-acquire-defc
@@ -11,7 +11,7 @@ contract_version: v0
 
 # Integration status
 
-- `in_progress`: INT-F2C-004 — live iso path acquires COP30 before the isolated worker. Hook: `grisha_f2c_bridge.solve_via_isolated_grisha_f2c` → `ensure_dem_for_iso_scenario`. Reuses a readable `dem_file` / aliases; otherwise bbox from `survey_kml` or `areas` (+ `PLANES_DEM_PADDING_M`, default 200 m) and `acquire_terrain_for_area`. Cache: `PLANES_DEM_CACHE` / `PLANES_TERRAIN_CACHE_DIR` / `/tmp/dems`. Default failure policy is degrade-to-mono with limitation lines (missing `OPENTOPOGRAPHY_API_KEY`, HTTP, or no survey geometry). `PLANES_DEM_FAIL_CLOSED=1` fails the job. ASL heights only; `mission_time_s` stays 2D. Not climb time, not `terrain_corridor`. Covers `REQ-IN-003`, `REQ-OUT-002`, `REQ-DOC-006`. Depends on `OPEN-012`. Brief: `docs/workstreams/integration/INT-F2C-004.md`.
+- `review`: INT-F2C-004 — live iso path acquires COP30 before the isolated worker. Hook: `grisha_f2c_bridge.solve_via_isolated_grisha_f2c` → `ensure_dem_for_iso_scenario`. Reuses a readable `dem_file` / aliases; otherwise bbox from `survey_kml` or `areas` (+ `PLANES_DEM_PADDING_M`, default 200 m) and `acquire_terrain_for_area`. Cache: `PLANES_DEM_CACHE` / `PLANES_TERRAIN_CACHE_DIR` / `/tmp/dems`. Default failure policy is degrade-to-mono with limitation lines (missing `OPENTOPOGRAPHY_API_KEY`, HTTP, or no survey geometry). `PLANES_DEM_FAIL_CLOSED=1` fails the job. ASL heights only; `mission_time_s` stays 2D. Not climb time, not `terrain_corridor`. Covers `REQ-IN-003`, `REQ-OUT-002`, `REQ-DOC-006`. Depends on `OPEN-012`. Brief: `docs/workstreams/integration/INT-F2C-004.md`.
 
 - `review`: INT-F2C-003 — Wave B on the live isolated Grisha+F2C path (`tools/f2c_iso/iso_src/wave_b.py`). B1 foreign landing (first takeoff stays home unless `allow_foreign_takeoff`). B2 catalog/board `recharge_time_s` in `mission_time_s`; `allow_recharge=false` is infeasible with uncovered. B3 horizontal space–time buffer with reverse/delay heuristic. Rollback `PLANES_SOLVE_BACKEND=legacy_fields2cover` unchanged. Not 3D overfly, not certified traffic, not Wh packing. Covers `REQ-IN-001`, `REQ-IN-007`, `REQ-PLAN-002`, `REQ-PLAN-006`, `REQ-OUT-004`, `REQ-OUT-005`, `REQ-OPT-001`. Depends on `OPEN-008`, `OPEN-011`, `OPEN-013`, `OPEN-015`. Brief: `docs/workstreams/integration/INT-F2C-003.md`.
 
@@ -32,14 +32,14 @@ Live path on `main`: form `127.0.0.1:5173`, API `127.0.0.1:8000`, worker `--engi
 
 ## In progress
 
-- [ ] INT-F2C-004 unit tests for iso DEM acquire / skip / missing-key fallback / survey bbox, then PR to `main`.
+- [x] INT-F2C-004 unit tests for iso DEM acquire / skip / missing-key fallback / survey bbox, then PR to `main`.
 - [x] INT-F2C-003 Wave B unit tests and PR to `main`.
 - [x] INT-F2C-002 verification (bridge/client/catalog unit tests + workspace validate) and PR to `main`.
 - [x] INT-F2C-001 verification on the parent branch (unit + web tests).
 
 ## Next action
 
-Verify INT-F2C-004 unit tests and open the PR to `main`. Do not deploy or restart the live listener from this branch.
+Review/merge PR #17 into `main` if checks allow. Do not deploy or restart the live listener from this branch. After merge, a compute-host deploy is required before live `POST /v0/solve` stops returning `dem_file=mono`.
 
 ## Completed (prior)
 
@@ -66,8 +66,17 @@ Review the stitch on `cursor/geo-core-kml-stitch`. The listener on `main` is sti
 
 ## Evidence
 
-- Command: pending INT-F2C-004 verification (`tests.runtime.test_iso_terrain_acquire` + existing iso bridge tests).
-- Result: pending.
+- Command: `PYTHONPATH=src:tests/runtime python3 -m unittest tests.runtime.test_iso_terrain_acquire tests.runtime.test_grisha_f2c_bridge -v`
+- Result: `Ran 18 tests in 0.007s` / `OK`. Interpreter `/usr/bin/python3` 3.12.3. Mocked `acquire_terrain_for_area` is invoked when `dem_file` is absent; the path is written onto the scenario passed to the isolated client. A readable `dem_file` skips the call. Missing `OPENTOPOGRAPHY_API_KEY` with an empty cache degrades to mono and names the key. Survey KML bbox matches the fixture ring. OpenTopography HTTP was not opened.
+- Command: `PYTHONPATH=src:tests/runtime python3 -m unittest tests.runtime.test_wave_b_iso tests.runtime.test_f2c_iso_client -v`
+- Result: `Ran 15 tests in 0.045s` / `OK`.
+- Command: `python3 scripts/validate_workspace.py`
+- Result: `Workspace validation: PASS`.
+- Command: `git diff --check`
+- Result: passed.
+- PR: https://github.com/anabol21/planes/pull/17
+- Commit: recorded at handoff.
+- Isolated worker self-check was not run: embed venv / fields2cover 2.1.0 is not in this environment. Live VPS was not restarted.
 
 - Command: `PYTHONPATH=src:tests/runtime python3 -m unittest tests.runtime.test_wave_b_iso tests.runtime.test_grisha_f2c_bridge tests.runtime.test_f2c_iso_client -v`
 - Result: `Ran 23 tests in 0.043s` / `OK`. Interpreter `/usr/bin/python3` 3.12. Wave B tests use synthetic metre geometry and do not import fields2cover. B1 lands on the closer foreign pad and keeps first takeoff at home unless `allow_foreign_takeoff`. B2 inserts a 100 s charge gap into makespan and leaves leftover swaths when `allow_recharge=false`. B3 detects identical tracks and delays the later UAV until clean. Rollback still maps `legacy_fields2cover` to `geo_mission`. Isolated worker self-check was not run: embed venv / fields2cover 2.1.0 is not in this environment.

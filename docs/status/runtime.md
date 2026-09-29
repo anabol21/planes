@@ -2,7 +2,7 @@
 workstream: runtime
 owner: Misha
 task: INT-F2C-004
-status: in_progress
+status: review
 updated: 2026-09-29
 checkpoint: 2026-09-29
 branch: cursor/iso-dem-acquire-defc
@@ -11,7 +11,7 @@ contract_version: v0
 
 # Runtime status
 
-- `in_progress`: INT-F2C-004 overlay — `grisha_f2c_bridge` calls `ensure_dem_for_iso_scenario` before the isolated worker. Missing `dem_file` → survey bbox + OpenTopography COP30 into `PLANES_DEM_CACHE` (else `/tmp/dems`). Default: mono fallback with limitations. ASL only; duration stays 2D. `legacy_fields2cover` / `geo_mission` unchanged.
+- `review`: INT-F2C-004 overlay — `grisha_f2c_bridge` calls `ensure_dem_for_iso_scenario` before the isolated worker. Missing `dem_file` → survey bbox + OpenTopography COP30 into `PLANES_DEM_CACHE` (else `/tmp/dems`). Default: mono fallback with limitations. ASL only; duration stays 2D. `legacy_fields2cover` / `geo_mission` unchanged.
 
 - `review`: INT-F2C-003 overlay — isolated F2C packer (`tools/f2c_iso/iso_src/wave_b.py`) may land on a foreign pad, inserts `recharge_time_s` into `mission_time_s`, and delays a later UAV for a horizontal buffer. `PLANES_SOLVE_BACKEND=legacy_fields2cover` is unchanged. Scenario flags: `allow_recharge` / `power.allow_recharge`, `recharge_time_s`, `allow_foreign_landing`, `allow_foreign_takeoff`, `min_separation_m`. Default first takeoff stays the board home pad.
 
@@ -48,9 +48,13 @@ contract_version: v0
 
 ## Next action
 
-INT-F2C-004: verify iso DEM unit tests. Do not restart the live listener. Rollback remains `PLANES_SOLVE_BACKEND=legacy_fields2cover`.
+INT-F2C-004: review PR #17. Do not restart the live listener. Rollback remains `PLANES_SOLVE_BACKEND=legacy_fields2cover`.
 
 ## Evidence
+
+- Command: `PYTHONPATH=src:tests/runtime python3 -m unittest tests.runtime.test_iso_terrain_acquire tests.runtime.test_grisha_f2c_bridge -v`
+- Result: `Ran 18 tests in 0.007s` / `OK`. Iso DEM hook unit path only; OpenTopography was not called.
+- PR: https://github.com/anabol21/planes/pull/17
 
 - Command: `PYTHONPATH=src:tests/runtime python3 -m unittest tests.runtime.test_wave_b_iso tests.runtime.test_grisha_f2c_bridge tests.runtime.test_f2c_iso_client -v`
 - Result: `Ran 23 tests in 0.043s` / `OK`. Wave B packer tested without fields2cover. Rollback `legacy_fields2cover` still calls `geo_mission`.

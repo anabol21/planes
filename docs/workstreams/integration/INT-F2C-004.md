@@ -3,7 +3,7 @@ task: INT-F2C-004
 owner: Integration
 branch: cursor/iso-dem-acquire-defc
 target: main
-status: in_progress
+status: review
 checkpoint: 2026-09-29
 contract_version: v0
 allowed_paths:
