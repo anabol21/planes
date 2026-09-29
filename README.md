@@ -39,7 +39,7 @@ npm.cmd install --global pnpm@11.19.0
 Если PowerShell разрешает запуск `npm` и `pnpm` напрямую, суффикс `.cmd` можно не использовать.
 
 
-**Отбор / сдача:** [one-pager — умеем / честно не умеем + smoke](docs/SUBMISSION_ONEPAGER.md)
+**Отборный one-pager:** [docs/SUBMISSION_ONEPAGER.md](docs/SUBMISSION_ONEPAGER.md)
 
 ## Клонирование
 
