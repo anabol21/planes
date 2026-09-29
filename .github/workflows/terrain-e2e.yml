@@ -22,9 +22,9 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             build-essential cmake ninja-build git wget curl \
-            libgeos-dev libeigen3-dev libboost-dev libtbb-dev \
+            libgdal-dev libgeos-dev libeigen3-dev libboost-dev libtbb-dev \
             libtinyxml2-dev nlohmann-json3-dev libpython3-dev \
-            libprotobuf-dev protobuf-compiler swig
+            libprotobuf-dev protobuf-compiler swig gnuplot
       - name: Install OR-Tools C++ 9.9.3963
         run: |
           curl -fsSL https://github.com/google/or-tools/releases/download/v9.9/or-tools_amd64_ubuntu-22.04_cpp_v9.9.3963.tar.gz -o "$RUNNER_TEMP/ortools.tar.gz"
