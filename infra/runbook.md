@@ -1,6 +1,6 @@
 # Compute runtime: развёртывание и эксплуатация
 
-Описан исходный код terrain-enabled integration candidate, а не подтверждённое состояние конкретной ВМ. Старые заметки о `MIS-002`, `solver_choice=meta` и SHA `da3da56` относились к прежнему развёртыванию; **не** используйте их как текущий deployment report. Перед изменением сервиса отдельно установите фактическую ветку/SHA и состояние зависимостей на целевом хосте. Архитектура — [техническая документация](../docs/PROJECT_DOCUMENTATION.md), compute-контракт — [INTERFACES_V0](../docs/architecture/INTERFACES_V0.md), terrain — [TERRAIN_PIPELINE](../docs/architecture/TERRAIN_PIPELINE.md).
+Описан исходный код terrain-enabled контура, вошедший в `main`, а не подтверждённое состояние конкретной ВМ. Старые заметки о `MIS-002`, `solver_choice=meta` и SHA `da3da56` относились к прежнему развёртыванию; **не** используйте их как текущий deployment report. Перед изменением сервиса отдельно установите фактическую ветку/SHA и состояние зависимостей на целевом хосте. Архитектура — [техническая документация](../docs/PROJECT_DOCUMENTATION.md), compute-контракт — [INTERFACES_V0](../docs/architecture/INTERFACES_V0.md), terrain — [TERRAIN_PIPELINE](../docs/architecture/TERRAIN_PIPELINE.md).
 
 ## Граница процессов
 

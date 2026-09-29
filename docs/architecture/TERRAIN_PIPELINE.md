@@ -2,7 +2,7 @@
 
 The terrain subsystem obtains a digital elevation model (DEM) for the full mission interest area and gives its local GeoTIFF to the planner. Terrain acquisition runs on the compute/runtime side. The frontend sends scenario inputs, not a DEM; the backend stores and forwards the scenario, but does not download terrain. This terrain-enabled behavior does not change the public HTTP or v0 compute API. A successful source/CI run does not establish deployment on a particular server.
 
-This document describes the `integration/TERRAIN-RECT-001-canonical-dem` HEAD. The rectangle and zero-padding rules are **team/runtime policy**, not new customer requirements. The relevant requirement slice is `REQ-IN-003`, `REQ-OUT-002`, `REQ-DOC-006`; `OPEN-012` remains open for vertical flight modeling.
+This implementation was verified at `integration/TERRAIN-RECT-001-canonical-dem` HEAD `85f88fb…` and subsequently fast-forwarded into `main` with project documentation. The rectangle and zero-padding rules are **team/runtime policy**, not new customer requirements. The relevant requirement slice is `REQ-IN-003`, `REQ-OUT-002`, `REQ-DOC-006`; `OPEN-012` remains open for vertical flight modeling. Repository integration does not establish a VPS deployment.
 
 ## End-to-end path
 

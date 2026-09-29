@@ -198,7 +198,7 @@ Compute listener запускается отдельным сервисом [`pl
 
 ## Current implementation status
 
-Исходный terrain-enabled integration candidate (`85f88fb…`) проверен реальным CI end-to-end, включая F2C child и terrain-dependent final mission. На момент подготовки документа он ещё не был слит и не был доказанно развёрнут. Если docs-ветка по прямому указанию пользователя попадает в `main`, это обновляет **репозиторий**, но само по себе не разворачивает compute service. Исторические статусы/чекпоинты сохраняются в [`docs/status`](status/) и [`docs/workstreams`](workstreams/); проверяйте текущий Git и реальную ВМ отдельно. Ограничения перечислены выше.
+Исходный terrain-enabled integration candidate (`85f88fb…`) проверен реальным CI end-to-end, включая F2C child и terrain-dependent final mission. Он вошёл в `main` вместе с документацией через fast-forward после исходного `main` `5af4554`. Это обновило **репозиторий**, но не развернуло compute service: фактический SHA/состояние ВМ в этой задаче не проверялись. Исторические статусы/чекпоинты сохраняются в [`docs/status`](status/) и [`docs/workstreams`](workstreams/); проверяйте Git и ВМ отдельно. Ограничения перечислены выше.
 
 ## 21. Навигация разработчика
 

@@ -13,13 +13,14 @@ contract_version: v0
 
 ## DOC-PROJECT-001 documentation checkpoint (2026-09-29)
 
-- State: `review`. Scope: `README.md`, `docs/**`, `infra/runbook.md`; contract `v0` unchanged. The user requested direct delivery to `main` after documentation validation; this is a documentation/integration exception to the usual `dev` target.
+- State: `done` for documentation and repository integration. Scope: `README.md`, `docs/**`, `infra/runbook.md`; contract `v0` unchanged. The user requested direct delivery to `main` after documentation validation; this is a documentation/integration exception to the usual `dev` target.
 - [x] Audited live frontend/backend/runtime/F2C/terrain code and committed CI evidence against the existing documentation.
 - [x] Added [project-wide technical documentation](../PROJECT_DOCUMENTATION.md) and [task brief](../workstreams/integration/DOC-PROJECT-001.md); reconciled README, project map, one-pager, runtime/architecture notes and runbook. Historical checkpoint evidence remains intact.
 - [x] Verification: local relative Markdown links across 51 Markdown files, missing 0; `python scripts/validate_workspace.py` PASS; `PYTHONPATH=src python -m unittest discover -s tests/backend -q` 64 OK; `pnpm typecheck` PASS; `pnpm test` 82 PASS; `git diff --check` PASS. An initial backend run without `PYTHONPATH=src` had an import error and was corrected by using the documented environment.
 - [x] `pnpm build` PASS (bundle-size warning). Native Windows `PYTHONPATH=src python -m unittest discover -s tests/runtime -q` is not green: 96 executed, 6 failures, 26 errors, 13 skips, including unavailable `fcntl`/F2C/Python dependencies and old catalog/MIS-002 assertions. `tests/integration` has no unittest-discoverable tests. This documentation task does not modify code/tests; real Linux terrain/F2C path remains proven by the earlier Actions run 36614598024.
 - DOC DISCOVERY: `tests/runtime/test_fleet_catalog.py` and `tests/runtime/test_mis002_envelope.py` assert historical catalog/enumeration behavior that differs from current source; follow-up required to separate legacy tests from active path and update expectations in a dedicated test task.
-- Next: complete verification, commit docs-only diff, push docs branch, then update `main` per direct user instruction if remote allows a fast-forward.
+- [x] Documentation commit `3794b22` was pushed to `docs/PROJECT-DOC-001-system-documentation`, then `main` fast-forwarded from `5af4554` to `3794b22`, bringing the existing 19 terrain commits. This final wording update records the completed integration.
+- Next: independently verify deployed compute SHA/dependencies and run the real `/v0/solve` smoke on the target host before claiming deployment.
 - Blockers/decisions: deployment of the terrain-enabled commit is not established by the successful Linux CI. `bootstrap-vps.sh` still defaults to historical `runtime/MIS-001-vps-loop`; this task documents that source behavior and does not edit the script.
 - Interface/downstream impact: no public API, DTO, production or test-code change. `main` fast-forward from the terrain tip would also incorporate already-existing terrain commits; code deployment remains separate.
 
