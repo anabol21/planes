@@ -68,7 +68,7 @@ def load_worker():
     return module
 
 
-def raster_bytes(bounds, *, heights=None):
+def raster_bytes(bounds, *, heights=None, crs="EPSG:4326"):
     import numpy as np
     from rasterio.io import MemoryFile
     from rasterio.transform import from_bounds
@@ -76,7 +76,7 @@ def raster_bytes(bounds, *, heights=None):
     height, width = data.shape
     with MemoryFile() as mem:
         with mem.open(driver="GTiff", width=width, height=height, count=1,
-                      dtype="float32", crs="EPSG:4326",
+                      dtype="float32", crs=crs,
                       transform=from_bounds(bounds.west, bounds.south, bounds.east, bounds.north, width, height)) as ds:
             ds.write(data, 1)
         return mem.read()
@@ -160,6 +160,28 @@ class CanonicalTest(unittest.TestCase):
         self.assertEqual(client.request["scenario"]["dem_file"], "COP30_controlled.tif")
         self.assertEqual(client.request["scenario"]["constraints_kml"], s["constraints_kml"])
         self.assertEqual(s, original)
+
+    def test_live_bridge_missing_key_is_error_even_when_fallback_configured(self):
+        with tempfile.TemporaryDirectory(prefix="planes-live-no-key-") as cache, patch.dict(
+            os.environ, {"PLANES_DEM_CACHE": cache, "PLANES_DEM_FAIL_CLOSED": "0"}
+        ), patch.object(bridge, "_load_client", side_effect=AssertionError("worker must not run")):
+            os.environ.pop("OPENTOPOGRAPHY_API_KEY", None)
+            with self.assertRaisesRegex(ValueError, "iso DEM acquisition failed: OPENTOPOGRAPHY_API_KEY"):
+                bridge.solve_via_isolated_grisha_f2c(
+                    Problem("no-key", scenario(), "min_time", 7, 30), time.monotonic() + 30
+                )
+
+    def test_live_bridge_acquisition_error_never_reaches_worker(self):
+        for reason in ("OpenTopography request failed with HTTP 503", "OpenTopography acquisition failed"):
+            with self.subTest(reason=reason), patch.dict(os.environ, {"PLANES_DEM_FAIL_CLOSED": "0"}), patch(
+                "planes.integration.terrain.iso_acquire.acquire_terrain_for_area",
+                side_effect=terrain.TerrainAcquisitionError(reason),
+            ), patch.object(bridge, "_load_client", side_effect=AssertionError("worker must not run")):
+                with self.assertRaisesRegex(ValueError, "iso DEM acquisition failed") as caught:
+                    bridge.solve_via_isolated_grisha_f2c(
+                        Problem("terrain-error", scenario(), "min_time", 7, 30), time.monotonic() + 30
+                    )
+                self.assertIn(reason, str(caught.exception))
 
     def test_invalid_aerodromes_and_crs_fail_closed(self):
         for value in (float("nan"), 181, True, "37.8", None):
@@ -258,9 +280,49 @@ class GeoTiffTest(unittest.TestCase):
     def test_existing_dem_reused_without_download(self):
         path, _ = self.acquire()
         with patch.object(terrain.urllib.request, "urlopen", side_effect=AssertionError("reuse must not download")):
-            out, notes = ensure_dem_for_iso_scenario(scenario() | {"dem_file": str(path)}, geometry_factory=bridge._canonical_terrain_geometry)
+            out, notes = ensure_dem_for_iso_scenario(scenario() | {"dem_file": str(path)}, geometry_factory=bridge._canonical_terrain_geometry, require_terrain=True)
         self.assertEqual(Path(out["dem_file"]), path.resolve())
         self.assertTrue(any("existing readable" in note for note in notes))
+
+    def test_live_bridge_rejects_invalid_existing_dem(self):
+        partial = terrain.SurveyBounds(37.65, 55.7, 37.8, 55.85)
+        cases = (
+            ("partial", raster_bytes(partial), "cover"),
+            ("malformed", b"not-a-tiff", "TIFF"),
+            ("no-crs", raster_bytes(self.expected, crs=None), "no CRS"),
+            ("no-elevations", raster_bytes(self.expected, heights=[[float("nan")]]), "finite"),
+        )
+        for label, data, error in cases:
+            with self.subTest(label=label), patch.dict(os.environ, {"PLANES_DEM_FAIL_CLOSED": "0"}), patch.object(
+                bridge, "_load_client", side_effect=AssertionError("worker must not run")
+            ):
+                path = Path(self.tmp.name) / f"existing-{label}.tif"
+                path.write_bytes(data)
+                with self.assertRaisesRegex(ValueError, error):
+                    bridge.solve_via_isolated_grisha_f2c(
+                        Problem(label, scenario() | {"dem_file": str(path)}, "min_time", 7, 30),
+                        time.monotonic() + 30,
+                    )
+        with patch.dict(os.environ, {"PLANES_DEM_FAIL_CLOSED": "0"}), patch.object(
+            bridge, "_load_client", side_effect=AssertionError("worker must not run")
+        ):
+            with self.assertRaisesRegex(ValueError, "Could not read downloaded terrain"):
+                bridge.solve_via_isolated_grisha_f2c(
+                    Problem("missing", scenario() | {"dem_file": str(Path(self.tmp.name) / "missing.tif")},
+                            "min_time", 7, 30), time.monotonic() + 30,
+                )
+
+    def test_live_bridge_rejects_bad_download_without_mono(self):
+        partial = terrain.SurveyBounds(37.65, 55.7, 37.8, 55.85)
+        for label, data, error in (("partial", raster_bytes(partial), "cover"),
+                                   ("malformed", b"not-a-tiff", "TIFF")):
+            with self.subTest(label=label), patch.dict(os.environ, {"PLANES_DEM_FAIL_CLOSED": "0"}), patch.object(
+                terrain.urllib.request, "urlopen", return_value=io.BytesIO(data)
+            ), patch.object(bridge, "_load_client", side_effect=AssertionError("worker must not run")):
+                with self.assertRaisesRegex(ValueError, error):
+                    bridge.solve_via_isolated_grisha_f2c(
+                        Problem(label, scenario(), "min_time", 7, 30), time.monotonic() + 30
+                    )
 
     def test_worker_loader_and_production_route_altitudes(self):
         path, _ = self.acquire()

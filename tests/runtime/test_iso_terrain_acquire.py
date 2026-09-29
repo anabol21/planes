@@ -285,7 +285,7 @@ class BridgeDemHookTest(unittest.TestCase):
         self.assertTrue(any("OpenTopography COP30 acquired" in line for line in result.limitations))
         self.assertTrue(any("2D" in line for line in result.limitations))
 
-    def test_bridge_skips_acquire_when_dem_file_readable(self) -> None:
+    def test_bridge_validates_existing_dem_before_reuse(self) -> None:
         captured: dict[str, object] = {}
         with tempfile.NamedTemporaryFile(suffix=".tif", delete=False) as handle:
             handle.write(b"II*\x00existing")
@@ -298,13 +298,19 @@ class BridgeDemHookTest(unittest.TestCase):
             with patch(
                 "planes.integration.terrain.iso_acquire.acquire_terrain_for_area",
                 boom,
-            ), patch.object(
+            ), patch(
+                "planes.integration.terrain.iso_acquire._validate_geotiff",
+            ) as validate, patch.object(
                 grisha_f2c_bridge, "_load_client", return_value=_FakeClient(captured)
             ):
                 result = grisha_f2c_bridge.solve_via_isolated_grisha_f2c(
                     _problem(_scenario(dem_file=str(existing))),
                     time.monotonic() + 20,
                 )
+            self.assertEqual(validate.call_count, 1)
+            self.assertEqual(validate.call_args.args[0], existing)
+            self.assertEqual(validate.call_args.args[1].normalized(),
+                             ("37.60000000", "55.74800000", "37.60800000", "55.75400000"))
             request = captured["request"]
             assert isinstance(request, dict)
             self.assertEqual(Path(request["scenario"]["dem_file"]), existing.resolve())

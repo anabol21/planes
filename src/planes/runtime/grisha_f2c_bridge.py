@@ -223,7 +223,8 @@ def solve_via_isolated_grisha_f2c(problem: Any, deadline: float):
 
     try:
         scenario, dem_notes = ensure_dem_for_iso_scenario(
-            scenario, geometry_factory=_canonical_terrain_geometry
+            scenario, geometry_factory=_canonical_terrain_geometry,
+            require_terrain=True,
         )
     except TerrainAcquisitionError as exc:
         raise ValueError(f"iso DEM acquisition failed: {exc}") from exc

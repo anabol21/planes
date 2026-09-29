@@ -1,14 +1,16 @@
 """Attach a cached COP30 GeoTIFF to the isolated F2C solve scenario.
 
 The live iso path does not require the browser to send a DEM path. When
-``dem_file`` / aliases are already a readable file, this helper leaves
-them alone. The live bridge supplies its canonical rectangle geometry;
-that geometry is acquired with zero padding. Standalone callers without
-a geometry factory retain the historical survey-bbox policy.
+``dem_file`` / aliases are already a readable file, standalone callers leave
+them alone. The live bridge requires terrain and validates an existing file
+against its canonical rectangle before reuse. That geometry is acquired with
+zero padding. Standalone callers without a geometry factory retain the
+historical survey-bbox policy.
 
-Default policy is degrade-to-mono: acquisition failures become limitation
-lines and the worker keeps flat ``h=0``. Set ``PLANES_DEM_FAIL_CLOSED``
-to raise instead. This is not climb-time or a terrain corridor.
+Standalone default policy is degrade-to-mono: acquisition failures become
+limitation lines and the worker keeps flat ``h=0``. The live bridge requires
+terrain regardless of ``PLANES_DEM_FAIL_CLOSED``. This is not climb-time or a
+terrain corridor.
 """
 
 from __future__ import annotations
@@ -21,7 +23,9 @@ from typing import Any
 from planes.integration.kml.constraints import parse_survey_polygon
 from planes.integration.terrain.opentopography import (
     TerrainAcquisitionError,
+    _validate_geotiff,
     acquire_terrain_for_area,
+    bbox_from_geojson,
 )
 
 
@@ -92,6 +96,7 @@ def ensure_dem_for_iso_scenario(
     *,
     acquire: Callable[..., Path] | None = None,
     geometry_factory: Callable[[dict[str, Any]], dict[str, Any]] | None = None,
+    require_terrain: bool = False,
 ) -> tuple[dict[str, Any], list[str]]:
     """Set ``scenario.dem_file`` when a GeoTIFF can be reused or acquired.
 
@@ -99,7 +104,7 @@ def ensure_dem_for_iso_scenario(
     bridge to append. Does not claim 3D time or a terrain corridor.
     """
     notes: list[str] = []
-    existing = existing_readable_dem_path(scenario)
+    existing = None if require_terrain else existing_readable_dem_path(scenario)
     if existing is not None:
         scenario["dem_file"] = str(existing)
         notes.append(_SKIP_NOTE)
@@ -114,6 +119,16 @@ def ensure_dem_for_iso_scenario(
             else survey_geometry_from_scenario(scenario)
         )
         crs = str(scenario.get("crs") or "EPSG:4326")
+        if require_terrain:
+            supplied = _raw_dem_value(scenario)
+            if supplied is not None:
+                existing = Path(supplied).expanduser()
+                bounds = bbox_from_geojson(geometry, crs=crs)
+                _validate_geotiff(existing, bounds)
+                existing = existing.resolve()
+                scenario["dem_file"] = str(existing)
+                notes.extend((_SKIP_NOTE, f"dem_file: {existing}", _TIME_NOTE))
+                return scenario, notes
         acquire_fn = acquire or acquire_terrain_for_area
         path = Path(
             acquire_fn(
@@ -131,7 +146,7 @@ def ensure_dem_for_iso_scenario(
             notes.append(_CORRIDOR_NOTE)
         return scenario, notes
     except (TerrainAcquisitionError, ValueError, OSError) as exc:
-        if fail_closed():
+        if require_terrain or fail_closed():
             if isinstance(exc, TerrainAcquisitionError):
                 raise
             raise TerrainAcquisitionError(str(exc)) from exc
