@@ -71,6 +71,30 @@ describe("ResultPanel mission map gating", () => {
     expect(card?.textContent).not.toMatch(/sitecustomize|iso f2c|f2c_isolated_worker|traceback/i);
   });
 
+  it("shows a Russian wind-limit refusal card", () => {
+    render(
+      <ResultPanel
+        result={{
+          contract_version: "v0",
+          job_id: "job-wind",
+          state: "completed",
+          outcome: "infeasible",
+          mission_plan: null,
+          artifacts: [],
+          solver_report: {
+            limitations: [
+              "wind_mps=13.0 exceeds fleet_max_wind_mps=12.0 (limiting model_id=geoscan-201)",
+            ],
+          },
+        }}
+      />,
+    );
+    const card = document.querySelector(".outcome-card");
+    expect(card?.getAttribute("data-error-code")).toBe("INFEASIBLE_WIND_EXCEEDS_FLEET");
+    expect(card?.textContent).toContain("Ветер выше предела флота");
+    expect(card?.textContent).toMatch(/ветроустойчив/);
+  });
+
   it("shows a Russian catalog card without the bridge traceback", () => {
     render(
       <ResultPanel

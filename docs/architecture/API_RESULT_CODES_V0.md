@@ -22,6 +22,8 @@ Internal strings (`iso f2c=…`, `sitecustomize`, `f2c_isolated_worker`, `live p
 
 Live samples: `INFEASIBLE_ENDURANCE_NO_RECHARGE`, `ERROR_UAV_NOT_IN_CATALOG`, `ERROR_CAMERA_NOT_IN_CATALOG`, `ERROR_CAMERA_UAV_INCOMPATIBLE`.
 
+Early API/worker filter (no VPS solve): `INFEASIBLE_WIND_EXCEEDS_FLEET`. Compares `scenario.wind.speed_ms` to the highest known `uav_models[].max_wind_m_s` among selected boards. A model with missing or non-positive `max_wind_m_s` is unknown and does not raise the fleet ceiling; if no selected model has a known limit, the filter is skipped. Details: `wind_mps`, `fleet_max_wind_mps`, `limiting_model_id`.
+
 Schema-from-worker: `INFEASIBLE_NO_SWATHS`, `INFEASIBLE_TERRAIN_CLEARANCE`, `TIMED_OUT_BUDGET`, `ERROR_MISSING_AERODROMES`, `ERROR_UNKNOWN_AERODROME`, `ERROR_NO_BOARDS`, `ERROR_MODEL_NO_ENDURANCE_OR_SPEED`, `ERROR_WORKER_EXCEPTION`.
 
 `OFFLINE_ENERGY_UNCOVERED` is an optional UX stub (`OPEN-008`), not a live v0 energy contract.

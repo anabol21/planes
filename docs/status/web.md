@@ -11,7 +11,7 @@ contract_version: v0
 
 # Web status
 
-WRAP-002, карточки исходов. Панель результата показывает `error_code` из API (или выводит его из live-сигналов `limitations`/`error`) русским title/body/CTA. `INFEASIBLE_*` — отказ сценария, не падение. `ERROR_*` подсвечивает поля модели/камеры/аэродрома. `TIMED_OUT_*` предлагает упростить сценарий. Строки `iso`/`f2c`/`sitecustomize`/traceback в ограничениях скрыты.
+WRAP-002, карточки исходов. Панель результата показывает `error_code` из API (или выводит его из live-сигналов `limitations`/`error`) русским title/body/CTA. `INFEASIBLE_*` — отказ сценария, не падение. `INFEASIBLE_WIND_EXCEEDS_FLEET` подсвечивает скорость ветра и модели. `ERROR_*` подсвечивает поля модели/камеры/аэродрома. `TIMED_OUT_*` предлагает упростить сценарий. Строки `iso`/`f2c`/`sitecustomize`/traceback в ограничениях скрыты.
 
 WRAP-001, сводка и карта. Список «Задание backend» снят. Панель показывает исход, число БВС, число вылетов, метрику, которую солвер уже вернул (`C_max` как `mission_time_s` при `min_time`, суммарный налёт как `total_flight_time_s` при `min_flight_hours`), и коды `PHYS-*`. На карте рисуются только участки маршрута внутри полигонов съёмки, один цвет на `uav_id`. Веер транзитов не рисуется. `mission_plan` в ответе не переписывается. Сырой JSON остаётся свёрнутым. Это отображение, не новый расчёт маршрута.
 
@@ -56,7 +56,7 @@ limitation before deployment.
 
 ### Evidence
 
-- WRAP-002: `pnpm test` in `apps/web` — 76 tests in 10 files, passed (Vitest 5.0.1). Includes live B2 endurance card and catalog UAV card.
+- WRAP-002: `pnpm test` in `apps/web` — 78 tests in 10 files, passed (Vitest 5.0.1). Includes live B2 endurance card, catalog UAV card, and wind-exceeds-fleet card.
 - WRAP-002: `pnpm typecheck` — `tsc --noEmit` exit 0.
 - Task brief: `docs/workstreams/web/WEB-002.md`.
 - Source: `apps/web/src/MissionMap.tsx`, `apps/web/src/missionMapData.ts`, and typed additions in

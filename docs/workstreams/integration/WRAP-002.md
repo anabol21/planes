@@ -29,6 +29,7 @@ show Russian cards on the wrap shell. Do not change VPS or optimizer algorithms.
 ## Scope
 
 - Dedicated backend classifier driven by the infeasible-pool raw signals and live samples.
+- Early wind filter on the worker: `wind.speed_ms` vs catalog `max_wind_m_s` → `INFEASIBLE_WIND_EXCEEDS_FLEET` without a VPS solve. Unknown catalog wind limits do not raise the fleet max; no known limits → skip.
 - Attach classified fields when serving `GET /jobs/{id}/result`. HTTP 200 + `outcome=infeasible` stays a normal business refusal.
 - Deduplicate and filter internal `iso` / `f2c` / `sitecustomize` / traceback limitations for the UI.
 - Frontend cards by code; highlight `model_id` / `camera_id` / aerodrome fields for `ERROR_*`.

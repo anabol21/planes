@@ -13,6 +13,7 @@ from typing import Any, Mapping
 
 
 INFEASIBLE_ENDURANCE_NO_RECHARGE = "INFEASIBLE_ENDURANCE_NO_RECHARGE"
+INFEASIBLE_WIND_EXCEEDS_FLEET = "INFEASIBLE_WIND_EXCEEDS_FLEET"
 INFEASIBLE_NO_SWATHS = "INFEASIBLE_NO_SWATHS"
 INFEASIBLE_TERRAIN_CLEARANCE = "INFEASIBLE_TERRAIN_CLEARANCE"
 TIMED_OUT_BUDGET = "TIMED_OUT_BUDGET"
@@ -32,6 +33,12 @@ _COPY: dict[str, tuple[str, str]] = {
         "Включите дозарядку или добавьте борта / сократите зону.",
         "With recharge disabled the aircraft cannot cover all swaths in one sortie. "
         "Enable recharge, add aircraft, or shrink the survey area.",
+    ),
+    INFEASIBLE_WIND_EXCEEDS_FLEET: (
+        "Скорость ветра выше паспортного предела всех выбранных бортов. "
+        "Уменьшите ветер в сценарии или выберите более ветроустойчивые модели.",
+        "The scenario wind exceeds the catalog limit of every selected aircraft. "
+        "Reduce the wind or choose more wind-tolerant boards.",
     ),
     INFEASIBLE_NO_SWATHS: (
         "По зонам съёмки не получилось сгенерировать маршрутные галсы. "
@@ -110,6 +117,11 @@ _INCOMPATIBLE = re.compile(
 _UNKNOWN_AERODROME = re.compile(r"unknown aerodrome:\s+(\S+)", re.IGNORECASE)
 _MODEL_NO_ENDURANCE = re.compile(
     r"model\s+(\S+)\s+has no positive endurance or (?:survey/)?airspeed",
+    re.IGNORECASE,
+)
+_WIND_EXCEEDS = re.compile(
+    r"wind_mps\s*=\s*([0-9]+(?:\.[0-9]+)?)\s+exceeds\s+fleet_max_wind_mps\s*=\s*"
+    r"([0-9]+(?:\.[0-9]+)?).*limiting model_id\s*=\s*([^\s)]+)",
     re.IGNORECASE,
 )
 _UNCOVERED_SWATHS = re.compile(r"uncovered[_\s-]*swaths\s*=\s*(\d+)", re.IGNORECASE)
@@ -298,6 +310,14 @@ def _match_code(
     model = _MODEL_NO_ENDURANCE.search(blob)
     if model:
         return ERROR_MODEL_NO_ENDURANCE_OR_SPEED, {"model_id": model.group(1)}
+
+    wind = _WIND_EXCEEDS.search(blob)
+    if wind and outcome in {None, "infeasible"}:
+        return INFEASIBLE_WIND_EXCEEDS_FLEET, {
+            "wind_mps": float(wind.group(1)),
+            "fleet_max_wind_mps": float(wind.group(2)),
+            "limiting_model_id": wind.group(3),
+        }
 
     if _is_endurance_no_recharge(outcome, blob, limitations):
         uncovered = _UNCOVERED_SWATHS.search(blob)

@@ -13,6 +13,7 @@ from .fake_engine import FakeOptimizationEngine
 from .models import ComputeRequest
 from .runtime_engine import RuntimeOptimizationEngine
 from .store import SQLiteJobStore
+from .wind_filter import refuse_if_wind_exceeds_fleet
 
 EMPTY_QUEUE_POLL_SECONDS = 0.5
 
@@ -34,7 +35,9 @@ class Worker:
                 optimization=job.optimization,
                 seed=job.seed,
             )
-            response = self.engine.solve(request)
+            response = refuse_if_wind_exceeds_fleet(request)
+            if response is None:
+                response = self.engine.solve(request)
             self.store.finish_with_response(job.job_id, response)
         except Exception as error:
             self.store.mark_failed(job.job_id, self._error_payload(error))

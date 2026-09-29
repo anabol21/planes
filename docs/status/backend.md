@@ -11,7 +11,7 @@ contract_version: v0
 
 # Backend status
 
-- `review`: WRAP-002 — API-слой нормализует `outcome` + `limitations`/`error` в `error_code`, `message_ru`, `message_en`, `details`. Классификатор `src/planes/backend/error_codes.py`. HTTP 200 + `infeasible` без изменений. Ядро и VPS не трогались. Заметка: `docs/architecture/API_RESULT_CODES_V0.md`.
+- `review`: WRAP-002 — API-слой нормализует `outcome` + `limitations`/`error` в `error_code`, `message_ru`, `message_en`, `details`. Классификатор `src/planes/backend/error_codes.py`. Ранний фильтр ветра (`wind.speed_ms` vs `max_wind_m_s`) даёт `INFEASIBLE_WIND_EXCEEDS_FLEET` без VPS. Модель без лимита ветра — unknown, потолок флота не поднимает. HTTP 200 + `infeasible` без изменений. Ядро и VPS packing не трогались. Заметка: `docs/architecture/API_RESULT_CODES_V0.md`.
 - `planned`: RUS-002 — рельеф из отдельного KML местности в матрицы `precompute`. Бриф: `docs/workstreams/model/RUS-002.md`.
 
 On `test_merge` the backend Python is unchanged. The scenario snapshot carries raw `survey_kml` and `constraints_kml`. The stitched listener path is `docs/architecture/STITCH_PICTURE.md`. The rest of this paragraph is the pre-stitch path on `main`.
@@ -44,6 +44,7 @@ Review WRAP-002 on `cursor/infeasible-error-codes-2089` against `wrap/WRAP-001-s
 
 ## Evidence
 
+- WRAP-002 wind filter: `PYTHONPATH=src python3 -m unittest tests.backend.test_wind_filter tests.backend.test_error_codes tests.backend.test_pipeline -v` — `Ran 48 tests in 0.953s` / `OK`. Worker short-circuits before the engine when `wind.speed_ms` exceeds catalog `max_wind_m_s`.
 - WRAP-002: `PYTHONPATH=src python3 -m unittest discover -s tests/backend -v` — `Ran 50 tests in 0.872s` / `OK` (includes live B2 + catalog_validation fixtures).
 - WRAP-002: `python3 scripts/validate_workspace.py` — `Workspace validation: PASS`.
 - WRAP-002: `git diff --check` — passed.

@@ -56,6 +56,27 @@ describe("error card classification", () => {
     expect(pair?.highlight.camera).toBe(true);
   });
 
+  it("maps a wind-exceeds-fleet refusal to a Russian card", () => {
+    const card = resolveOutcomeCard({
+      contract_version: "v0",
+      job_id: "job-wind",
+      state: "completed",
+      outcome: "infeasible",
+      mission_plan: null,
+      solver_report: {
+        limitations: [
+          "wind_mps=13.0 exceeds fleet_max_wind_mps=12.0 (limiting model_id=geoscan-201)",
+        ],
+      },
+      artifacts: [],
+    });
+    expect(card?.code).toBe("INFEASIBLE_WIND_EXCEEDS_FLEET");
+    expect(card?.title).toBe("Ветер выше предела флота");
+    expect(card?.tone).toBe("infeasible");
+    expect(card?.highlight.wind).toBe(true);
+    expect(card?.highlight.model).toBe(true);
+  });
+
   it("uses an API error_code when present", () => {
     const card = resolveOutcomeCard({
       contract_version: "v0",

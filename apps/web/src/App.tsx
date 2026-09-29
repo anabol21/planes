@@ -632,14 +632,16 @@ export default function App() {
           <div className="fleet-list">{boards.map((board, index) => <BoardCard key={`board-${index}`} board={board} index={index} aerodromeCount={aerodromes.length} highlight={fieldHighlight} onChange={(next) => setBoards((current) => current.map((item, itemIndex) => itemIndex === index ? next : item))} onRemove={() => setBoards((current) => removeBoard(current, index))} />)}</div>
         </section>
 
-        <section className="card workflow-section" aria-labelledby="survey-title">
+        <section className={`card workflow-section ${fieldHighlight.wind ? "section-flagged" : ""}`} aria-labelledby="survey-title">
           <div className="section-heading"><div><p className="eyebrow">05 · Параметры съёмки</p><h2 id="survey-title">Сенсорный профиль и ветер</h2><p className="section-description">GSD и перекрытия задаются здесь и уходят в конверт. Единицы указаны явно. Браузер не рассчитывает покрытие, энергетику или выполнимость. Тип съёмки не фильтрует список камер.</p></div></div>
           <div className="control-grid">
             <label><span>Тип съёмки</span><select value={surveyType} onChange={(event) => setSurveyType(event.target.value as SurveyType)}><option value="RGB">RGB</option><option value="multispectral">Мультиспектральная</option><option value="infrared">Инфракрасная</option><option value="LiDAR">LiDAR</option><option value="geophysical">Геофизическая</option></select></label>
             <NumberField label="GSD" unit="см/пикс" placeholder="3" value={gsdCmPerPx} onChange={setGsdCmPerPx} />
             <NumberField label="Перекрытие вдоль" placeholder="0.7" value={forwardOverlap} onChange={setForwardOverlap} hint="Доля кадра, от 0 до 1, не включая 1." />
             <NumberField label="Перекрытие поперёк" placeholder="0.6" value={sideOverlap} onChange={setSideOverlap} hint="Доля кадра, от 0 до 1, не включая 1." />
-            <NumberField label="Скорость ветра" unit="м/с" placeholder="3" value={windSpeed} onChange={setWindSpeed} />
+            <div className={fieldHighlight.wind ? "field-flagged" : undefined}>
+              <NumberField label="Скорость ветра" unit="м/с" placeholder="3" value={windSpeed} onChange={setWindSpeed} />
+            </div>
             <NumberField label="Направление ветра, откуда · °" placeholder="270" value={windDirection} onChange={setWindDirection} hint="0 — север. Значение 360 записывается как 0." />
           </div>
         </section>

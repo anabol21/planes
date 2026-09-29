@@ -2,6 +2,7 @@ import type { JobResult, JsonObject } from "./types";
 
 export type ErrorCode =
   | "INFEASIBLE_ENDURANCE_NO_RECHARGE"
+  | "INFEASIBLE_WIND_EXCEEDS_FLEET"
   | "INFEASIBLE_NO_SWATHS"
   | "INFEASIBLE_TERRAIN_CLEARANCE"
   | "TIMED_OUT_BUDGET"
@@ -24,6 +25,7 @@ export interface HighlightFields {
   boards?: boolean;
   survey?: boolean;
   timeLimit?: boolean;
+  wind?: boolean;
 }
 
 export interface OutcomeCardCopy {
@@ -42,6 +44,13 @@ const CARDS: Record<ErrorCode, Omit<OutcomeCardCopy, "code">> = {
     body: "При запрете дозарядки борт не успевает покрыть все галсы за один вылет. Включите дозарядку или добавьте борта / сократите зону.",
     cta: "Добавьте борта или сократите зону съёмки и запустите снова.",
     highlight: { boards: true },
+  },
+  INFEASIBLE_WIND_EXCEEDS_FLEET: {
+    tone: "infeasible",
+    title: "Ветер выше предела флота",
+    body: "Скорость ветра выше паспортного предела всех выбранных бортов. Уменьшите ветер в сценарии или выберите более ветроустойчивые модели.",
+    cta: "Уменьшите скорость ветра или замените борта на более ветроустойчивые.",
+    highlight: { wind: true, boards: true, model: true },
   },
   INFEASIBLE_NO_SWATHS: {
     tone: "infeasible",
@@ -195,6 +204,9 @@ export function inferErrorCode(result: JobResult): ErrorCode | null {
   if (/unknown aerodrome:/i.test(blob)) return "ERROR_UNKNOWN_AERODROME";
   if (/\bno boards\b|missing fields:\s*boards(?:\s|$|,)/i.test(blob)) return "ERROR_NO_BOARDS";
   if (/has no positive endurance or (?:survey\/)?airspeed/i.test(blob)) return "ERROR_MODEL_NO_ENDURANCE_OR_SPEED";
+  if (/wind_mps\s*=\s*\S+\s+exceeds\s+fleet_max_wind_mps/i.test(blob)) {
+    return "INFEASIBLE_WIND_EXCEEDS_FLEET";
+  }
   if (
     (outcome === "infeasible" || outcome === undefined) &&
     /allow_recharge\s*=\s*false/i.test(blob) &&
