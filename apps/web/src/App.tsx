@@ -131,7 +131,6 @@ function SolverSummary({ report }: { report: JsonObject }) {
   const method = readString(report.method);
   const objective = readString(report.objective);
   const runtime = readNumber(report.runtime_seconds);
-  const limitations = getLimitations(report);
   return (
     <div className="result-section">
       <h3>Сводка расчёта</h3>
@@ -140,10 +139,6 @@ function SolverSummary({ report }: { report: JsonObject }) {
         <div><dt>Цель</dt><dd>{objective ?? "Не указана"}</dd></div>
         <div><dt>Время работы</dt><dd>{runtime === null ? "Не указано" : `${runtime.toFixed(2)} с`}</dd></div>
       </dl>
-      <div className="limitations">
-        <h4>Ограничения и замечания</h4>
-        {limitations.length ? <ul>{limitations.map((item) => <li key={item}>{item}</li>)}</ul> : <p>Backend не передал дополнительных ограничений.</p>}
-      </div>
     </div>
   );
 }

@@ -37,7 +37,7 @@ describe("ResultPanel mission map gating", () => {
     expect(screen.queryByText(/Задание backend/)).toBeNull();
   });
 
-  it("shows a physical diagnostic code", () => {
+  it("shows a physical diagnostic code in the mission summary", () => {
     const result = {
       ...fixture,
       solver_report: {
@@ -46,10 +46,11 @@ describe("ResultPanel mission map gating", () => {
       },
     };
     render(<ResultPanel result={result as JobResult} />);
-    expect(document.querySelector(".limitations")?.textContent).toContain("PHYS-AIRSPACE");
+    expect(screen.getByText("PHYS-AIRSPACE")).toBeTruthy();
+    expect(document.querySelector(".limitations")).toBeNull();
   });
 
-  it("shows identical limitation lines once and keeps distinct remarks", () => {
+  it("does not render the limitations list panel", () => {
     const reason = "uncovered swaths=5378: a swath exceeds endurance even with recharge and best pads";
     const perUav = "БВС 1: one swath exceeds endurance even with best pads";
     const result = {
@@ -59,9 +60,7 @@ describe("ResultPanel mission map gating", () => {
         limitations: [
           reason,
           reason,
-          reason,
           "uncovered_swaths=5378",
-          perUav,
           perUav,
           perUav,
           "PHYS-ENDURANCE: Вылет длиннее выносливости борта",
@@ -69,13 +68,9 @@ describe("ResultPanel mission map gating", () => {
       },
     };
     render(<ResultPanel result={result as JobResult} />);
-    const items = [...document.querySelectorAll(".limitations li")].map((item) => item.textContent);
-    expect(items).toEqual([
-      reason,
-      "uncovered_swaths=5378",
-      perUav,
-      "PHYS-ENDURANCE: Вылет длиннее выносливости борта",
-    ]);
+    expect(document.querySelector(".limitations")).toBeNull();
+    expect(screen.queryByText("Ограничения и замечания")).toBeNull();
+    expect(screen.getByText("PHYS-ENDURANCE")).toBeTruthy();
   });
 
   it("renders the map for a completed feasible result", async () => {
@@ -96,7 +91,8 @@ describe("ResultPanel mission map gating", () => {
     expect(card?.textContent).toContain("Не хватает ресурса одного вылета");
     expect(card?.textContent).toMatch(/запрете дозарядки/);
     expect(screen.getByText("Сценарий нельзя выполнить")).toBeTruthy();
-    expect(document.querySelector(".limitations")?.textContent).not.toMatch(/sitecustomize|iso f2c|f2c_isolated_worker|traceback/i);
+    expect(document.querySelector(".limitations")).toBeNull();
+    expect(screen.queryByText("Ограничения и замечания")).toBeNull();
     expect(card?.textContent).not.toMatch(/sitecustomize|iso f2c|f2c_isolated_worker|traceback/i);
   });
 
