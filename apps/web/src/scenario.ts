@@ -74,7 +74,7 @@ export function cameraOptionLabel(camera: Pick<CameraOption, "name" | "spectra">
   return `${camera.name} (${camera.spectra.join(", ")})`;
 }
 
-export function camerasForModel(modelId: string): CameraOption[] {
+export function camerasForModel(modelId: string, surveyType?: SurveyType): CameraOption[] {
   if (!modelId) return [];
   const byId = new Map(fleetCatalog.cameras.map((camera) => [camera.id, camera]));
   const seen = new Set<string>();
@@ -83,6 +83,7 @@ export function camerasForModel(modelId: string): CameraOption[] {
     if (edge.uav_model_id !== modelId || seen.has(edge.camera_id)) continue;
     const camera = byId.get(edge.camera_id);
     if (!camera?.name) continue;
+    if (surveyType && !camera.spectra.includes(surveyType)) continue;
     seen.add(edge.camera_id);
     options.push({ id: camera.id, name: camera.name, spectra: camera.spectra });
   }
@@ -118,13 +119,25 @@ export function removeBoard(boards: BoardInput[], index: number): BoardInput[] {
   return boards.filter((_, itemIndex) => itemIndex !== index);
 }
 
-export function withModel(board: BoardInput, modelId: string): BoardInput {
-  const allowed = new Set(camerasForModel(modelId).map((camera) => camera.id));
+export function withModel(board: BoardInput, modelId: string, surveyType?: SurveyType): BoardInput {
+  const allowed = new Set(camerasForModel(modelId, surveyType).map((camera) => camera.id));
   return {
     ...board,
     modelId,
     cameraId: allowed.has(board.cameraId) ? board.cameraId : "",
   };
+}
+
+/** Drop or replace board cameras that no longer cover the selected survey spectrum. */
+export function withSurveyType(boards: BoardInput[], surveyType: SurveyType): BoardInput[] {
+  return boards.map((board) => {
+    if (!board.modelId) return board;
+    const allowed = camerasForModel(board.modelId, surveyType);
+    if (!board.cameraId || allowed.some((camera) => camera.id === board.cameraId)) {
+      return board;
+    }
+    return { ...board, cameraId: allowed[0]?.id ?? "" };
+  });
 }
 
 function requireFinite(value: number, label: string, minimum?: number): void {
@@ -167,8 +180,8 @@ export function validateScenarioInputs(inputs: ScenarioInputs): void {
     if (!board.modelId.trim() || !catalogModels().some((model) => model.id === board.modelId)) {
       throw new Error(`${label}: выберите модель.`);
     }
-    if (!board.cameraId || !camerasForModel(board.modelId).some((camera) => camera.id === board.cameraId)) {
-      throw new Error(`${label}: выберите камеру, совместимую с моделью.`);
+    if (!board.cameraId || !camerasForModel(board.modelId, inputs.surveyType).some((camera) => camera.id === board.cameraId)) {
+      throw new Error(`${label}: выберите камеру, совместимую с моделью и типом съёмки.`);
     }
     if (
       board.aerodromeIndex === null ||
@@ -221,8 +234,8 @@ function boardRows(inputs: ScenarioInputs) {
     if (!board.modelId.trim() || !catalogModels().some((model) => model.id === board.modelId)) {
       throw new Error(`${label}: выберите модель.`);
     }
-    if (!board.cameraId || !camerasForModel(board.modelId).some((camera) => camera.id === board.cameraId)) {
-      throw new Error(`${label}: выберите камеру, совместимую с моделью.`);
+    if (!board.cameraId || !camerasForModel(board.modelId, inputs.surveyType).some((camera) => camera.id === board.cameraId)) {
+      throw new Error(`${label}: выберите камеру, совместимую с моделью и типом съёмки.`);
     }
     if (
       board.aerodromeIndex === null ||
@@ -304,7 +317,7 @@ export function buildPrototypeScenario(
     prototype_limitations: [
       "The survey KML is required. A missing constraints KML is an empty file and adds no polygons.",
       "Altitude sentences are copied as text and are not parsed in the browser.",
-      "Each board card names a catalog model, a compatible camera, an aerodrome, and a count of identical aircraft. Survey spectrum does not filter cameras.",
+      "Each board card names a catalog model, a spectrum-compatible camera, an aerodrome, and a count of identical aircraft. Camera options are filtered by the selected survey spectrum.",
     ],
   };
 }

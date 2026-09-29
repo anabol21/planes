@@ -21,6 +21,7 @@ import {
   buildPrototypeScenario,
   validateScenarioInputs,
   withModel,
+  withSurveyType,
   type ScenarioInputs,
 } from "./scenario";
 
@@ -164,7 +165,7 @@ describe("aerodromes and boards", () => {
     expect(clearMissingAerodromes(boards, 2)[0].aerodromeIndex).toBe(1);
   });
 
-  it("lists cameras from the model compatibility edges and ignores survey spectrum", () => {
+  it("lists cameras from the model compatibility edges", () => {
     expect(camerasForModel("geoscan-gemini").map((camera) => camera.id)).toEqual([
       "geoscan-pf1b",
       "sony-umc-r10c-16",
@@ -185,6 +186,38 @@ describe("aerodromes and boards", () => {
       "geoscan-801-thermal",
     ]);
     expect(camerasForModel("geoscan-gemini").some((camera) => camera.id === "geoscan-pf1b")).toBe(true);
+  });
+
+  it("filters camera options by the selected survey spectrum", () => {
+    expect(camerasForModel("geoscan-gemini", "RGB").map((camera) => camera.id)).toEqual([
+      "geoscan-pf1b",
+      "sony-umc-r10c-16",
+      "sony-umc-r10c-20",
+      "geoscan-pollux",
+    ]);
+    expect(camerasForModel("geoscan-gemini", "multispectral").map((camera) => camera.id)).toEqual([
+      "geoscan-pollux",
+    ]);
+    expect(camerasForModel("geoscan-801", "infrared").map((camera) => camera.id)).toEqual([
+      "geoscan-801-thermal",
+    ]);
+    expect(camerasForModel("geoscan-gemini", "LiDAR")).toEqual([]);
+  });
+
+  it("resets an incompatible camera when the survey spectrum changes", () => {
+    const boards = [
+      { modelId: "geoscan-gemini", cameraId: "geoscan-pf1b", aerodromeIndex: 0, count: 1 },
+      { modelId: "geoscan-gemini", cameraId: "geoscan-pollux", aerodromeIndex: 0, count: 1 },
+    ];
+    expect(withSurveyType(boards, "multispectral")).toEqual([
+      { modelId: "geoscan-gemini", cameraId: "geoscan-pollux", aerodromeIndex: 0, count: 1 },
+      { modelId: "geoscan-gemini", cameraId: "geoscan-pollux", aerodromeIndex: 0, count: 1 },
+    ]);
+    expect(withSurveyType(boards, "LiDAR")).toEqual([
+      { modelId: "geoscan-gemini", cameraId: "", aerodromeIndex: 0, count: 1 },
+      { modelId: "geoscan-gemini", cameraId: "", aerodromeIndex: 0, count: 1 },
+    ]);
+    expect(withSurveyType(boards, "RGB")).toEqual(boards);
   });
 
   it("drops the camera when the new model has no edge to it", () => {
@@ -352,7 +385,14 @@ describe("prototype scenario", () => {
   it("rejects a camera that is not compatible with the selected model", () => {
     const invalid = inputs();
     invalid.boards = [{ modelId: "geoscan-gemini", cameraId: "sony-a6000", aerodromeIndex: 0, count: 1 }];
-    expect(() => validateScenarioInputs(invalid)).toThrow("выберите камеру, совместимую с моделью");
+    expect(() => validateScenarioInputs(invalid)).toThrow("выберите камеру, совместимую с моделью и типом съёмки");
+  });
+
+  it("rejects a camera that does not cover the selected survey spectrum", () => {
+    const invalid = inputs();
+    invalid.surveyType = "multispectral";
+    invalid.boards = [{ modelId: "geoscan-gemini", cameraId: "geoscan-pf1b", aerodromeIndex: 0, count: 1 }];
+    expect(() => validateScenarioInputs(invalid)).toThrow("выберите камеру, совместимую с моделью и типом съёмки");
   });
 });
 
@@ -426,21 +466,27 @@ describe("enumeration input", () => {
     expect(built).not.toHaveProperty("required_camera");
   });
 
-  it("sends a non-RGB survey as required_spectrum without hiding the model RGB camera", () => {
+  it("sends a non-RGB survey as required_spectrum with a spectrum-compatible camera", () => {
     const multispectral = inputs();
     multispectral.surveyType = "multispectral";
+    multispectral.boards = [
+      { modelId: "geoscan-gemini", cameraId: "geoscan-pollux", aerodromeIndex: 0, count: 1 },
+    ];
     const built = buildPrototypeScenario(multispectral, "min_time", xmlParser());
     expect(built.required_spectrum).toBe("multispectral");
+    expect(built.survey_type).toBe("multispectral");
     expect(built.boards).toEqual([
       {
         id: "БВС 1",
         model_id: "geoscan-gemini",
-        camera_id: "geoscan-pf1b",
+        camera_id: "geoscan-pollux",
         aerodrome_id: "аэродром 1",
         count: 1,
       },
     ]);
-    expect(camerasForModel("geoscan-gemini").map((camera) => camera.id)).toContain("geoscan-pf1b");
+    expect(camerasForModel("geoscan-gemini", "multispectral").map((camera) => camera.id)).toEqual([
+      "geoscan-pollux",
+    ]);
     expect(built).not.toHaveProperty("required_camera");
     expect(built).not.toHaveProperty("uav_types");
     expect(built).not.toHaveProperty("pads");
