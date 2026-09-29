@@ -591,9 +591,9 @@ export default function App() {
     <main className="app-shell">
       <header className="app-header">
         <div className="header-copy">
-          <p className="eyebrow">Инженерный прототип планирования</p>
+          <p className="eyebrow">Демо · планирование миссии БВС</p>
           <h1>UAV Mission Planner</h1>
-          <p className="subtitle">Подготовка групповой миссии БВС на основе KML-геоданных, аэродромов, бортов и выбранного критерия оптимизации.</p>
+          <p className="subtitle">Соберите сценарий из KML, аэродромов и бортов, выберите критерий — backend рассчитает план миссии.</p>
           <div className="connection-row" aria-label="Состояние приложения">
             <div className="connection-pill ready"><span className="status-dot" /><small>Frontend</small><strong>Готов</strong></div>
             <div className={`connection-pill ${backendTone}`}><span className="status-dot" /><small>Backend / задача</small><strong>{backendLabel}</strong></div>
@@ -603,8 +603,8 @@ export default function App() {
       </header>
 
       <div className="honesty-banner">
-        <strong>Prototype scenario profile</strong>
-        <p>KML границ съёмки обязателен. Файл зон ограничений необязателен: без него полигонов ограничений нет. Сервер разбирает загруженные тексты. Камера берётся из рёбер совместимости выбранной модели. Маршруты рассчитывает только backend/runtime.</p>
+        <strong>Прототип · честный контур</strong>
+        <p>KML границ съёмки обязателен; зоны ограничений — по желанию. Сервер разбирает геометрию и считает маршруты. Браузер только собирает профиль и показывает ответ backend.</p>
       </div>
 
       <form onSubmit={handleSubmit} noValidate>
@@ -671,14 +671,28 @@ export default function App() {
             <div className="editor-grid"><label><span>Scenario JSON · только чтение</span><textarea readOnly value={scenarioPreview.text} spellCheck={false} rows={18} /></label><label><span>Optimization JSON · только чтение</span><textarea readOnly value={optimizationText} spellCheck={false} rows={18} /></label></div>
           </details>
 
-          <div className="form-footer"><div className="submit-copy"><strong>Проверить профиль и запустить</strong><span>Повторный запуск остановит текущий опрос. Результат и состояния определяет backend.</span></div><button className="primary-button" type="submit" disabled={isSubmitting || loadingCategory !== null}>{isSubmitting ? "Отправляем задачу…" : job ? "Запустить ещё раз" : "Запустить расчёт"}</button></div>
+          <div className="form-footer"><div className="submit-copy"><strong>Запуск расчёта</strong><span>Повторный запуск прервёт текущий опрос. Итог и статусы приходят с backend.</span></div><button className="primary-button" type="submit" disabled={isSubmitting || loadingCategory !== null}>{isSubmitting ? "Отправляем задачу…" : job ? "Запустить ещё раз" : "Запустить расчёт"}</button></div>
         </section>
       </form>
 
+      <div className="results-zone">
+      {!job && !result && !error && (
+        <section className="card results-empty" aria-labelledby="results-empty-title">
+          <p className="eyebrow">Результат</p>
+          <h2 id="results-empty-title">Расчёт ещё не запускался</h2>
+          <p>Заполните профиль выше и нажмите «Запустить расчёт». Здесь появятся статус задачи и ответ backend.</p>
+          <ul className="results-empty-steps">
+            <li>1 · KML границ</li>
+            <li>2 · Аэродромы и борта</li>
+            <li>3 · Критерий и запуск</li>
+          </ul>
+        </section>
+      )}
       {error && <div className="error-banner" role="alert"><span className="error-mark" aria-hidden="true">!</span><div><strong>Не удалось выполнить запрос</strong><span>{error}</span></div></div>}
-      {job && <section className="card status-card" aria-labelledby="job-status-title" aria-live="polite"><div className="section-heading"><div><p className="eyebrow">07 · Статус задачи</p><h2 id="job-status-title">Ход выполнения</h2></div><span className={`status-badge ${job.state}`}>{STATE_LABELS[job.state]}</span></div><Lifecycle observedStates={observedStates} result={result} /><dl className="job-details"><div className="job-id-row"><dt>Job ID</dt><dd>{job.job_id}</dd></div><div><dt>Создано</dt><dd>{formatTimestamp(job.created_at)}</dd></div><div><dt>Запущено</dt><dd>{formatTimestamp(job.started_at)}</dd></div><div><dt>Завершено</dt><dd>{formatTimestamp(job.finished_at)}</dd></div></dl>{isPolling && <div className="polling-indicator"><span className="pulse" /> Backend выполняет задачу, статус обновляется автоматически</div>}</section>}
+      {job && <section className={`card status-card is-${job.state}`} aria-labelledby="job-status-title" aria-live="polite"><div className="section-heading"><div><p className="eyebrow">07 · Статус задачи</p><h2 id="job-status-title">Ход выполнения</h2></div><span className={`status-badge ${job.state}`}>{STATE_LABELS[job.state]}</span></div><Lifecycle observedStates={observedStates} result={result} /><dl className="job-details"><div className="job-id-row"><dt>Job ID</dt><dd>{job.job_id}</dd></div><div><dt>Создано</dt><dd>{formatTimestamp(job.created_at)}</dd></div><div><dt>Запущено</dt><dd>{formatTimestamp(job.started_at)}</dd></div><div><dt>Завершено</dt><dd>{formatTimestamp(job.finished_at)}</dd></div></dl>{isPolling && <div className="polling-indicator"><span className="pulse" /> Backend выполняет задачу — статус обновляется автоматически</div>}</section>}
       {result && <ResultPanel result={result} />}
-      <footer>Интерфейс отображает авторитетный ответ backend. Импорт KML не является проверкой геометрии, безопасности или выполнимости полёта.</footer>
+      </div>
+      <footer>Интерфейс показывает ответ backend. Импорт KML не проверяет геометрию, безопасность или выполнимость полёта.</footer>
     </main>
   );
 }
