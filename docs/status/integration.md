@@ -13,6 +13,12 @@ contract_version: v0
 
 ## TERRAIN-RECT-001 checkpoint
 
+### OT-REAL-001 OpenTopography HTTP diagnostic
+
+- [x] Real key is set, nonempty and has no leading/trailing whitespace or terminal newline; its value and credential-bearing URL were not logged. Direct `globaldem` COP30 request for 37.6000,55.7500–37.6010,55.7510 returned HTTP 400, XML body: `Error: The selected area is too small: 0.007 km2.` This identifies the earlier smoke failure; it is not an invalid-key finding.
+- [x] A canonical survey+aerodrome rectangle 37.60000000,55.74900000–37.60500000,55.75400000 (~0.174 km²) returned HTTP 200, `application/octet-stream`, 2677 TIFF bytes, EPSG:4326 and 324 finite elevations. Direct and production headers returned identical raster bounds: 37.5998611,55.74902778888888–37.6048611,55.754027788888884. The east edge is ~0.0001389° (~9 m) short and the south edge ~0.00002778° (~3 m) short of the canonical bbox. Production `_validate_geotiff` correctly rejected it as incomplete coverage. A second nearby canonical rectangle and a grid-edge attempt were also rejected; no real full-coverage GeoTIFF or cache reuse is claimed.
+- Decision/next action: keep exact canonical bounds, padding 0 and strict coverage unchanged. A later integration decision must reconcile OpenTopography COP30 grid clipping with the requirement that a returned raster cover every canonical edge. No downloader or public contract change was made in this diagnostic.
+
 - [x] Live bridge passes the existing Misha survey+aerodromes rectangle to the ISO hook; its padding is zero. Constraints remain solver inputs and never expand terrain bounds.
 - [x] Downloader validates full coverage for both new and cached GeoTIFFs; request/cache logic still uses normalized COP30 bounds.
 - [x] Live canonical bridge requires terrain regardless of `PLANES_DEM_FAIL_CLOSED`; absent key or acquisition/validation failure raises a technical error before the worker. The standalone helper retains its compatibility mono fallback.

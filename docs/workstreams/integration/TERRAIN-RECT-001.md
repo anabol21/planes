@@ -67,5 +67,11 @@ called. The standalone helper retains its compatibility fallback. Full
 GeoTIFF-to-Fields2Cover child-plan acceptance is post-merge Linux integration
 verification: no Docker or WSL distribution is available on this host, and
 the Windows source build lacks native TinyXML2. Do not claim child-plan proof.
+OT-REAL-001 direct HTTP diagnostic identified the previous 400 as a
+server-side minimum-area rejection (`0.007 km2`). A larger canonical request
+returned a real COP30 TIFF, but its pixel-grid bounds fell short of the
+canonical rectangle, so production correctly rejected it. Real full-coverage
+acquisition and cache reuse remain unproven; do not relax the coverage check
+or change canonical bounds as part of this diagnostic. See integration status.
 Independent review is required before integration. Rollback: revert the
 task commits; no deployment or public v0 contract change is part of this task.
