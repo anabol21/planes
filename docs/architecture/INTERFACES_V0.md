@@ -40,7 +40,7 @@ The port above is unchanged (`v0`). On `main` (post-PR#18) the form sends `aerod
 
 Listener: `planes-compute.service`, health `live`, contract `v0`. Local processes: form `127.0.0.1:5173`, API `127.0.0.1:8000`, worker `--engine runtime`. Briefs: `docs/architecture/agent-brief-runtime.md`, `docs/architecture/agent-brief-backend.md`.
 
-Product-honest limitations (not new contract fields): flat/mono DEM when OpenTopography is unavailable; heuristic results are not globally optimal.
+On the current terrain feature branch, the live canonical path requires a valid DEM; terrain acquisition or validation failure produces `outcome=error`. The standalone ISO helper retains a compatibility mono fallback. Terrain remains an internal runtime concern and adds no v0 field; see the canonical [terrain pipeline](TERRAIN_PIPELINE.md). Heuristic results are not globally optimal.
 
 ## Compatibility rule
 

@@ -13,6 +13,8 @@ contract_version: v0
 
 ## TERRAIN-RECT-001 checkpoint
 
+- [x] Documentation-only `DOC-TERRAIN-001` follow-up: [canonical terrain pipeline](../architecture/TERRAIN_PIPELINE.md) describes the implemented guard, validation, fail-closed live path and pending Linux child-plan proof. README and architecture cross-links now distinguish the live bridge from the standalone mono helper. No production or public v0 interface change. Evidence: `python scripts/validate_workspace.py` → `Workspace validation: PASS`; `git diff --check` → pass. Next: independent review and Linux child-plan verification. Rollback: revert the docs commit.
+
 ### OT-REAL-001 OpenTopography HTTP diagnostic
 
 - [x] Real key is set, nonempty and has no leading/trailing whitespace or terminal newline; its value and credential-bearing URL were not logged. Direct `globaldem` COP30 request for 37.6000,55.7500–37.6010,55.7510 returned HTTP 400, XML body: `Error: The selected area is too small: 0.007 km2.` This identifies the earlier smoke failure; it is not an invalid-key finding.

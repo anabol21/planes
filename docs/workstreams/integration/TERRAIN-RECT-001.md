@@ -7,6 +7,10 @@ base: 5af4554d9e1463d2c94216389714df5344dc0380
 status: review
 contract_version: v0
 allowed_paths:
+  - README.md
+  - docs/architecture/TERRAIN_PIPELINE.md
+  - docs/architecture/INTERFACES_V0.md
+  - docs/architecture/SYSTEM_BOUNDARIES.md
   - src/planes/runtime/grisha_f2c_bridge.py
   - src/planes/integration/terrain/iso_acquire.py
   - src/planes/integration/terrain/opentopography.py
@@ -56,6 +60,8 @@ No frontend/backend/public v0 changes, optimizer changes, dependency
 installation without permission, deployment or merge.
 
 ## Verification and handoff
+
+Documentation-only follow-up `DOC-TERRAIN-001` records the implemented terrain path in [the canonical terrain document](../../architecture/TERRAIN_PIPELINE.md) and reconciles live-path mono references. These shared architecture edits change no public v0 field or producer/consumer payload; frontend, backend and runtime consumers need only update their documentation references. Production code is outside the follow-up scope.
 
 Initial implementation was based on `745d2bd8b248b0b352fd8501e3312a48708c3d3d`;
 the feature branch is synchronized with the newer `origin/main` at the

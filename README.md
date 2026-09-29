@@ -8,7 +8,7 @@
 
 По умолчанию солвер — `PLANES_SOLVE_BACKEND=grisha_f2c_iso`: `grisha_f2c_bridge` + изолированные F2C-воркеры (`tools/f2c_iso/`) + `catalog/fleet_catalog.json`. Подробности: `docs/live-grisha-f2c-iso.md`. Откат: `PLANES_SOLVE_BACKEND=legacy_fields2cover`. Слушатель — unit `planes-compute.service`, `POST /v0/solve`, health `live`, контракт `v0`. Хост, токен и ключ OpenTopography только в окружении, не в git.
 
-Честные продуктовые ограничения этого пути: плоский / mono DEM, если OpenTopography недоступен; эвристическая укладка и разведение бортов — не глобальный оптимум. Не считать живым кончиком git `da3da56`, ветку `runtime/MIS-002-external-enumeration` или `solver_choice` `meta` (это прежний enumeration-слушатель).
+На текущей terrain feature branch живой canonical path требует DEM: если OpenTopography недоступен или растр не прошёл проверку, расчёт завершается с `outcome=error`. Постоянное описание: [terrain pipeline](docs/architecture/TERRAIN_PIPELINE.md). Standalone ISO helper может сохранять совместимый mono fallback; это не политика live bridge. Эвристическая укладка и разведение бортов — не глобальный оптимум. Не считать живым кончиком git `da3da56`, ветку `runtime/MIS-002-external-enumeration` или `solver_choice` `meta` (это прежний enumeration-слушатель).
 
 Историческая картина сшивки на `test_merge` — `docs/architecture/STITCH_PICTURE.md`. Брифы: `docs/architecture/agent-brief-runtime.md`, `docs/architecture/agent-brief-backend.md`. Они не заменяют правила `AGENTS.md`.
 

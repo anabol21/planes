@@ -13,6 +13,8 @@ contract_version: v0
 
 ## TERRAIN-RECT-001 checkpoint
 
+- [x] Permanent [terrain pipeline architecture](../architecture/TERRAIN_PIPELINE.md) documents the runtime rectangle and DEM handoff; the workstream and status remain implementation evidence. Documentation-only follow-up; no runtime code or v0 interface change.
+
 - [x] Runtime bridge builds the canonical EPSG:4326 rectangle with existing `interest_rectangle`, using survey outer rings and all aerodromes, and supplies its GeoJSON geometry to terrain integration. Existing constraint inputs to ISO worker are unchanged.
 - [x] Real synthetic GeoTIFF loads through production `_GeoTiffDem`; nonempty samples 200/300 m plus AGL 120 m produce production `_route` ASL 320/420 m. Duration remains 2D path/speed.
 - [x] Live bridge requires canonical DEM and validates any supplied GeoTIFF against the full rectangle before worker invocation. Missing key, failed download, malformed/partial raster and wrong existing DEM become errors; standalone helper fallback remains separate.

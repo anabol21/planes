@@ -42,6 +42,8 @@ Grisha's `sitecustomize.py` loaded.
 
 ## DEM hook (honest)
 
+The canonical, permanent terrain architecture is [Terrain pipeline — canonical rectangle, COP30 and flight altitude](architecture/TERRAIN_PIPELINE.md). This section remains a compact live-path summary.
+
 On the live iso path (`PLANES_SOLVE_BACKEND` unset / `grisha_f2c_iso`)
 `grisha_f2c_bridge` attaches terrain **before** the isolated worker runs.
 The browser does not send a DEM path.
