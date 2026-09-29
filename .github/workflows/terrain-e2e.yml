@@ -8,7 +8,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 75
     env:
-      PYTHONPATH: src
+      PYTHONPATH: src:tests/runtime
       PLANES_RUN_REAL_TERRAIN_E2E: "1"
       PLANES_DEM_FAIL_CLOSED: "1"
       OPENTOPOGRAPHY_API_KEY: ${{ secrets.OPENTOPOGRAPHY_API_KEY }}
@@ -66,7 +66,8 @@ jobs:
         env:
           PLANES_RUN_REAL_TERRAIN_E2E: "0"
         run: |
-          python -m unittest tests.runtime.test_interest_box tests.runtime.test_iso_terrain_acquire tests.runtime.test_f2c_iso_client tests.runtime.test_terrain_rectangle -v
+          export F2C_EMBED_PYTHON="$(command -v python)"
+          python -m unittest tests.runtime.test_interest_box tests.runtime.test_iso_terrain_acquire tests.runtime.test_f2c_iso_client tests.runtime.test_terrain_rectangle tests.runtime.test_grisha_f2c_bridge tests.runtime.test_wave_b_iso -v
           python scripts/validate_workspace.py
           git diff --check
       - uses: actions/upload-artifact@v4
