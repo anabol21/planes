@@ -97,7 +97,7 @@ class RealTerrainE2E(unittest.TestCase):
                 raw = observed[0]
                 self.assertEqual(raw.get("outcome"), "feasible", raw.get("error"))
                 self.assertIsInstance(result, Solution)
-                self.assertEqual(raw.get("embed_python"), str(embed))
+                self.assertEqual(Path(raw["embed_python"]).resolve(), embed)
                 isolation = raw["isolation"]
                 self.assertEqual(Path(isolation["python"]).resolve(), embed)
                 self.assertEqual(isolation["fields2cover_version"], "2.1.0")
