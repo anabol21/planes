@@ -114,14 +114,28 @@ class CanonicalTest(unittest.TestCase):
             )
             self.assertEqual(path, again)
         self.assertEqual(queries, [{
-            "demtype": ["COP30"], "west": ["37.60000000"],
-            "south": ["55.70000000"], "east": ["37.80000000"],
-            "north": ["55.85000000"], "outputFormat": ["GTiff"],
+            "demtype": ["COP30"], "west": ["37.59972222"],
+            "south": ["55.69972222"], "east": ["37.80027778"],
+            "north": ["55.85027778"], "outputFormat": ["GTiff"],
         }])
-        material = "COP30|37.60000000|55.70000000|37.80000000|55.85000000"
+        material = "COP30|37.59972222|55.69972222|37.80027778|55.85027778"
         digest = hashlib.sha256(material.encode("ascii")).hexdigest()[:24]
         self.assertEqual(path.name, f"COP30_{digest}.tif")
         self.assertEqual(validated, [expected, expected])
+
+    def test_one_cell_guard_is_pure_and_clamped_at_world_edge(self):
+        canonical = terrain.SurveyBounds(37.6, 55.749, 37.605, 55.754)
+        self.assertEqual(canonical.normalized(),
+                         ("37.60000000", "55.74900000", "37.60500000", "55.75400000"))
+        self.assertEqual(terrain.COP30_GRID_ARCSEC, 1.0)
+        guarded = terrain.cop30_request_bounds(canonical)
+        self.assertEqual(guarded.normalized(),
+                         ("37.59972222", "55.74872222", "37.60527778", "55.75427778"))
+        self.assertEqual(terrain.cop30_request_bounds(canonical), guarded)
+        self.assertEqual(canonical.normalized(),
+                         ("37.60000000", "55.74900000", "37.60500000", "55.75400000"))
+        world = terrain.SurveyBounds(-180, -90, 180, 90)
+        self.assertEqual(terrain.cop30_request_bounds(world), world)
 
     def test_builder_inputs_are_survey_and_all_aerodromes(self):
         s = scenario()
@@ -259,9 +273,9 @@ class GeoTiffTest(unittest.TestCase):
         with patch.object(terrain, "_validate_geotiff", observed):
             path, notes = self.acquire()
             again, _ = self.acquire()
-        self.assertEqual(self.queries, [{"demtype": ["COP30"], "west": ["37.60000000"],
-            "south": ["55.70000000"], "east": ["37.80000000"], "north": ["55.85000000"], "outputFormat": ["GTiff"]}])
-        digest = hashlib.sha256("COP30|37.60000000|55.70000000|37.80000000|55.85000000".encode("ascii")).hexdigest()[:24]
+        self.assertEqual(self.queries, [{"demtype": ["COP30"], "west": ["37.59972222"],
+            "south": ["55.69972222"], "east": ["37.80027778"], "north": ["55.85027778"], "outputFormat": ["GTiff"]}])
+        digest = hashlib.sha256("COP30|37.59972222|55.69972222|37.80027778|55.85027778".encode("ascii")).hexdigest()[:24]
         self.assertEqual(path.name, f"COP30_{digest}.tif")
         self.assertEqual(path, again)
         self.assertEqual(validations, [self.expected, self.expected])
@@ -272,11 +286,26 @@ class GeoTiffTest(unittest.TestCase):
         with patch.object(terrain.urllib.request, "urlopen", return_value=io.BytesIO(raster_bytes(partial))):
             with self.assertRaisesRegex(terrain.TerrainAcquisitionError, "cover"):
                 ensure_dem_for_iso_scenario(scenario(), geometry_factory=bridge._canonical_terrain_geometry)
-        cached = terrain._cache_path(self.expected, Path(self.tmp.name))
+        cached = terrain._cache_path(terrain.cop30_request_bounds(self.expected), Path(self.tmp.name))
         cached.write_bytes(raster_bytes(partial))
         with patch.object(terrain.urllib.request, "urlopen", side_effect=AssertionError("cached invalid raster must not use network")):
             with self.assertRaisesRegex(terrain.TerrainAcquisitionError, "cover"):
                 ensure_dem_for_iso_scenario(scenario(), geometry_factory=bridge._canonical_terrain_geometry)
+
+    def test_raster_need_only_cover_canonical_not_guard(self):
+        with patch.object(terrain.urllib.request, "urlopen", return_value=io.BytesIO(raster_bytes(self.expected))):
+            out, _ = ensure_dem_for_iso_scenario(scenario(), geometry_factory=bridge._canonical_terrain_geometry)
+        self.assertTrue(Path(out["dem_file"]).is_file())
+
+    def test_partial_east_and_south_are_rejected(self):
+        partials = (
+            terrain.SurveyBounds(self.expected.west, self.expected.south, self.expected.east - 0.0001, self.expected.north),
+            terrain.SurveyBounds(self.expected.west, self.expected.south + 0.0001, self.expected.east, self.expected.north),
+        )
+        for partial in partials:
+            with self.subTest(partial=partial), patch.object(terrain.urllib.request, "urlopen", return_value=io.BytesIO(raster_bytes(partial))):
+                with self.assertRaisesRegex(terrain.TerrainAcquisitionError, "cover"):
+                    ensure_dem_for_iso_scenario(scenario(), geometry_factory=bridge._canonical_terrain_geometry)
 
     def test_malformed_geotiff_fail_closed_and_distinct_mono_fallback(self):
         for fail_closed in ("1", "0"):
@@ -355,7 +384,11 @@ class GeoTiffTest(unittest.TestCase):
                     )
 
     def test_worker_loader_and_production_route_altitudes(self):
-        path, _ = self.acquire()
+        # Keep this route probe on the canonical raster grid so its two
+        # interpolation values remain 200/300 despite the HTTP guard band.
+        with patch.object(terrain.urllib.request, "urlopen", return_value=io.BytesIO(raster_bytes(self.expected))):
+            out, _ = ensure_dem_for_iso_scenario(scenario(), geometry_factory=bridge._canonical_terrain_geometry)
+        path = Path(out["dem_file"])
         worker = load_worker()
         dem, label, _ = worker._load_mission_dem({"dem_file": str(path)})
         self.assertIsInstance(dem, worker._GeoTiffDem)

@@ -1,7 +1,8 @@
-"""Acquire one cached COP30 GeoTIFF for a survey-area bounding box.
+"""Acquire one cached COP30 GeoTIFF covering a survey-area bounding box.
 
 HTTP belongs here, outside the pure optimizer. Once this function returns, the
-model consumes the local file and runs fully offline.
+model consumes the local file and runs fully offline. The HTTP request has a
+one-cell raster guard; validation still uses the original area bounds.
 """
 
 from __future__ import annotations
@@ -20,6 +21,8 @@ import urllib.request
 
 
 COP30_DATASET = "COP30"
+COP30_GRID_ARCSEC = 1.0
+COP30_GRID_DEGREES = COP30_GRID_ARCSEC / 3600.0
 _ENDPOINT = "https://portal.opentopography.org/API/globaldem"
 
 
@@ -52,6 +55,19 @@ class SurveyBounds:
             f"{self.east:.8f}",
             f"{self.north:.8f}",
         )
+
+
+def cop30_request_bounds(canonical: SurveyBounds, *, guard_cells: int = 1) -> SurveyBounds:
+    """Add a raster-grid guard to the HTTP request, leaving mission bounds intact."""
+    if isinstance(guard_cells, bool) or not isinstance(guard_cells, int) or guard_cells < 0:
+        raise ValueError("guard_cells must be a non-negative integer")
+    guard = guard_cells * COP30_GRID_DEGREES
+    return SurveyBounds(
+        west=max(-180.0, canonical.west - guard),
+        south=max(-90.0, canonical.south - guard),
+        east=min(180.0, canonical.east + guard),
+        north=min(90.0, canonical.north + guard),
+    )
 
 
 def _iter_geometry_points(geometry: dict[str, Any]) -> Iterable[tuple[float, float]]:
@@ -213,14 +229,15 @@ def acquire_terrain_for_area(
     timeout_s: float = 180.0,
     opener: Callable[..., Any] | None = None,
 ) -> Path:
-    """Return a validated cached COP30 GeoTIFF for the survey geometry."""
-    bounds = bbox_from_geojson(
+    """Request a guarded COP30 raster that covers the original area bounds."""
+    canonical_bounds = bbox_from_geojson(
         area_file, crs=survey_crs, padding_m=padding_m
     )
+    request_bounds = cop30_request_bounds(canonical_bounds)
     destination_dir = _cache_directory(cache_dir)
-    destination = _cache_path(bounds, destination_dir)
+    destination = _cache_path(request_bounds, destination_dir)
     if destination.is_file():
-        _validate_geotiff(destination, bounds)
+        _validate_geotiff(destination, canonical_bounds)
         return destination
 
     api_key = os.environ.get("OPENTOPOGRAPHY_API_KEY")
@@ -233,10 +250,10 @@ def acquire_terrain_for_area(
 
     params = {
         "demtype": COP30_DATASET,
-        "south": bounds.normalized()[1],
-        "north": bounds.normalized()[3],
-        "west": bounds.normalized()[0],
-        "east": bounds.normalized()[2],
+        "south": request_bounds.normalized()[1],
+        "north": request_bounds.normalized()[3],
+        "west": request_bounds.normalized()[0],
+        "east": request_bounds.normalized()[2],
         "outputFormat": "GTiff",
         "API_Key": api_key,
     }
@@ -257,7 +274,7 @@ def acquire_terrain_for_area(
                 output.write(chunk)
         if part.stat().st_size == 0:
             raise TerrainAcquisitionError("OpenTopography returned an empty response")
-        _validate_geotiff(part, bounds)
+        _validate_geotiff(part, canonical_bounds)
         os.replace(part, destination)
         return destination
     except urllib.error.HTTPError as exc:
