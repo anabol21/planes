@@ -41,6 +41,15 @@ def parse_survey_polygon(text: str) -> list[ConstraintPolygon]:
     return polygons
 
 
+@dataclass(frozen=True)
+class ConstraintPoint:
+    """One placemark point. It does not set the interest rectangle."""
+
+    lon: float
+    lat: float
+    name: str | None
+
+
 def parse_constraint_polygons(text: str | None) -> list[ConstraintPolygon]:
     """Return restriction polygons: ring, name, type, and copied altitude text.
 
@@ -49,6 +58,36 @@ def parse_constraint_polygons(text: str | None) -> list[ConstraintPolygon]:
     if text is None or not text.strip():
         return []
     return _polygons(text)
+
+
+def parse_constraint_points(text: str | None) -> list[ConstraintPoint]:
+    """Return placemark points. Routes and other lines are ignored.
+
+    ``None`` and a blank string are an empty file.
+    """
+    if text is None or not text.strip():
+        return []
+    root = _root(text)
+    parent_map = {child: parent for parent in root.iter() for child in list(parent)}
+    points: list[ConstraintPoint] = []
+    for placemark in _named(root, "Placemark"):
+        name = _direct_text(placemark, "name")
+        for element in _named(placemark, "Point"):
+            if _nearest_ancestor(element, "Placemark", parent_map) is not placemark:
+                continue
+            coordinates = [
+                child
+                for child in _named(element, "coordinates")
+                if _nearest_ancestor(child, "Point", parent_map) is element
+            ]
+            if not coordinates:
+                continue
+            parsed = _coordinates("".join(coordinates[0].itertext()))
+            if not parsed:
+                continue
+            lon, lat = parsed[0]
+            points.append(ConstraintPoint(lon=lon, lat=lat, name=name))
+    return points
 
 
 def _polygons(text: str) -> list[ConstraintPolygon]:

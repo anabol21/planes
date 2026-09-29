@@ -1,3 +1,4 @@
+import { resolveOutcomeCard } from "./errorCards";
 import type { JobResult } from "./types";
 
 export interface ResultPresentation {
@@ -7,11 +8,12 @@ export interface ResultPresentation {
 }
 
 export function getResultPresentation(result: JobResult): ResultPresentation {
+  const card = resolveOutcomeCard(result);
   if (result.state === "failed") {
     return {
-      title: "Ошибка вычислительного контура",
+      title: card?.title ?? "Ошибка вычислительного контура",
       badge: "failed",
-      summary: "Backend сообщил об ошибке и не сформировал результат миссии.",
+      summary: card?.body ?? "Backend сообщил об ошибке и не сформировал результат миссии.",
     };
   }
   if (result.outcome === "feasible") {
@@ -23,14 +25,14 @@ export function getResultPresentation(result: JobResult): ResultPresentation {
   }
   if (result.outcome === "infeasible") {
     return {
-      title: "Допустимый план не найден",
+      title: card?.title ?? "Допустимый план не найден",
       badge: "infeasible",
-      summary: "Расчёт завершён корректно, но при заданных условиях выполнимого плана нет.",
+      summary: card?.body ?? "Расчёт завершён корректно, но при заданных условиях выполнимого плана нет. Это отказ сценария, а не сбой сервиса.",
     };
   }
   return {
-    title: "Время расчёта истекло",
+    title: card?.title ?? "Время расчёта истекло",
     badge: "timed_out",
-    summary: "Вычислительный контур достиг лимита времени до получения итогового плана.",
+    summary: card?.body ?? "Вычислительный контур достиг лимита времени до получения итогового плана.",
   };
 }

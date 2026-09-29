@@ -1,16 +1,18 @@
 ---
 workstream: backend
 owner: Ruslan
-task: INT-001
+task: WRAP-002
 status: review
-updated: 2026-09-27
+updated: 2026-09-28
 checkpoint: 2026-09-23
-branch: test_merge
+branch: cursor/infeasible-error-codes-2089
 contract_version: v0
 ---
 
 # Backend status
 
+- `review`: WRAP-002 — API-слой нормализует `outcome` + `limitations`/`error` в `error_code`, `message_ru`, `message_en`, `details`. Классификатор `src/planes/backend/error_codes.py`. Ранний фильтр ветра (`wind.speed_ms` vs `max_wind_m_s`) даёт `INFEASIBLE_WIND_EXCEEDS_FLEET` без VPS. Модель без лимита ветра — unknown, потолок флота не поднимает. HTTP 200 + `infeasible` без изменений. Ядро и VPS packing не трогались. Заметка: `docs/architecture/API_RESULT_CODES_V0.md`.
+- `review`: WRAP-001 — local `POST /jobs` body ceiling raised from `1_000_000` bytes to `10 * 1024 * 1024` (`MAX_BODY_BYTES` = 10485760). Empty/non-positive `Content-Length` is still rejected; the payload must still be a JSON object. Runtime listener `MAX_BODY_BYTES` (32 MiB) is unchanged. Covers `REQ-PROD-001` (web submit) and large KML inputs `REQ-IN-003`, `REQ-IN-005`, `REQ-IN-006`. Limit size itself is a team operational choice under `OPEN-021`, not a customer number. `OPEN-001` remains open.
 - `planned`: RUS-002 — рельеф из отдельного KML местности в матрицы `precompute`. Бриф: `docs/workstreams/model/RUS-002.md`.
 
 On `test_merge` the backend Python is unchanged. The scenario snapshot carries raw `survey_kml` and `constraints_kml`. The stitched listener path is `docs/architecture/STITCH_PICTURE.md`. The rest of this paragraph is the pre-stitch path on `main`.
@@ -31,6 +33,8 @@ Live path on `main`: the form at `127.0.0.1:5173` sends `aerodromes` and `boards
 - [x] Added the backend-owned `RuntimeOptimizationEngine` conversion wrapper around the unchanged runtime adapter.
 - [x] Added explicit worker selection through `--engine fake|runtime`, defaulting to the existing fake.
 - [x] Added deterministic runtime conversion and lifecycle tests using an injected adapter stub.
+- [x] WRAP-001: raised local API `MAX_BODY_BYTES` to `10 * 1024 * 1024` and added body-size tests.
+- [x] WRAP-002: classify infeasible/error/timeout signals on `GET /jobs/{id}/result` without rewriting the engine port.
 
 ## In progress
 
@@ -38,10 +42,18 @@ Live path on `main`: the form at `127.0.0.1:5173` sends `aerodromes` and `boards
 
 ## Next action
 
-The live worker path is `--engine runtime`. On `test_merge` read `docs/architecture/STITCH_PICTURE.md` before `docs/architecture/agent-brief-runtime.md`. That brief records the pre-stitch listener at git `da3da56`. The earlier note that a controlled smoke was not recorded in this file stays as checkpoint evidence.
+Review WRAP-002 on `cursor/infeasible-error-codes-2089` against `wrap/WRAP-001-shell-around-core`. Classifier evidence is in `tests/backend/test_error_codes.py`. The live worker path remains `--engine runtime`. WRAP-001 body limit already landed locally (PR https://github.com/anabol21/planes/pull/14); runtime listener stays at 32 MiB.
 
 ## Evidence
 
+- WRAP-002 wind filter: `PYTHONPATH=src python3 -m unittest tests.backend.test_wind_filter tests.backend.test_error_codes tests.backend.test_pipeline -v` — `Ran 48 tests in 0.953s` / `OK`. Worker short-circuits before the engine when `wind.speed_ms` exceeds catalog `max_wind_m_s`.
+- WRAP-002: `PYTHONPATH=src python3 -m unittest discover -s tests/backend -v` — `Ran 50 tests in 0.872s` / `OK` (includes live B2 + catalog_validation fixtures).
+- WRAP-002: `python3 scripts/validate_workspace.py` — `Workspace validation: PASS`.
+- WRAP-002: `git diff --check` — passed.
+- WRAP-001 body limit: commit `a13b6b51b281c830753798425688fd5b25643b67` on `cursor/backend-10mib-body-limit-2a72`.
+- WRAP-001: `PYTHONPATH=src python3 -m unittest discover -s tests/backend -v` — passed, 36 tests, `OK` (`Ran 36 tests in 0.996s`). New cases: `test_empty_request_body_returns_400`, `test_request_body_over_ten_mib_returns_400`, `test_request_body_over_old_megabyte_ceiling_is_accepted`, `test_non_object_json_returns_400`.
+- WRAP-001: `PYTHONPATH=src python3 -c "from planes.backend.api import MAX_BODY_BYTES; print(MAX_BODY_BYTES)"` — `10485760`.
+- PR WRAP-001: https://github.com/anabol21/planes/pull/14 against `wrap/WRAP-001-shell-around-core`.
 - Task brief: `docs/workstreams/backend/RUS-001.md`.
 - `python -m compileall -q src/planes/backend tests/backend` — passed (exit 0).
 - `python -m unittest discover -s tests/backend -v` — passed, 20 tests, `OK`.
@@ -89,6 +101,8 @@ The commands above follow the CLI default `--engine fake` and are the recorded p
 
 ## Interface changes
 
+- `POST /jobs` now accepts request bodies up to `10 * 1024 * 1024` bytes (`10485760`). The `ValidationError` text is `request body must be between 1 and 10485760 bytes`. Shared contracts, runtime listener, and optimizer code are unchanged.
+- WRAP-002 (API read-shaping only, contract stays `v0`): `GET /jobs/{id}/result` may add `error_code`, `message_ru`, `message_en`, `details`, and `solver_report.unique_limitations`. Engine port and SQLite snapshots are unchanged. Consumers that ignore unknown fields keep working. See `docs/architecture/API_RESULT_CODES_V0.md`.
 - Added a backend-local `OptimizationEngine.solve(ComputeRequest) -> ComputeResponse` port matching `INTERFACES_V0.md`; no shared contract or architecture file changed.
 - Runtime can supply an adapter through worker composition without changing API, service, or storage code.
 - Runtime mode converts through runtime-owned `parse_request` and `response_to_dict`; fake-only optimization fields are not forwarded.

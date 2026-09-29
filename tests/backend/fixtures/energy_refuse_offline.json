@@ -1,0 +1,231 @@
+{
+  "note": "Offline planner experiment (не live v0 envelope) — для UX идей про энергию/uncovered",
+  "E_passport_Wh": 144.7,
+  "E_cut_Wh": 40.52,
+  "B0_no_recharge": {
+    "id": "B0",
+    "label": "B0 · 40.52 Wh без дозарядки",
+    "mission_time_s": 566.5782127575719,
+    "energy_refusals": [
+      {
+        "uav": "БВС 2",
+        "poly": "p201",
+        "have_Wh": 21.89,
+        "need_approx_Wh": 26.13,
+        "n_swaths": 6
+      }
+    ],
+    "assignment": {
+      "БВС 1": [
+        "p195",
+        "p185"
+      ],
+      "БВС 2": [
+        "p195"
+      ],
+      "БВС 3": [
+        "p195"
+      ],
+      "БВС 4": [
+        "p106",
+        "p191"
+      ]
+    },
+    "E_left_Wh": {
+      "БВС 1": 6.19,
+      "БВС 2": 11.95,
+      "БВС 3": 9.84,
+      "БВС 4": 7.03
+    },
+    "recharges_by_uav": {
+      "БВС 1": 0,
+      "БВС 2": 0,
+      "БВС 3": 0,
+      "БВС 4": 0
+    },
+    "recharge_events": {
+      "БВС 1": [],
+      "БВС 2": [],
+      "БВС 3": [],
+      "БВС 4": []
+    }
+  },
+  "B_with_recharge": {
+    "id": "B",
+    "label": "B · 40.52 Wh (28%) + мгновенная дозарядка",
+    "mission_time_s": 584.5375141967803,
+    "energy_refusals": [],
+    "assignment": {
+      "БВС 1": [
+        "p195",
+        "p185"
+      ],
+      "БВС 2": [
+        "p195"
+      ],
+      "БВС 3": [
+        "p195"
+      ],
+      "БВС 4": [
+        "p106",
+        "p191"
+      ]
+    },
+    "E_left_Wh": {
+      "БВС 1": 6.19,
+      "БВС 2": 32.52,
+      "БВС 3": 9.84,
+      "БВС 4": 7.03
+    },
+    "recharges_by_uav": {
+      "БВС 1": 0,
+      "БВС 2": 1,
+      "БВС 3": 0,
+      "БВС 4": 0
+    },
+    "recharge_events": {
+      "БВС 1": [],
+      "БВС 2": [
+        {
+          "t_s": 451.3,
+          "lat": 54.98735549413821,
+          "lon": 38.50911239290228,
+          "vpp": "аэродром 1",
+          "reason": "fleet_energy_exhausted",
+          "recharge_n": 1
+        }
+      ],
+      "БВС 3": [],
+      "БВС 4": []
+    }
+  },
+  "polyclose_variants_with_refuse": [
+    {
+      "id": "baseline",
+      "label": "Baseline F2C",
+      "mission_time_s": 2519.9394630441084,
+      "total_flight_time_s": 4891.424537991889,
+      "path_m": 85467.11452448569,
+      "long_legs_gt_1km": 31,
+      "inter_poly_pct": 57.9,
+      "share_pct_by_time": {
+        "inter_poly": 57.9,
+        "vpp_leg": 24.5,
+        "strip_turn": 14.7,
+        "strip_survey": 2.8
+      },
+      "coverage_path_eff": 0.155,
+      "wall_s": null,
+      "energy_refusals": [],
+      "parallel_events": [],
+      "assignment": null,
+      "E_left_Wh": null,
+      "uncovered": []
+    },
+    {
+      "id": "greedy",
+      "label": "Greedy nearest-finish",
+      "mission_time_s": 943.3346233631858,
+      "total_flight_time_s": 1870.038827076253,
+      "path_m": 31012.8128825251,
+      "long_legs_gt_1km": 5,
+      "inter_poly_pct": 10.1,
+      "share_pct_by_time": {
+        "strip_turn": 47.5,
+        "vpp_leg": 32.5,
+        "inter_poly": 10.1,
+        "strip_survey": 9.9
+      },
+      "coverage_path_eff": 0.427,
+      "wall_s": 0.00027908995980396867,
+      "energy_refusals": [],
+      "parallel_events": [],
+      "assignment": {
+        "БВС 1": [
+          "p106",
+          "p191",
+          "p201"
+        ],
+        "БВС 2": [
+          "p195",
+          "p185"
+        ]
+      },
+      "E_left_Wh": {
+        "БВС 1": 91.53,
+        "БВС 2": 92.36
+      },
+      "uncovered": []
+    },
+    {
+      "id": "energy_solo",
+      "label": "Energy soft-close (solo)",
+      "mission_time_s": 943.3346233631858,
+      "total_flight_time_s": 1870.038827076253,
+      "path_m": 31012.8128825251,
+      "long_legs_gt_1km": 5,
+      "inter_poly_pct": 10.1,
+      "share_pct_by_time": {
+        "strip_turn": 47.5,
+        "vpp_leg": 32.5,
+        "inter_poly": 10.1,
+        "strip_survey": 9.9
+      },
+      "coverage_path_eff": 0.427,
+      "wall_s": 0.0007738569984212518,
+      "energy_refusals": [],
+      "parallel_events": [],
+      "assignment": {
+        "БВС 1": [
+          "p106",
+          "p191",
+          "p201"
+        ],
+        "БВС 2": [
+          "p195",
+          "p185"
+        ]
+      },
+      "E_left_Wh": {
+        "БВС 1": 91.53,
+        "БВС 2": 92.36
+      },
+      "uncovered": []
+    },
+    {
+      "id": "polyclose_energy",
+      "label": "Poly-close + energy + look-ahead parallel",
+      "mission_time_s": 943.3346233631858,
+      "total_flight_time_s": 1870.038827076253,
+      "path_m": 31012.8128825251,
+      "long_legs_gt_1km": 5,
+      "inter_poly_pct": 10.1,
+      "share_pct_by_time": {
+        "strip_turn": 47.5,
+        "vpp_leg": 32.5,
+        "inter_poly": 10.1,
+        "strip_survey": 9.9
+      },
+      "coverage_path_eff": 0.427,
+      "wall_s": 0.0036822359543293715,
+      "energy_refusals": [],
+      "parallel_events": [],
+      "assignment": {
+        "БВС 1": [
+          "p106",
+          "p191",
+          "p201"
+        ],
+        "БВС 2": [
+          "p195",
+          "p185"
+        ]
+      },
+      "E_left_Wh": {
+        "БВС 1": 91.53,
+        "БВС 2": 92.36
+      },
+      "uncovered": []
+    }
+  ]
+}

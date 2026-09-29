@@ -1,10 +1,8 @@
 """Fields2Cover swath engine for the listener.
 
-Pinned import: fields2cover 2.1.0. Empty or leftover request angles are
-ignored: ``SG_BruteForce.generateBestSwaths`` picks the heading
-(``OBJ_NSwathModified`` | ``OBJ_NSwath`` | ``OBJ_SwathLength``). This
-module does not call ``RP_RoutePlannerBase`` (OR-Tools) or
-``planner.solver``.
+Pinned import: fields2cover 2.1.0. ``SG_BruteForce.generateSwaths`` takes the
+strip angle in radians. This module does not call ``RP_RoutePlannerBase``
+(OR-Tools) or ``planner.solver``.
 """
 
 from __future__ import annotations
@@ -109,9 +107,8 @@ def optics(
 
 
 def plan(mission: Any) -> Any | None:
-    """Auto-angle brute-force swaths, boustrophedon order, no Dubins.
+    """One strip angle, brute-force swaths, boustrophedon order, no Dubins.
 
-    ``angles_deg`` may be empty. A leftover request heading is ignored.
     Returns ``None`` when the field yields no swaths. Raises
     ``BudgetExhausted`` when the deadline passes before a route exists.
     """
@@ -132,6 +129,7 @@ def plan(mission: Any) -> Any | None:
     origin = mission.vpps[0]
     lon0 = float(origin.lon)
     lat0 = float(origin.lat)
+    angle_deg = float(mission.params.angles_deg[0])
     holes = _obstacle_polygons(mission, lon0, lat0)
     polygons = _survey_polygons(mission, lon0, lat0, holes)
     if not polygons:
@@ -140,12 +138,9 @@ def plan(mission: Any) -> Any | None:
     routes: list[Any] = []
     durations: list[float] = []
     have_route = False
-    chosen_heading: float | None = None
     for spacing_m, boards in groups:
         _ensure_budget(have_route)
-        swaths = _swaths(polygons, spacing_m)
-        if swaths and chosen_heading is None:
-            chosen_heading = _heading_deg(swaths[0])
+        swaths = _swaths(polygons, spacing_m, angle_deg)
         if not swaths:
             continue
         if time.monotonic() >= ctx.deadline and not have_route:
@@ -181,7 +176,7 @@ def plan(mission: Any) -> Any | None:
     Candidate, _, _ = _models()
     used = {route.uav_id for route in routes}
     return Candidate(
-        theta_deg=0.0 if chosen_heading is None else chosen_heading,
+        theta_deg=angle_deg,
         C_max_s=max(durations),
         flight_hours_s=sum(durations),
         energy_total_wh=0.0,
@@ -280,24 +275,7 @@ def _polygon_parts(geom: Any) -> list[Any]:
     return []
 
 
-def _best_objective(f2c: Any) -> Any:
-    """Same preference order as ``planner.geometry.f2c_backend``."""
-    for name in ("OBJ_NSwathModified", "OBJ_NSwath", "OBJ_SwathLength"):
-        if hasattr(f2c, name):
-            try:
-                return getattr(f2c, name)()
-            except Exception:
-                continue
-    raise ValueError("fields2cover has no OBJ_* objective")
-
-
-def _heading_deg(swath: _SwathEnds) -> float:
-    dx = swath.end[0] - swath.start[0]
-    dy = swath.end[1] - swath.start[1]
-    return math.degrees(math.atan2(dy, dx)) % 360.0
-
-
-def _swaths(polygons: list[Any], spacing_m: float) -> list[_SwathEnds]:
+def _swaths(polygons: list[Any], spacing_m: float, angle_deg: float) -> list[_SwathEnds]:
     f2c = _fields2cover()
     cells = f2c.Cells()
     kept = 0
@@ -309,8 +287,8 @@ def _swaths(polygons: list[Any], spacing_m: float) -> list[_SwathEnds]:
         kept += 1
     if kept == 0:
         return []
-    generated = f2c.SG_BruteForce().generateBestSwaths(
-        _best_objective(f2c),
+    generated = f2c.SG_BruteForce().generateSwaths(
+        math.radians(angle_deg),
         float(spacing_m),
         cells,
     )

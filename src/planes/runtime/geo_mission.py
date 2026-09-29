@@ -1,11 +1,10 @@
-"""Envelope adapter for the copied geo core.
+"""Envelope adapter for the listener.
 
-An envelope with aerodromes and boards becomes one ``MissionInput`` and one
-call of ``planner.solver.pipeline``. The F2C path leaves ``angles_deg``
-empty: Fields2Cover picks the swath heading via ``generateBestSwaths``.
-A leftover ``survey.strip_direction_deg`` is ignored. Wind, GSD, and
-overlaps stay required. ``solver.solve`` does not send any other scenario
-here.
+An envelope with aerodromes and boards becomes one ``MissionInput``. The
+listener then calls Fields2Cover (one strip angle, no OR-Tools). ``solver.solve``
+does not send any other scenario here. This module does not edit the planner
+body. ``run_angle_pipeline`` still wraps the old ``run_one_angle`` loop and is
+not on the listener path.
 """
 
 from __future__ import annotations
@@ -19,10 +18,6 @@ from planes.integration.kml.constraints import (
     ConstraintPolygon,
     parse_constraint_polygons,
     parse_survey_polygon,
-)
-from planes.integration.terrain.opentopography import (
-    TerrainAcquisitionError,
-    acquire_terrain_for_area,
 )
 from planes.runtime.enumeration.outer import load_catalog
 from planes.runtime.logs import record
@@ -68,11 +63,32 @@ _TIME_LIMIT = "solver stopped at the time limit"
 _NOT_GLOBALLY_OPTIMAL = "heuristic result is not globally optimal"
 _NO_SPECTRUM = "no camera covers required spectrum"
 _FLAT_TERRAIN = "terrain raster is not a usable GeoTIFF; refusing flat terrain"
+_MONO_DEM_FILE = "mono"
+_MONO_LIMITATION = "temporary flat terrain; OpenTopography was not called"
+
+
+class _MonoRelief:
+    """One constant plane at 0 m. Not a file and not an empty raster."""
+
+    def h(self, lat: float, lon: float) -> float:
+        del lat, lon
+        return 0.0
+
+    def is_empty(self) -> bool:
+        return False
+
+    def h_max(self) -> float:
+        return 0.0
+
+    def h_min(self) -> float:
+        return 0.0
 
 
 def solve_envelope(problem: Problem, deadline: float) -> Solution | Infeasible | TimedOut:
-    """Parse the survey KML, cache COP30, and call the geo-core pipeline.
+    """Parse the survey KML and call the geo-core pipeline on a flat plane.
 
+    Ground is one constant plane at 0 m. OpenTopography is not called and no
+    GeoTIFF is read. Waypoint ``alt_m`` stays the camera AGL above that plane.
     A missing, null, or blank ``constraints_kml`` is an empty file: no
     constraint polygons and no invented no-fly zone. The survey KML stays
     required.
@@ -86,13 +102,13 @@ def solve_envelope(problem: Problem, deadline: float) -> Solution | Infeasible |
         raise ValueError("missing fields: scenario")
     survey_polygons = parse_survey_polygon(_text(scenario.get("survey_kml"), "survey_kml"))
     constraints = parse_constraint_polygons(_optional_text(scenario.get("constraints_kml")))
-    dem_path = _acquire_dem(survey_polygons)
-    dem = _load_geotiff(dem_path)
-    mission, notes = _mission(
+    dem = _MonoRelief()
+    dem_file = _MONO_DEM_FILE
+    mission, notes, boards = _mission(
         scenario,
         survey_polygons=survey_polygons,
         constraints=constraints,
-        dem_path=dem_path,
+        dem_file=dem_file,
         dem=dem,
     )
     if mission is None:
@@ -103,12 +119,27 @@ def solve_envelope(problem: Problem, deadline: float) -> Solution | Infeasible |
         lines = (_TIME_LIMIT, *notes)
         _log(problem.job_id, lines)
         return TimedOut(lines)
-    candidate = _run_pipeline(mission)
+    from planes.runtime.fields2cover_engine import (
+        BudgetExhausted,
+        EngineContext,
+        bind_context,
+        reset_context,
+    )
+
+    token = bind_context(EngineContext(deadline=deadline, boards=boards))
+    try:
+        candidate = _run_pipeline(mission)
+    except BudgetExhausted:
+        lines = (_TIME_LIMIT, *notes)
+        _log(problem.job_id, lines)
+        return TimedOut(lines)
+    finally:
+        reset_context(token)
     if candidate is None:
         lines = ("No valid candidates found", *notes)
         _log(problem.job_id, lines)
         return Infeasible(lines)
-    plan = _plan(candidate, mission, str(dem_path), constraints)
+    plan = _plan(candidate, mission, dem_file, constraints)
     criterion = mission.params.optimization_criterion.value
     if criterion == "min_time":
         objective_value = float(candidate.C_max_s)
@@ -117,7 +148,8 @@ def solve_envelope(problem: Problem, deadline: float) -> Solution | Infeasible |
     lines = (
         _NOT_GLOBALLY_OPTIMAL,
         "constraint altitude text is copied and not interpreted; polygons are obstacles",
-        f"dem_file: {dem_path}",
+        _MONO_LIMITATION,
+        f"dem_file: {dem_file}",
         *notes,
     )
     _log(problem.job_id, lines)
@@ -127,23 +159,6 @@ def solve_envelope(problem: Problem, deadline: float) -> Solution | Infeasible |
         objective_value=objective_value,
         limitations=lines,
     )
-
-
-def _acquire_dem(polygons: list[ConstraintPolygon]) -> Path:
-    coordinates = [
-        [[[lon, lat] for lon, lat in polygon.ring]]
-        for polygon in polygons
-    ]
-    if len(coordinates) == 1:
-        geometry = {"type": "Polygon", "coordinates": coordinates[0]}
-    else:
-        geometry = {"type": "MultiPolygon", "coordinates": coordinates}
-    try:
-        return Path(
-            acquire_terrain_for_area(geometry, survey_crs="EPSG:4326")
-        ).resolve()
-    except TerrainAcquisitionError as exc:
-        raise ValueError(str(exc)) from exc
 
 
 def _load_geotiff(path: Path) -> Any:
@@ -159,9 +174,9 @@ def _mission(
     *,
     survey_polygons: list[ConstraintPolygon],
     constraints: list[ConstraintPolygon],
-    dem_path: Path,
+    dem_file: str,
     dem: Any,
-) -> tuple[Any | None, list[str]]:
+) -> tuple[Any | None, list[str], tuple[Any, ...]]:
     symbols = _core_symbols()
     catalog = symbols["get_default_catalog"]()
     fleet = load_catalog()
@@ -185,6 +200,10 @@ def _mission(
     for board in boards:
         model_id = board["model_id"]
         camera_id = board["camera_id"]
+        if model_id not in models:
+            raise ValueError(f"uav model {model_id} not in catalog")
+        if camera_id not in cameras:
+            raise ValueError(f"camera {camera_id} not in catalog")
         if (model_id, camera_id) not in edges:
             raise ValueError(f"camera {camera_id} is not compatible with model {model_id}")
         spectra = _spectra(cameras[camera_id])
@@ -203,7 +222,7 @@ def _mission(
             notes.insert(0, _NO_SPECTRUM)
         else:
             notes.append("no runnable board")
-        return None, notes
+        return None, notes, ()
 
     Area = symbols["Area"]
     Obstacle = symbols["Obstacle"]
@@ -236,6 +255,8 @@ def _mission(
         for index, polygon in enumerate(constraints)
     ]
     uavs = []
+    fleet_models: list[str] = []
+    fleet_cameras: list[str] = []
     by_vpp: dict[str, list[str]] = {item["id"]: [] for item in aerodromes}
     cameras_by_vpp: dict[str, list[str]] = {item["id"]: [] for item in aerodromes}
     for board, core_model, core_camera in admitted:
@@ -251,6 +272,8 @@ def _mission(
                 )
             )
             by_vpp[board["aerodrome_id"]].append(uav_id)
+            fleet_models.append(board["model_id"])
+            fleet_cameras.append(board["camera_id"])
             if core_camera not in cameras_by_vpp[board["aerodrome_id"]]:
                 cameras_by_vpp[board["aerodrome_id"]].append(core_camera)
     vpps = [
@@ -266,7 +289,64 @@ def _mission(
         for item in aerodromes
         if by_vpp[item["id"]]
     ]
-    params = _params(scenario, criterion_name, dem_path, symbols)
+    params = _params(scenario, criterion_name, dem_file, symbols)
+    from planes.runtime.fields2cover_engine import BoardCamera, marked_number, optics
+
+    aerodrome_by_id = {item["id"]: item for item in aerodromes}
+    boards: list[BoardCamera] = []
+    for uav, fleet_model_id, fleet_camera_id in zip(uavs, fleet_models, fleet_cameras):
+        try:
+            spacing_m, h_agl_m = optics(
+                cameras[fleet_camera_id],
+                params.gsd_cm_per_px,
+                params.overlap_x,
+            )
+        except ValueError:
+            # A camera with blank optics still builds the mission. The engine
+            # rejects it when a route is actually requested.
+            spacing_m, h_agl_m = float("nan"), float("nan")
+        model_rec = models[fleet_model_id]
+        endurance_s = marked_number(
+            model_rec,
+            "flight_time_s",
+            f"flight_time_s {fleet_model_id}",
+        )
+        if model_rec.get("reserve_fraction") is not None:
+            reserve = marked_number(
+                model_rec,
+                "reserve_fraction",
+                f"reserve_fraction {fleet_model_id}",
+            )
+            if not (0.0 <= reserve < 1.0):
+                raise ValueError(f"reserve_fraction out of range for model {fleet_model_id}")
+            endurance_s = endurance_s * (1.0 - reserve)
+        if model_rec.get("survey_speed_m_s") is not None:
+            speed_m_s = marked_number(
+                model_rec,
+                "survey_speed_m_s",
+                f"survey_speed_m_s {fleet_model_id}",
+            )
+        else:
+            speed_m_s = marked_number(
+                model_rec,
+                "airspeed_m_s",
+                f"airspeed_m_s {fleet_model_id}",
+            )
+        if endurance_s <= 0 or speed_m_s <= 0:
+            raise ValueError(f"model {fleet_model_id} has no positive endurance or survey/airspeed")
+        place = aerodrome_by_id[uav.vpp_id]
+        boards.append(
+            BoardCamera(
+                uav_id=uav.id,
+                vpp_id=uav.vpp_id,
+                lat=place["lat"],
+                lon=place["lon"],
+                endurance_s=endurance_s,
+                speed_m_s=speed_m_s,
+                spacing_m=spacing_m,
+                h_agl_m=h_agl_m,
+            )
+        )
     mission = MissionInput(
         areas=areas,
         obstacles=obstacles,
@@ -275,10 +355,10 @@ def _mission(
         params=params,
         dem=dem,
     )
-    return mission, notes
+    return mission, notes, tuple(boards)
 
 
-def _params(scenario: dict[str, Any], criterion_name: str, dem_path: Path, symbols: dict[str, Any]) -> Any:
+def _params(scenario: dict[str, Any], criterion_name: str, dem_file: str, symbols: dict[str, Any]) -> Any:
     Params = symbols["Params"]
     Wind = symbols["Wind"]
     Criterion = symbols["Criterion"]
@@ -290,8 +370,7 @@ def _params(scenario: dict[str, Any], criterion_name: str, dem_path: Path, symbo
         raise ValueError("missing fields: survey")
     side = _fraction(survey.get("side_overlap"), "survey.side_overlap")
     forward = _fraction(survey.get("forward_overlap"), "survey.forward_overlap")
-    # survey.strip_direction_deg is ignored on the F2C path. Do not copy
-    # it into angles_deg; generateBestSwaths owns the heading.
+    angle = _angle(survey.get("strip_direction_deg"), "survey.strip_direction_deg")
     wind = scenario.get("wind")
     if not isinstance(wind, dict):
         raise ValueError("missing fields: wind")
@@ -299,28 +378,35 @@ def _params(scenario: dict[str, Any], criterion_name: str, dem_path: Path, symbo
     if isinstance(speed, bool) or not isinstance(speed, (int, float)) or speed < 0:
         raise ValueError("missing fields: wind.speed_ms")
     direction = _angle(wind.get("direction_deg"), "wind.direction_deg")
-    kwargs: dict[str, Any] = {
-        "gsd_cm_per_px": float(gsd),
-        "wind": Wind(speed_mps=float(speed), direction_deg=direction),
-        "optimization_criterion": Criterion(criterion_name),
-        "overlap_x": side,
-        "overlap_long": forward,
-        "angles_deg": [],
-        "attempts_max": 1,
-        "dem_file": str(dem_path),
-    }
-    DecompositionMethod = symbols.get("DecompositionMethod")
-    if DecompositionMethod is not None:
-        kwargs["decomposition"] = DecompositionMethod.FIELDS2COVER
-    return Params(**kwargs)
+    return Params(
+        gsd_cm_per_px=float(gsd),
+        wind=Wind(speed_mps=float(speed), direction_deg=direction),
+        optimization_criterion=Criterion(criterion_name),
+        overlap_x=side,
+        overlap_long=forward,
+        angles_deg=[angle],
+        attempts_max=1,
+        dem_file=dem_file,
+    )
 
 
 def _run_pipeline(mission: Any) -> Any | None:
-    symbols = _core_symbols()
+    """Fields2Cover for this mission. The signature stays one argument."""
+    from planes.runtime.fields2cover_engine import plan
+
+    return plan(mission)
+
+
+def run_angle_pipeline(mission: Any) -> Any | None:
+    """Old listener loop: ``run_one_angle`` then ``select_best``.
+
+    The live listener does not call this. A stitch test can retarget here
+    when it still needs that loop.
+    """
+    symbols = _angle_symbols()
     counters = symbols["Counters"]()
     candidates = []
-    angles = symbols["angles_to_try"](mission)
-    for theta in angles:
+    for theta in mission.params.angles_deg:
         counters.reset_attempts()
         candidate = None
         for _ in range(mission.params.attempts_max):
@@ -356,8 +442,13 @@ def _plan(
                 ],
             }
         )
+    solver_name = (
+        "fields2cover"
+        if getattr(candidate, "decomposition_method", "") == "fields2cover"
+        else "pipeline"
+    )
     return {
-        "solver": "pipeline",
+        "solver": solver_name,
         "criterion": mission.params.optimization_criterion.value,
         "crs": "EPSG:4326",
         "dem_file": dem_file,
@@ -387,7 +478,6 @@ def _core_symbols() -> dict[str, Any]:
         from planner.models import (
             Area,
             Criterion,
-            DecompositionMethod,
             MissionInput,
             Obstacle,
             Params,
@@ -396,9 +486,6 @@ def _core_symbols() -> dict[str, Any]:
             VPP,
             Wind,
         )
-        from planner.solver.angles import angles_to_try
-        from planner.solver.counters import Counters
-        from planner.solver.pipeline import run_one_angle, select_best
     except ImportError as exc:
         raise ValueError(f"geo core import failed: {exc}") from exc
     cached = {
@@ -406,7 +493,6 @@ def _core_symbols() -> dict[str, Any]:
         "load_dem": load_dem,
         "Area": Area,
         "Criterion": Criterion,
-        "DecompositionMethod": DecompositionMethod,
         "MissionInput": MissionInput,
         "Obstacle": Obstacle,
         "Params": Params,
@@ -414,12 +500,28 @@ def _core_symbols() -> dict[str, Any]:
         "UAVConfig": UAVConfig,
         "VPP": VPP,
         "Wind": Wind,
+    }
+    _core_symbols.cached = cached  # type: ignore[attr-defined]
+    return cached
+
+
+def _angle_symbols() -> dict[str, Any]:
+    """Imports for ``run_angle_pipeline`` only. The listener does not call it."""
+    cached = getattr(_angle_symbols, "cached", None)
+    if cached is not None:
+        return cached
+    _core_symbols()
+    try:
+        from planner.solver.counters import Counters
+        from planner.solver.pipeline import run_one_angle, select_best
+    except ImportError as exc:
+        raise ValueError(f"geo core import failed: {exc}") from exc
+    cached = {
         "Counters": Counters,
-        "angles_to_try": angles_to_try,
         "run_one_angle": run_one_angle,
         "select_best": select_best,
     }
-    _core_symbols.cached = cached  # type: ignore[attr-defined]
+    _angle_symbols.cached = cached  # type: ignore[attr-defined]
     return cached
 
 
