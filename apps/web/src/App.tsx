@@ -69,7 +69,6 @@ import {
 } from "./types";
 
 const DEFAULT_OBJECTIVE = "min_time";
-const DEFAULT_SEED = "7";
 const TIME_LIMIT_TOO_LONG = `Лимит расчёта не больше ${MAX_TIME_LIMIT_SECONDS} секунд.`;
 const MissionMap = lazy(() =>
   import("./MissionMap").then((module) => ({ default: module.MissionMap })),
@@ -481,7 +480,6 @@ export default function App() {
   const [windDirection, setWindDirection] = useState(270);
   const [objective, setObjective] = useState(DEFAULT_OBJECTIVE);
   const [timeLimit, setTimeLimit] = useState(Number(DEFAULT_TIME_LIMIT));
-  const [seedText, setSeedText] = useState(DEFAULT_SEED);
   const [surveyTask, setSurveyTask] = useState<KmlFileRecord | null>(null);
   const [restrictedZones, setRestrictedZones] = useState<KmlFileRecord | null>(null);
   const [loadingCategory, setLoadingCategory] = useState<KmlCategory | null>(null);
@@ -556,7 +554,7 @@ export default function App() {
       validateScenarioInputs(scenarioInputs);
       const scenario = buildPrototypeScenario(scenarioInputs, objective);
       const optimization = buildOptimization(objective, timeLimit);
-      const submitted = await submitFromEditors(api, JSON.stringify(scenario), JSON.stringify(optimization), seedText, signal);
+      const submitted = await submitFromEditors(api, JSON.stringify(scenario), JSON.stringify(optimization), signal);
       if (!coordinatorRef.current.isCurrent(generation)) return;
       setJob(submitted);
       setObservedStates([submitted.state]);
@@ -664,7 +662,6 @@ export default function App() {
             <div className={fieldHighlight.timeLimit ? "field-flagged" : undefined}>
               <NumberField label="Лимит расчёта, с" placeholder={DEFAULT_TIME_LIMIT} value={timeLimit} onChange={setTimeLimit} hint={timeLimit > MAX_TIME_LIMIT_SECONDS ? TIME_LIMIT_TOO_LONG : `Не больше ${MAX_TIME_LIMIT_SECONDS}`} />
             </div>
-            <NumberField label="Seed" placeholder="7" integer value={Number(seedText)} onChange={(value) => setSeedText(formatDecimalInput(value))} hint="Для воспроизводимого запуска." />
           </div>
 
           <details className="advanced-panel">
