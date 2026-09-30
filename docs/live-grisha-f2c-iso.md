@@ -2,7 +2,13 @@
 
 Contract `v0`. This is the pack/split F2C isolated contour selected by the
 current source default. The successful Linux integration run proves the code
-path, not which commit a VPS currently runs. It is **not** full mvp LNS / board assignment.
+path, not which commit a VPS currently runs. Code contour TERRAIN-RECT-001 @
+`85f88fb` is already on `main` (tip `f2825e2`). Live VPS is not that tip:
+compute currently runs `c8092e1` on `cursor/flat-mono-relief-89b1` (flat/mono,
+no OT; ~58 commits behind tip), not terrain `85f88fb`. It matches the main
+contour only after explicit redeploy/overlay OK + working OT; OT on that
+compute still returns HTTP 401. Do not redeploy without Misha OK. Listener JobLock is single-flight (HTTP 503 `busy`); a long
+POST >~300s may end as client `RemoteDisconnected`. It is **not** full mvp LNS / board assignment.
 
 Strip heading is solver-owned (`generateBestSwaths`). A leftover
 `survey.strip_direction_deg` is ignored. See `docs/f2c-input-contract.md`.

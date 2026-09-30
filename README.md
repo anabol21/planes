@@ -1,6 +1,6 @@
 # planes — прототип планирования миссий БВС
 
-`planes` принимает KML съёмки и ограничений, аэродромы, борты/камеры и параметры съёмки; backend запускает асинхронное задание, compute строит групповой mission plan. Default в исходном коде — `grisha_f2c_iso` с Fields2Cover и обязательным валидным DEM для terrain-enabled пути. Недоступный OpenTopography/невалидный DEM приводит к техническому `outcome=error`, не к плоскому плану. Проверенный CI-контур не означает, что тот же commit уже развёрнут на ВМ.
+`planes` принимает KML съёмки и ограничений, аэродромы, борты/камеры и параметры съёмки; backend запускает асинхронное задание, compute строит групповой mission plan. Default в исходном коде — `grisha_f2c_iso` с Fields2Cover и обязательным валидным DEM для terrain-enabled пути. Недоступный OpenTopography/невалидный DEM приводит к техническому `outcome=error`, не к плоскому плану. Проверенный CI-контур не означает, что тот же commit уже развёрнут на ВМ. Якорь кода рельефа `85f88fb` уже на `main` (tip `f2825e2`); live VPS **не** tip: compute сейчас `c8092e1` на `cursor/flat-mono-relief-89b1` (flat/mono, без OT; ~58 коммитов позади tip), не terrain `85f88fb`. Совпадение с main — только после явного redeploy/overlay OK + рабочего OT; OT на этом compute по-прежнему HTTP 401. Без OK Миши не redeploy. Listener — JobLock single-flight (HTTP 503 `busy`); длинный POST >~300 с может оборваться как `RemoteDisconnected`. Climb / corridor / 3D duration / глобальный оптимум / NFZ-на-iso / экспорт KML/GeoJSON — не заявляем.
 
 ## Документация
 
